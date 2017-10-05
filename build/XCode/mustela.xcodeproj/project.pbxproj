@@ -1,0 +1,287 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6E4E86531F7D8F67008F5E05 /* mustela.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86511F7D8F67008F5E05 /* mustela.cpp */; };
+		6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86541F7D8F80008F5E05 /* main.cpp */; };
+		6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86561F7F092F008F5E05 /* pages.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		6E045A611F3A2FD6001B247C /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		6E045A631F3A2FD6001B247C /* mustela */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = mustela; sourceTree = BUILT_PRODUCTS_DIR; };
+		6E4E86511F7D8F67008F5E05 /* mustela.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mustela.cpp; sourceTree = "<group>"; };
+		6E4E86521F7D8F67008F5E05 /* mustela.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = mustela.hpp; sourceTree = "<group>"; };
+		6E4E86541F7D8F80008F5E05 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		6E4E86561F7F092F008F5E05 /* pages.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pages.cpp; sourceTree = "<group>"; };
+		6E4E86571F7F092F008F5E05 /* pages.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pages.hpp; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6E045A601F3A2FD6001B247C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6E045A5A1F3A2FD6001B247C = {
+			isa = PBXGroup;
+			children = (
+				6E4E86501F7D8ECF008F5E05 /* mustela */,
+				6E045A641F3A2FD6001B247C /* Products */,
+				6E8A771A1F49E3A000D3BA82 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		6E045A641F3A2FD6001B247C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6E045A631F3A2FD6001B247C /* mustela */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6E4E86501F7D8ECF008F5E05 /* mustela */ = {
+			isa = PBXGroup;
+			children = (
+				6E4E86511F7D8F67008F5E05 /* mustela.cpp */,
+				6E4E86521F7D8F67008F5E05 /* mustela.hpp */,
+				6E4E86541F7D8F80008F5E05 /* main.cpp */,
+				6E4E86561F7F092F008F5E05 /* pages.cpp */,
+				6E4E86571F7F092F008F5E05 /* pages.hpp */,
+			);
+			name = mustela;
+			path = ../../include/mustela;
+			sourceTree = "<group>";
+		};
+		6E8A771A1F49E3A000D3BA82 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6E045A621F3A2FD6001B247C /* mustela */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6E045A6A1F3A2FD6001B247C /* Build configuration list for PBXNativeTarget "mustela" */;
+			buildPhases = (
+				6E045A5F1F3A2FD6001B247C /* Sources */,
+				6E045A601F3A2FD6001B247C /* Frameworks */,
+				6E045A611F3A2FD6001B247C /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = mustela;
+			productName = mustela;
+			productReference = 6E045A631F3A2FD6001B247C /* mustela */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6E045A5B1F3A2FD6001B247C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0830;
+				ORGANIZATIONNAME = Hrissan;
+				TargetAttributes = {
+					6E045A621F3A2FD6001B247C = {
+						CreatedOnToolsVersion = 8.3.3;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6E045A5E1F3A2FD6001B247C /* Build configuration list for PBXProject "mustela" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 6E045A5A1F3A2FD6001B247C;
+			productRefGroup = 6E045A641F3A2FD6001B247C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6E045A621F3A2FD6001B247C /* mustela */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6E045A5F1F3A2FD6001B247C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */,
+				6E4E86531F7D8F67008F5E05 /* mustela.cpp in Sources */,
+				6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		6E045A681F3A2FD6001B247C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LIBRARY_SEARCH_PATHS = /usr/local/lib;
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CFLAGS = "-maes";
+				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
+				SDKROOT = macosx;
+				SYMROOT = "$(SRCROOT)/../../bin";
+				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src";
+			};
+			name = Debug;
+		};
+		6E045A691F3A2FD6001B247C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LIBRARY_SEARCH_PATHS = /usr/local/lib;
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_CFLAGS = "-maes";
+				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
+				SDKROOT = macosx;
+				SYMROOT = "$(SRCROOT)/../../bin";
+				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src";
+			};
+			name = Release;
+		};
+		6E045A6B1F3A2FD6001B247C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		6E045A6C1F3A2FD6001B247C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6E045A5E1F3A2FD6001B247C /* Build configuration list for PBXProject "mustela" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6E045A681F3A2FD6001B247C /* Debug */,
+				6E045A691F3A2FD6001B247C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6E045A6A1F3A2FD6001B247C /* Build configuration list for PBXNativeTarget "mustela" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6E045A6B1F3A2FD6001B247C /* Debug */,
+				6E045A6C1F3A2FD6001B247C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6E045A5B1F3A2FD6001B247C /* Project object */;
+}

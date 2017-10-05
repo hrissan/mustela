@@ -1,0 +1,18 @@
+bin/*
+
+build/Visual Studio/Debug
+build/Visual Studio/Release
+build/Visual Studio/x64
+build/Visual Studio/.vs
+
+.idea
+
+build/XCode/build
+xcuserdata
+
+cmake-build-*
+
+wallet/node_modules
+
+# Mac specific
+.DS_Store
