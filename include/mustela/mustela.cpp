@@ -421,68 +421,67 @@ namespace mustela {
         }
         return result_page;
     }
-    void TX::merge_if_needed_node(Cursor & cur, size_t height, NodePage * wr_dap){
-        PageOffset half_size = wr_dap->half_size(page_size);
-        if( !wr_dap->has_enough_free_space(page_size, half_size) )
+    void TX::merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap){
+        PageOffset half_size = wr_dap.half_size();
+        if( !wr_dap.has_enough_free_space(half_size) )
             return;
         if(height == 0){ // merging root, wait until 1 key remains, make it new root
-            if( wr_dap->item_count != 0)
+            if( wr_dap.size() != 0)
                 return;
             mark_free_in_future_page(meta_page.main_root_page);
-            meta_page.main_root_page = wr_dap->get_item_value(page_size, -1);
+            meta_page.main_root_page = wr_dap.get_value(-1);
             meta_page.main_height -= 1;
             cur.path.erase(cur.path.begin()); // TODO - check
             return;
         }
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[height - 1];
-        NodePage * wr_parent = writable_node(path_pa.first);
-        ass(wr_parent->item_count > 0, "Found parent node with 0 items");
-        //PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
-        const NodePage * remember_left_sib = nullptr;
-        const NodePage * left_sib = nullptr;
+        NodePtr wr_parent(page_size, writable_node(path_pa.first));
+        ass(wr_parent.size() > 0, "Found parent node with 0 items");
+        CNodePtr left_sib;
+        bool use_left_sib = false;
         PageOffset left_data_size = 0;
-        Val my_key;
+        ValPid my_kv;
         size_t required_size_for_my_kv = 0;
-        const NodePage * remember_right_sib = nullptr;
-        const NodePage * right_sib = nullptr;
+        
+        CNodePtr right_sib;
+        bool use_right_sib = false;
         PageOffset right_data_size = 0;
-        Val right_key;
+        ValPid right_kv;
         if( path_pa.second != PageOffset(-1)){
-            Pid my_pid;
-            my_key = wr_parent->get_item_kv(page_size, path_pa.second, my_pid);
-            required_size_for_my_kv = wr_parent->kv_size(page_size, my_key, my_pid);
-            ass(my_pid == wr_dap->pid, "merge_if_needed_node my pid in parent does not match");
-            Pid left_pid = wr_parent->get_item_value(page_size, path_pa.second - 1);
-            remember_left_sib = left_sib = readable_node(left_pid);
-            left_data_size = left_sib->data_size();
-            left_data_size += sizeof(PageOffset) + left_sib->kv_size(page_size, my_key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
-            if( !wr_dap->has_enough_free_space(page_size, left_data_size) )
-                left_sib = nullptr; // forget about left!
+            my_kv = wr_parent.get_kv(path_pa.second);
+            required_size_for_my_kv = wr_parent.kv_size(my_kv.key, my_kv.pid);
+            ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
+            Pid left_pid = wr_parent.get_value(path_pa.second - 1);
+            left_sib = CNodePtr(page_size, readable_node(left_pid));
+            left_data_size = left_sib.data_size();
+            left_data_size += sizeof(PageOffset) + left_sib.kv_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
+            use_left_sib = wr_dap.has_enough_free_space(left_data_size);
         }
-        if(path_pa.second == PageOffset(-1) || path_pa.second < wr_parent->item_count - 1){
-            Pid right_pid;
-            right_key = wr_parent->get_item_kv(page_size, path_pa.second + 1, right_pid);
-            remember_right_sib = right_sib = readable_node(right_pid);
-            right_data_size = right_sib->data_size();
-            right_data_size += sizeof(PageOffset) + right_sib->kv_size(page_size, right_key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
-            if( !wr_dap->has_enough_free_space(page_size, right_data_size) )
-                right_sib = nullptr; // forget about right!
+        if(path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
+            right_kv = wr_parent.get_kv(path_pa.second + 1);
+            right_sib = CNodePtr(page_size, readable_node(right_kv.pid));
+            right_data_size = right_sib.data_size();
+            right_data_size += sizeof(PageOffset) + right_sib.kv_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
+            use_right_sib = wr_dap.has_enough_free_space(right_data_size);
         }
-        if( left_sib && right_sib && !wr_dap->has_enough_free_space(page_size, left_data_size + right_data_size) ){ // If cannot merge both, select smallest
+        if( use_left_sib && use_right_sib && !wr_dap.has_enough_free_space(left_data_size + right_data_size) ){ // If cannot merge both, select smallest
             if( left_data_size < right_data_size ) // <= will also work
-                right_sib = nullptr;
+                use_right_sib = false;
             else
-                left_sib = nullptr;
+                use_left_sib = false;
         }
-        if( wr_dap->item_count == 0 && !left_sib && !right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
-            if( remember_left_sib && remember_right_sib){ // Select larger one
-                if( remember_left_sib->data_size() < remember_right_sib->data_size() )
-                    remember_left_sib = nullptr;
+        if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
+            if( left_sib.page && right_sib.page){ // Select larger one
+                if( left_sib.data_size() > right_sib.data_size() )
+                    use_left_sib = true;
                 else
-                    remember_right_sib = nullptr;
-            }
-            ass(remember_left_sib || remember_right_sib, "Node is empty and cannot borrow from siblings");
+                    use_right_sib = true;
+            }else if( left_sib.page )
+                use_left_sib = true;
+            else if( right_sib.page )
+                use_right_sib = true;
+            ass(use_left_sib || use_right_sib, "Node is empty and cannot borrow from siblings");
 /*            if( remember_left_sib ){
                 Pid spec_val = wr_dap->get_item_value(page_size, -1);
                 int insert_direction = 0;
@@ -524,30 +523,22 @@ namespace mustela {
                 wr_parent->insert_at(page_size, path_pa.second + 1, split_key, wr_dap->pid);
             }*/
         }
-        if( left_sib ){
-            Pid spec_val = wr_dap->get_item_value(page_size, -1);
-            wr_dap->insert_at(page_size, 0, my_key, spec_val);
-            wr_dap->set_item_value(page_size, -1, left_sib->get_item_value(page_size, -1));
-            for(PageOffset i = 0; i != left_sib->item_count; ++i){
-                Pid val;
-                Val key = left_sib->get_item_kv(page_size, i, val);
-                wr_dap->insert_at(page_size, i, key, val);
-            }
-            mark_free_in_future_page(left_sib->pid); // unlink left, point its slot in parent to us, remove our slot in parent
-            wr_parent->remove_simple(page_size, path_pa.second);
-            wr_parent->set_item_value(page_size, path_pa.second - 1, wr_dap->pid);
+        if( use_left_sib ){
+            Pid spec_val = wr_dap.get_value(-1);
+            wr_dap.insert_at(0, my_kv.key, spec_val);
+            wr_dap.set_value(-1, left_sib.get_value(-1));
+            wr_dap.insert_range(0, left_sib, 0, left_sib.size());
+            mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
+            wr_parent.erase(path_pa.second);
+            wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
         }
-        if( right_sib ){
-            Pid spec_val = right_sib->get_item_value(page_size, -1);
-            wr_dap->insert_at(page_size, wr_dap->item_count, right_key, spec_val);
-            for(PageOffset i = 0; i != right_sib->item_count; ++i){
-                Pid val;
-                Val key = right_sib->get_item_kv(page_size, i, val);
-                wr_dap->insert_at(page_size, wr_dap->item_count, key, val);
-            }
-            mark_free_in_future_page(right_sib->pid); // unlink right, remove its slot in parent
-            wr_parent->remove_simple(page_size, path_pa.second + 1);
+        if( use_right_sib ){
+            Pid spec_val = right_sib.get_value(-1);
+            wr_dap.append(right_kv.key, spec_val);
+            wr_dap.append_range(right_sib, 0, right_sib.size());
+            mark_free_in_future_page(right_sib.page->pid); // unlink right, remove its slot in parent
+            wr_parent.erase(path_pa.second + 1);
         }
         merge_if_needed_node(cur, height - 1, wr_parent);
     }
@@ -559,8 +550,8 @@ namespace mustela {
             return;
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[cur.path.size() - 2];
-        NodePage * wr_parent = writable_node(path_pa.first);
-        ass(wr_parent->item_count > 0, "Found parent node with 0 items");
+        NodePtr wr_parent(page_size, writable_node(path_pa.first));
+        ass(wr_parent.size() > 0, "Found parent node with 0 items");
         //PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
         const LeafPage * left_sib = nullptr;
         PageOffset left_data_size = 0;
@@ -569,14 +560,14 @@ namespace mustela {
         PageOffset right_data_size = 0;
         //Pid right_pid = 0;
         if( path_pa.second != PageOffset(-1)){
-            Pid left_pid = wr_parent->get_item_value(page_size, path_pa.second - 1);
+            Pid left_pid = wr_parent.get_value(path_pa.second - 1);
             left_sib = readable_leaf(left_pid);
             left_data_size = left_sib->data_size();
             if( !wr_dap->has_enough_free_space(page_size, left_data_size) )
                 left_sib = nullptr; // forget about left!
         }
-        if( path_pa.second < wr_parent->item_count - 1){
-            Pid right_pid = wr_parent->get_item_value(page_size, path_pa.second + 1);
+        if( path_pa.second < wr_parent.size() - 1){
+            Pid right_pid = wr_parent.get_value(path_pa.second + 1);
             right_sib = readable_leaf(right_pid);
             right_data_size = right_sib->data_size();
             if( !wr_dap->has_enough_free_space(page_size, right_data_size) )
@@ -595,8 +586,8 @@ namespace mustela {
                 wr_dap->insert_at(page_size, i, key, val);
             }
             mark_free_in_future_page(left_sib->pid); // unlink left, point its slot in parent to us, remove our slot in parent
-            wr_parent->remove_simple(page_size, path_pa.second);
-            wr_parent->set_item_value(page_size, path_pa.second - 1, wr_dap->pid);
+            wr_parent.erase(path_pa.second);
+            wr_parent.set_value(path_pa.second - 1, wr_dap->pid);
             path_pa.second -= 1; // fix cursor
         }
         if( right_sib ){
@@ -606,7 +597,7 @@ namespace mustela {
                 wr_dap->insert_at(page_size, wr_dap->item_count, key, val);
             }
             mark_free_in_future_page(right_sib->pid); // unlink right, remove its slot in parent
-            wr_parent->remove_simple(page_size, path_pa.second + 1);
+            wr_parent.erase(path_pa.second + 1);
         }
         if( left_sib || right_sib )
             merge_if_needed_node(cur, cur.path.size() - 2, wr_parent);
@@ -690,14 +681,14 @@ namespace mustela {
                 cur.path[meta_page.main_height - height] = std::make_pair(pa, item);
                 break;
             }
-            const NodePage * nap = readable_node(pa);
-            PageOffset nitem = nap->upper_bound_item(page_size, key) - 1;
+            CNodePtr nap(page_size, readable_node(pa));
+            PageOffset nitem = nap.upper_bound_item(key) - 1;
             cur.path[meta_page.main_height - height] = std::make_pair(pa, nitem);
 //            result.path.push_back(std::make_pair(pa, nitem));
             //ass(dap->item_count != 0, "lower_bound node contains zero keys");
             //if( off == dap->item_count )
             //    off -= 1;
-            pa = nap->get_item_value(page_size, nitem);
+            pa = nap.get_value(nitem);
             height -= 1;
         }
     }
@@ -722,25 +713,23 @@ namespace mustela {
             std::cout << "]" << std::endl;
             return result + "]}";
         }
-        const NodePage * nap = readable_node(pid);
-        Pid spec_value = nap->get_item_value(page_size, -1);
+        CNodePtr nap(page_size, readable_node(pid));
+        Pid spec_value = nap.get_value(-1);
         std::cout << "Node pid=" << pid << " [" << spec_value << ", ";
-        for(int i = 0; i != nap->item_count; ++i){
+        for(int i = 0; i != nap.size(); ++i){
             if( i != 0)
                 result += ",";
-            Pid value;
-            Val key = nap->get_item_kv(page_size, i, value);
-            std::cout << key.to_string() << ":" << value << ", ";
-            result += "\"" + key.to_string() + ":" + std::to_string(value) + "\"";
+            ValPid va = nap.get_kv(i);
+            std::cout << va.key.to_string() << ":" << va.pid << ", ";
+            result += "\"" + va.key.to_string() + ":" + std::to_string(va.pid) + "\"";
         }
         result += "],\"children\":[";
         std::cout << "]" << std::endl;
         std::string spec_str = print_db(spec_value, height - 1);
         result += spec_str;
-        for(int i = 0; i != nap->item_count; ++i){
-            Pid value;
-            Val key = nap->get_item_kv(page_size, i, value);
-            std::string str = print_db(value, height - 1);
+        for(int i = 0; i != nap.size(); ++i){
+            ValPid va = nap.get_kv(i);
+            std::string str = print_db(va.pid, height - 1);
             result += "," + str;
         }
         return result + "]}";

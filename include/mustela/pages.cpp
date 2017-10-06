@@ -102,18 +102,18 @@ namespace mustela {
     void NodePtr::init_dirty(Tid new_tid){
         char * raw_page = (char *)page;
         memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
-        tid = new_tid;
-        page->free_end_offset = page_size - NODE_PID_SIZE;
+        mpage()->tid = new_tid;
+        mpage()->free_end_offset = page_size - NODE_PID_SIZE;
     }
     void NodePtr::compact(size_t kv_size2){
-        if(NODE_HEADER_SIZE + sizeof(PageOffset)*(page->item_count + 1) + kv_size2 <= free_end_offset)
+        if(NODE_HEADER_SIZE + sizeof(PageOffset)*(page->item_count + 1) + kv_size2 <= page->free_end_offset)
             return;
         char buf[page_size]; // TODO - remove copy from stack
         memmove(buf, page, page_size);
         CNodePtr my_copy(page_size, (NodePage *)buf);
         clear();
         set_value(-1, my_copy.get_value(-1));
-        append_range(my_copy, 0, my_copy->item_count);
+        append_range(my_copy, 0, my_copy.size());
     }
 
     PageOffset CNodePtr::kv_size(Val key, Pid value)const{
@@ -184,38 +184,37 @@ namespace mustela {
 
     void test_node_page(){
         const uint32_t page_size = 128;
-        NodePage * pa = (NodePage *)malloc(page_size);
-        pa->init_dirty(page_size, 10);
+        NodePtr pa(page_size, (NodePage *)malloc(page_size));
+        pa.init_dirty(10);
         std::map<std::string, Pid> mirror;
-        pa->set_item_value(page_size, -1, 123456);
+        pa.set_value(-1, 123456);
         for(int i = 0; i != 1000; ++i){
             std::string key = "key" + std::to_string(rand() % 100);
             Pid val = rand() % 100000;
             bool same_key;
-            PageOffset existing_item = pa->lower_bound_item(page_size, Val(key), &same_key);
+            PageOffset existing_item = pa.lower_bound_item(Val(key), &same_key);
             bool remove_existing = rand() % 2;
             if( same_key ){
                 if( !remove_existing )
                     continue;
-                pa->remove_simple(page_size, existing_item);
+                pa.erase(existing_item);
                 mirror.erase(key);
             }
-            size_t new_kvsize = pa->kv_size(page_size, Val(key), val);
+            size_t new_kvsize = pa.kv_size(Val(key), val);
             bool add_new = rand() % 2;
-            if( add_new && pa->has_enough_free_space(page_size, sizeof(PageOffset) + new_kvsize) ){
-                pa->insert_at(page_size, existing_item, Val(key), val);
+            if( add_new && pa.has_enough_free_space(sizeof(PageOffset) + new_kvsize) ){
+                pa.insert_at(existing_item, Val(key), val);
                 mirror[key] = val;
             }
         }
-        std::cout << "Special value=" << pa->get_item_value(page_size, -1) << std::endl;
+        std::cout << "Special value=" << pa.get_value(-1) << std::endl;
         std::cout << "Mirror" << std::endl;
         for(auto && ma : mirror)
             std::cout << ma.first << ":" << ma.second << std::endl;
         std::cout << "Page" << std::endl;
-        for(int i = 0; i != pa->item_count; ++i){
-            Pid value;
-            Val key = pa->get_item_kv(page_size, i, value);
-            std::cout << key.to_string() << ":" << value << std::endl;
+        for(int i = 0; i != pa.size(); ++i){
+            ValPid va = pa.get_kv(i);
+            std::cout << va.key.to_string() << ":" << va.pid << std::endl;
         }
     }
     void test_data_pages(){

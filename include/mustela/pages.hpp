@@ -78,9 +78,11 @@ namespace mustela {
         }*/
     };
     struct CNodePtr {
-        const uint32_t page_size;
-        const NodePage * const page;
+        uint32_t page_size;
+        const NodePage * page;
         
+        CNodePtr():page_size(0), page(nullptr)
+        {}
         CNodePtr(uint32_t page_size, const NodePage * page):page_size(page_size), page(page)
         {}
         PageOffset size()const{ return page->item_count; }
@@ -92,10 +94,10 @@ namespace mustela {
         size_t get_item_size(PageOffset item)const{
             return page->item_size(page_size, false, page->item_offsets, page->item_count, item);
         }
-        PageOffset lower_bound_item(uint32_t page_size, Val key, bool * found = nullptr)const{
+        PageOffset lower_bound_item(Val key, bool * found = nullptr)const{
             return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
         }
-        PageOffset upper_bound_item(uint32_t page_size, Val key)const{
+        PageOffset upper_bound_item(Val key)const{
             return page->upper_bound_item(page_size, page->item_offsets, page->item_count, key);
         }
 
@@ -141,7 +143,9 @@ namespace mustela {
             pack_uint_be((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
         }*/
     };
-    struct NodePtr : CNodePtr {
+    struct NodePtr : public CNodePtr {
+        NodePtr():CNodePtr(0, nullptr)
+        {}
         NodePtr(uint32_t page_size, NodePage * page):CNodePtr(page_size, page)
         {}
         NodePage * mpage()const { return const_cast<NodePage *>(page); }
@@ -171,8 +175,16 @@ namespace mustela {
         void append(Val key, Pid value){
             insert_at(page->item_count, key, value);
         }
+        void insert_range(PageOffset insert_index, const CNodePtr & other, PageOffset begin, PageOffset end){
+            ass(begin <= end, "Invalid range at insert_range");
+             // TODO - compact at start if needed midway, move all page offsets at once
+            for(;begin != end; ++begin){
+                auto kv = other.get_kv(begin);
+                insert_at(insert_index++, kv.key, kv.pid);
+            }
+        }
         void append_range(const CNodePtr & other, PageOffset begin, PageOffset end){
-            ass(begin <= end, "Invalid range at append");
+            ass(begin <= end, "Invalid range at append_range");
             for(;begin != end; ++begin){
                 auto kv = other.get_kv(begin);
                 append(kv.key, kv.pid);
