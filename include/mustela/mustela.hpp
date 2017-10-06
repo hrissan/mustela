@@ -20,6 +20,13 @@ namespace mustela {
     class TX;
     struct Cursor {
         std::vector<std::pair<Pid, PageOffset>> path;
+        
+        void truncate(size_t height){
+            while(height < path.size() - 1)
+                path[height++].second = -1; // set to special link
+            if(height == path.size() - 1)
+                path[height++].second = 0; // set to first leaf kv
+        }
         //bool erased_left = false;
         //bool erased_right = false;
 
@@ -28,8 +35,18 @@ namespace mustela {
     };
     class TX {
         DB & my_db;
+        const uint32_t page_size; // copy from my_db
 
         size_t meta_page_index;
+        std::vector<char> tmp_page; // We do not store it in stack neither malloc it. We are carefull to never need more than 1
+        NodePage * make_tmp_copy(const NodePage * other){
+            memmove(tmp_page.data(), other, page_size);
+            return (NodePage * )tmp_page.data();
+        }
+        LeafPage * make_tmp_copy(const LeafPage * other){
+            memmove(tmp_page.data(), other, page_size);
+            return (LeafPage * )tmp_page.data();
+        }
         MetaPage meta_page;
         
         std::vector<Pid> free_pages_cache;
@@ -39,7 +56,7 @@ namespace mustela {
         void lower_bound(Cursor & cur, const Val & key);
         DataPage * make_pages_writable(Cursor & cur, size_t height);
         
-        PageOffset find_split_index(const NodePage * wr_dap, int * insert_direction, PageOffset insert_index, Val insert_key, Pid insert_page, size_t add_size_left, size_t add_size_right);
+        PageOffset find_split_index(const CNodePtr & wr_dap, int * insert_direction, PageOffset insert_index, Val insert_key, Pid insert_page, size_t add_size_left, size_t add_size_right);
 
         void insert_pages_to_node(Cursor & cur, size_t height, Val key, Pid new_pid);
         NodePage * force_split_node(Cursor & cur, size_t height, Val insert_key, Pid insert_page);
@@ -63,7 +80,7 @@ namespace mustela {
         bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
         bool get(const Val & key, Val & value);
         bool del(const Val & key, bool must_exist);
-        void commit(); // after commit no puts allowed. if no commit, rollback in destructor
+        void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
     };
 //{'branch_pages': 1040L,
 //    'depth': 4L,
@@ -76,7 +93,7 @@ namespace mustela {
         //friend class Cursor;
         int fd = -1;
         const uint32_t page_size;
-        const uint32_t physical_page_size; // We allow to work with smaller pages when reding file from different platform
+        const uint32_t physical_page_size; // We allow to work with smaller pages when reading file from different platform (or portable variant)
         const bool read_only;
         char * c_mapping = nullptr;
         std::vector<Mapping> mappings;

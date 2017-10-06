@@ -10,6 +10,7 @@
 		6E4E86531F7D8F67008F5E05 /* mustela.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86511F7D8F67008F5E05 /* mustela.cpp */; };
 		6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86541F7D8F80008F5E05 /* main.cpp */; };
 		6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86561F7F092F008F5E05 /* pages.cpp */; };
+		6E82E1761F8705F80081863E /* utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E82E1741F8705F80081863E /* utils.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -31,6 +32,8 @@
 		6E4E86541F7D8F80008F5E05 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		6E4E86561F7F092F008F5E05 /* pages.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pages.cpp; sourceTree = "<group>"; };
 		6E4E86571F7F092F008F5E05 /* pages.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pages.hpp; sourceTree = "<group>"; };
+		6E82E1741F8705F80081863E /* utils.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = utils.cpp; sourceTree = "<group>"; };
+		6E82E1751F8705F80081863E /* utils.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = utils.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +72,8 @@
 				6E4E86541F7D8F80008F5E05 /* main.cpp */,
 				6E4E86561F7F092F008F5E05 /* pages.cpp */,
 				6E4E86571F7F092F008F5E05 /* pages.hpp */,
+				6E82E1741F8705F80081863E /* utils.cpp */,
+				6E82E1751F8705F80081863E /* utils.hpp */,
 			);
 			name = mustela;
 			path = ../../include/mustela;
@@ -141,6 +146,7 @@
 				6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */,
 				6E4E86531F7D8F67008F5E05 /* mustela.cpp in Sources */,
 				6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */,
+				6E82E1761F8705F80081863E /* utils.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
