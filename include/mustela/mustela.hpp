@@ -38,14 +38,22 @@ namespace mustela {
         const uint32_t page_size; // copy from my_db
 
         size_t meta_page_index;
-        std::vector<char> tmp_page; // We do not store it in stack neither malloc it. We are carefull to never need more than 1
-        NodePage * make_tmp_copy(const NodePage * other){
-            memmove(tmp_page.data(), other, page_size);
-            return (NodePage * )tmp_page.data();
+        std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
+        NodePage * push_tmp_copy(const NodePage * other){
+            tmp_pages.push_back(std::vector<char>(page_size, 0));
+            memmove(tmp_pages.back().data(), other, page_size);
+            return (NodePage * )tmp_pages.back().data();
         }
-        LeafPage * make_tmp_copy(const LeafPage * other){
-            memmove(tmp_page.data(), other, page_size);
-            return (LeafPage * )tmp_page.data();
+        LeafPage * push_tmp_copy(const LeafPage * other){
+            tmp_pages.push_back(std::vector<char>(page_size, 0));
+            memmove(tmp_pages.back().data(), other, page_size);
+            return (LeafPage * )tmp_pages.back().data();
+        }
+        void pop_tmp_copy(){
+            tmp_pages.pop_back();
+        }
+        void clear_tmp_copies(){
+            tmp_pages.clear();
         }
         MetaPage meta_page;
         

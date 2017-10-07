@@ -136,7 +136,6 @@ namespace mustela {
     }
     
     TX::TX(DB & my_db):my_db(my_db), page_size(my_db.page_size) {
-        tmp_page.resize(page_size);
         start_transaction();
     }
     void TX::start_transaction(){
@@ -289,20 +288,10 @@ namespace mustela {
         
         NodePtr wr_right(page_size, writable_node(get_free_page(1)));
         wr_right.init_dirty(meta_page.tid);
-/*        for(PageOffset i = best_split_index_r; i != wr_dap->item_count; ++i){
-            Pid value;
-            Val key = wr_dap->get_item_kv(page_size, i, value);
-            wr_right->insert_at(page_size, wr_right->item_count, key, value);
-        }*/
         wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
-        NodePtr my_copy(page_size, make_tmp_copy(wr_dap.page));
+        NodePtr my_copy(page_size, push_tmp_copy(wr_dap.page));
         wr_dap.clear();
         wr_dap.set_value(-1, my_copy.get_value(-1));
-/*        for(PageOffset i = 0; i != best_split_index; ++i){
-            Pid value;
-            Val key = my_copy->get_item_kv(page_size, i, value);
-            wr_dap->insert_at(page_size, wr_dap->item_count, key, value);
-        }*/
         wr_dap.append_range(my_copy, 0, split_index);
         //Cursor cur2 = cur;
         if( height != 0 )
@@ -372,7 +361,7 @@ namespace mustela {
         LeafPtr wr_right(page_size, writable_leaf(get_free_page(1)));
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index, wr_dap.size());
-        LeafPtr my_copy(page_size, make_tmp_copy(wr_dap.page));
+        LeafPtr my_copy(page_size, push_tmp_copy(wr_dap.page));
         wr_dap.clear();
         wr_dap.append_range(my_copy, 0, split_index);
         LeafPage * result_page = nullptr;
@@ -586,15 +575,11 @@ namespace mustela {
         if( same_key )
             wr_dap.erase(main_cursor.path.back().second);
         size_t required_size = wr_dap.get_item_size(key, value);
-        if( required_size <= wr_dap.free_capacity() ){
+        if( required_size <= wr_dap.free_capacity() )
+            wr_dap.insert_at(main_cursor.path.back().second, key, value);
+        else
             force_split_leaf(main_cursor, main_cursor.path.size() - 1, key, value);
-//            Cursor cur2 = lower_bound(key);
-//            if( cur.path != cur2.path )
-//                std::cout << "cur != cur2" << std::endl;
-            return true;
-        }
-        wr_dap.insert_at(main_cursor.path.back().second, key, value);
-        //merge_if_needed_leaf(main_cursor, wr_dap);
+        clear_tmp_copies();
         return true;
     }
     bool TX::get(const Val & key, Val & value){
@@ -619,6 +604,7 @@ namespace mustela {
         LeafPtr wr_dap(page_size, (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1));
         wr_dap.erase(main_cursor.path.back().second);
         merge_if_needed_leaf(main_cursor, wr_dap);
+        clear_tmp_copies();
         return true;
     }
 
