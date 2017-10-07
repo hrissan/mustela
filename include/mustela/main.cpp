@@ -19,8 +19,9 @@ int main(int argc, char * argv[]){
 
     txn.commit();*/
 
+    const bool insert = true;
     std::map<std::string, std::string> mirror;
-    for(int i = 0; i != 1000000; ++i){
+    for(int i = 0; i != 1000; ++i){
         //std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
         //std::string json = txn.print_db();
         //std::cout << json << std::endl;
@@ -30,27 +31,30 @@ int main(int argc, char * argv[]){
 //        sprintf(valbuf, "value%d", i);
         std::string key = std::to_string(i);
         std::string val = "value" + std::to_string(i);
-//        if( !txn.put(mustela::Val(key), mustela::Val(val), true) )
-//        mustela::Val got;
-//        if( !txn.get(mustela::Val(key), got) )
-//        {
-            //mirror[key] = val;
-//            continue;
-//        }
-        if( !txn.del(mustela::Val(key), true) ){
-//            mirror.erase(key);
-            continue;
+        if( insert ){
+            if( txn.put(mustela::Val(key), mustela::Val(val), true) )
+            //mustela::Val got;
+            //if( !txn.get(mustela::Val(key), got) )
+            {
+                mirror[key] = val;
+                continue;
+            }
+        }else{
+            if( !txn.del(mustela::Val(key), true) ){
+                //            mirror.erase(key);
+                continue;
+            }
         }
     }
 /*    txn.del(mustela::Val("A"), true);
     txn.del(mustela::Val("B"), true);
-    txn.del(mustela::Val("C"), true);
+    txn.del(mustela::Val("C"), true);*/
     std::cout << "Mirror" << std::endl;
     for(auto && ma : mirror){
         mustela::Val value;
         bool result = txn.get(mustela::Val(ma.first), value);
         std::cout << ma.first << ":" << ma.second << " in db result=" << int(result) << " value=" << value.to_string() << std::endl;
-    }*/
+    }
     txn.commit();
 /*    std::cout << "Page" << std::endl;
     for(int i = 0; i != pa->item_count; ++i){

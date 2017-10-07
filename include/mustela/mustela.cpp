@@ -91,12 +91,12 @@ namespace mustela {
         }
         {
             char data_buf[page_size];
-            LeafPage * mp = (LeafPage *)data_buf;
-            mp->pid = 3;
-            mp->init_dirty(page_size, 0);
+            LeafPtr mp(page_size, (LeafPage *)data_buf);
+            mp.mpage()->pid = 3;
+            mp.init_dirty(0);
             if( write(fd, data_buf, page_size) == -1)
                 throw Exception("file write failed in create_db");
-            mp->pid = 4;
+            mp.mpage()->pid = 4;
             if( write(fd, data_buf, page_size) == -1)
                 throw Exception("file write failed in create_db");
         }
@@ -227,8 +227,8 @@ namespace mustela {
         }
         auto & path_el = cur.path.at(height);
         NodePtr wr_dap(page_size, writable_node(path_el.first));
-        size_t required_size = wr_dap.kv_size(key, new_pid);
-        if( !wr_dap.enough_size_for_elements(1, required_size) ){
+        size_t required_size = wr_dap.get_item_size(key, new_pid);
+        if( wr_dap.free_capacity() < required_size ){
             force_split_node(cur, height, key, new_pid);
 //            Cursor cur2 = lower_bound(key);
 //            if( cur.path != cur2.path )
@@ -238,15 +238,15 @@ namespace mustela {
         wr_dap.insert_at(path_el.second, key, new_pid);
     }
     PageOffset TX::find_split_index(const CNodePtr & wr_dap, int * insert_direction, PageOffset insert_index, Val insert_key, Pid insert_page, size_t add_size_left, size_t add_size_right){
-        size_t required_size = sizeof(PageOffset) + wr_dap.kv_size(insert_key, insert_page);
+        size_t required_size = wr_dap.get_item_size(insert_key, insert_page);
         PageOffset best_split_index = -1;
         int best_disbalance = 0;
         size_t left_sigma_size = 0;
         for(PageOffset i = 0; i != wr_dap.size(); ++i){ // Split element cannot be last one if it is insert_key
             size_t split_item_size = wr_dap.get_item_size(i);
             size_t right_sigma_size = wr_dap.page->items_size - left_sigma_size - split_item_size; // do not count split item size
-            bool enough_left = wr_dap.enough_size_for_elements(i, left_sigma_size + required_size + add_size_left);
-            bool enough_right = wr_dap.enough_size_for_elements(wr_dap.size() - 1 - i, right_sigma_size + required_size + add_size_right);
+            bool enough_left = left_sigma_size + required_size + add_size_left <= wr_dap.capacity();
+            bool enough_right = right_sigma_size + required_size + add_size_right <= wr_dap.capacity();//(wr_dap.size() - 1 - i, );
             if( i >= insert_index && enough_left ){ // split index can equal insert index
                 int disbalance = std::abs(int(right_sigma_size + add_size_right) - int(left_sigma_size + required_size + add_size_left));
                 if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
@@ -280,7 +280,6 @@ namespace mustela {
         auto & path_el = cur.path.at(height);
         NodePtr wr_dap(page_size, writable_node(path_el.first));
         ass(wr_dap.size() >= 3, "Node being split contains < 3 items");
-        //size_t required_size = sizeof(PageOffset) + wr_dap.kv_size(insert_key, insert_page);
         // Find split index so that either of split pages will fit new value and disbalance is minimal
         PageOffset insert_index = path_el.second;
         int insert_direction = 0;
@@ -334,18 +333,18 @@ namespace mustela {
     }
     LeafPage * TX::force_split_leaf(Cursor & cur, size_t height, Val insert_key, Val insert_val){
         auto & path_el = cur.path.at(height);
-        LeafPage * wr_dap = writable_leaf(path_el.first);
-        size_t required_size = sizeof(PageOffset) + wr_dap->kv_size(page_size, insert_key, insert_val);
+        LeafPtr wr_dap(page_size, writable_leaf(path_el.first));
+        size_t required_size = wr_dap.get_item_size(insert_key, insert_val);
         // Find split index so that either of split pages will fit new value and disbalance is minimal
         PageOffset insert_index = path_el.second;
         PageOffset best_split_index = -1;
         int insert_direction = 0;
         int best_disbalance = 0;
         size_t left_sigma_size = 0;
-        for(PageOffset i = 0; i != wr_dap->item_count + 1; ++i){ // We can split at the end too
-            size_t right_sigma_size = wr_dap->items_size - left_sigma_size;
-            bool enough_left = wr_dap->enough_size_for_elements(page_size, i, left_sigma_size + required_size);
-            bool enough_right = wr_dap->enough_size_for_elements(page_size, wr_dap->item_count - i, right_sigma_size + required_size);
+        for(PageOffset i = 0; i != wr_dap.size() + 1; ++i){ // We can split at the end too
+            size_t right_sigma_size = wr_dap.data_size() - left_sigma_size;
+            bool enough_left = left_sigma_size + required_size <= wr_dap.capacity();
+            bool enough_right = right_sigma_size + required_size <= wr_dap.capacity();
             if( i >= insert_index && enough_left ){ // should insert only to the left}
                 int disbalance = std::abs(int(right_sigma_size) - int(left_sigma_size + required_size));
                 if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
@@ -362,35 +361,24 @@ namespace mustela {
                     insert_direction = 1;
                 }
             }
-            if( i != wr_dap->item_count) // last iteration has no element
-                left_sigma_size += wr_dap->item_size(page_size, i);
+            if( i != wr_dap.size()) // last iteration has no element
+                left_sigma_size += wr_dap.get_item_size(i);
         }
         PageOffset split_index = best_split_index;
         if( split_index == PageOffset(-1) ){ // Perform 3 - split
             split_index = insert_index;
             insert_direction = 0;
         }
-        Pid right_pid = get_free_page(1);
-        LeafPage * wr_right = writable_leaf(right_pid);
-        wr_right->init_dirty(page_size, meta_page.tid);
-        for(PageOffset i = split_index; i != wr_dap->item_count; ++i){
-            Val value;
-            Val key = wr_dap->get_item_kv(page_size, i, value);
-            wr_right->insert_at(page_size, wr_right->item_count, key, value);
-        }
-        char raw_my_copy[page_size];
-        memmove(raw_my_copy, wr_dap, page_size);
-        LeafPage * my_copy = (LeafPage *)raw_my_copy;
-        wr_dap->clear(page_size);
-        for(PageOffset i = 0; i != split_index; ++i){
-            Val value;
-            Val key = my_copy->get_item_kv(page_size, i, value);
-            wr_dap->insert_at(page_size, wr_dap->item_count, key, value);
-        }
+        LeafPtr wr_right(page_size, writable_leaf(get_free_page(1)));
+        wr_right.init_dirty(meta_page.tid);
+        wr_right.append_range(wr_dap, split_index, wr_dap.size());
+        LeafPtr my_copy(page_size, make_tmp_copy(wr_dap.page));
+        wr_dap.clear();
+        wr_dap.append_range(my_copy, 0, split_index);
         LeafPage * result_page = nullptr;
-        if( path_el.first == wr_dap->pid ){
+        if( path_el.first == wr_dap.page->pid ){
             if( path_el.second >= split_index ){
-                path_el.first = right_pid;
+                path_el.first = wr_right.page->pid;
                 path_el.second -= split_index;
             }
         }
@@ -399,34 +387,32 @@ namespace mustela {
             cur.path.at(height - 1).second += 1;
         if( insert_direction == -1 ) {
 //            path_el.second = wr_dap->item_count;
-            result_page = wr_dap;
-            result_page->insert_at(page_size, insert_index, insert_key, insert_val);
-            insert_pages_to_node(cur, height - 1, Val(wr_right->get_item_key(page_size, 0)), right_pid);
+            result_page = wr_dap.mpage();
+            wr_dap.insert_at(insert_index, insert_key, insert_val);
+            insert_pages_to_node(cur, height - 1, Val(wr_right.get_key(0)), wr_right.page->pid);
         }else if( insert_direction == 1 ){
 //            path_el.first = right_pid;
 //            path_el.second = 0;
-            result_page = wr_right;
-            result_page->insert_at(page_size, insert_index - split_index, insert_key, insert_val);
-            insert_pages_to_node(cur, height - 1, Val(wr_right->get_item_key(page_size, 0)), right_pid);
+            result_page = wr_right.mpage();
+            wr_right.insert_at(insert_index - split_index, insert_key, insert_val);
+            insert_pages_to_node(cur, height - 1, Val(wr_right.get_key(0)), wr_right.page->pid);
         }else {
-            Pid middle_pid = get_free_page(1);
-            LeafPage * wr_middle = writable_leaf(middle_pid);
-            wr_middle->init_dirty(page_size, meta_page.tid);
+            LeafPtr wr_middle(page_size, writable_leaf(get_free_page(1)));
+            wr_middle.init_dirty(meta_page.tid);
             //path_el.first = middle_pid;
             //path_el.second = 0;
-            result_page = wr_middle;
-            result_page->insert_at(page_size, 0, insert_key, insert_val);
-            insert_pages_to_node(cur, height - 1, Val(wr_right->get_item_key(page_size, 0)), right_pid);
-            insert_pages_to_node(cur, height - 1, insert_key, middle_pid);
+            result_page = wr_middle.mpage();
+            wr_middle.insert_at(0, insert_key, insert_val);
+            insert_pages_to_node(cur, height - 1, Val(wr_right.get_key(0)), wr_right.page->pid);
+            insert_pages_to_node(cur, height - 1, insert_key, wr_middle.page->pid);
         }
         return result_page;
     }
     void TX::merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap){
-        PageOffset half_size = wr_dap.half_size();
-        if( !wr_dap.has_enough_free_space(half_size) )
+        if( wr_dap.data_size() >= wr_dap.capacity()/2 )
             return;
-        if(height == 0){ // merging root, wait until 1 key remains, make it new root
-            if( wr_dap.size() != 0)
+        if(height == 0){ // merging root
+            if( wr_dap.size() != 0) // wait until 1 key remains, make it new root
                 return;
             mark_free_in_future_page(meta_page.main_root_page);
             meta_page.main_root_page = wr_dap.get_value(-1);
@@ -450,22 +436,22 @@ namespace mustela {
         ValPid right_kv;
         if( path_pa.second != PageOffset(-1)){
             my_kv = wr_parent.get_kv(path_pa.second);
-            required_size_for_my_kv = wr_parent.kv_size(my_kv.key, my_kv.pid);
+            required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
             ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
             Pid left_pid = wr_parent.get_value(path_pa.second - 1);
             left_sib = CNodePtr(page_size, readable_node(left_pid));
             left_data_size = left_sib.data_size();
-            left_data_size += sizeof(PageOffset) + left_sib.kv_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
-            use_left_sib = wr_dap.has_enough_free_space(left_data_size);
+            left_data_size += left_sib.get_item_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
+            use_left_sib = left_data_size <= wr_dap.free_capacity();
         }
         if(path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
             right_kv = wr_parent.get_kv(path_pa.second + 1);
             right_sib = CNodePtr(page_size, readable_node(right_kv.pid));
             right_data_size = right_sib.data_size();
-            right_data_size += sizeof(PageOffset) + right_sib.kv_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
-            use_right_sib = wr_dap.has_enough_free_space(right_data_size);
+            right_data_size += right_sib.get_item_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
+            use_right_sib = right_data_size <= wr_dap.free_capacity();
         }
-        if( use_left_sib && use_right_sib && !wr_dap.has_enough_free_space(left_data_size + right_data_size) ){ // If cannot merge both, select smallest
+        if( use_left_sib && use_right_sib && wr_dap.free_capacity() < left_data_size + right_data_size ){ // If cannot merge both, select smallest
             if( left_data_size < right_data_size ) // <= will also work
                 use_right_sib = false;
             else
@@ -542,9 +528,8 @@ namespace mustela {
         }
         merge_if_needed_node(cur, height - 1, wr_parent);
     }
-    void TX::merge_if_needed_leaf(Cursor & cur, LeafPage * wr_dap){
-        PageOffset half_size = wr_dap->half_size(page_size);
-        if( !wr_dap->has_enough_free_space(page_size, half_size) )
+    void TX::merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap){
+        if( wr_dap.data_size() >= wr_dap.capacity()/2 )
             return;
         if(cur.path.size() <= 1) // root is leaf, cannot merge anyway
             return;
@@ -553,100 +538,86 @@ namespace mustela {
         NodePtr wr_parent(page_size, writable_node(path_pa.first));
         ass(wr_parent.size() > 0, "Found parent node with 0 items");
         //PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
-        const LeafPage * left_sib = nullptr;
-        PageOffset left_data_size = 0;
-        //Pid left_pid = 0;
-        const LeafPage * right_sib = nullptr;
-        PageOffset right_data_size = 0;
-        //Pid right_pid = 0;
+        CLeafPtr left_sib;
+        CLeafPtr right_sib;
         if( path_pa.second != PageOffset(-1)){
             Pid left_pid = wr_parent.get_value(path_pa.second - 1);
-            left_sib = readable_leaf(left_pid);
-            left_data_size = left_sib->data_size();
-            if( !wr_dap->has_enough_free_space(page_size, left_data_size) )
-                left_sib = nullptr; // forget about left!
+            left_sib = CLeafPtr(page_size, readable_leaf(left_pid));
+            if( wr_dap.capacity() < left_sib.data_size() )
+                left_sib = CLeafPtr(); // forget about left!
         }
         if( path_pa.second < wr_parent.size() - 1){
             Pid right_pid = wr_parent.get_value(path_pa.second + 1);
-            right_sib = readable_leaf(right_pid);
-            right_data_size = right_sib->data_size();
-            if( !wr_dap->has_enough_free_space(page_size, right_data_size) )
-                right_sib = nullptr; // forget about right!
+            right_sib = CLeafPtr(page_size, readable_leaf(right_pid));
+            if( wr_dap.capacity() < right_sib.data_size() )
+                right_sib = CLeafPtr(); // forget about right!
         }
-        if( left_sib && right_sib && !wr_dap->has_enough_free_space(page_size, left_data_size + right_data_size) ){ // If cannot merge both, select smallest
-            if( left_data_size < right_data_size ) // <= will also work
-                right_sib = nullptr;
+        if( left_sib.page && right_sib.page && wr_dap.capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
+            if( left_sib.data_size() < right_sib.data_size() ) // <= will also work
+                right_sib = CLeafPtr();
             else
-                left_sib = nullptr;
+                left_sib = CLeafPtr();
         }
-        if( left_sib ){
-            for(PageOffset i = 0; i != left_sib->item_count; ++i){
-                Val val;
-                Val key = left_sib->get_item_kv(page_size, i, val);
-                wr_dap->insert_at(page_size, i, key, val);
-            }
-            mark_free_in_future_page(left_sib->pid); // unlink left, point its slot in parent to us, remove our slot in parent
+        if( left_sib.page ){
+            wr_dap.insert_range(0, left_sib, 0, left_sib.size());
+            mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
             wr_parent.erase(path_pa.second);
-            wr_parent.set_value(path_pa.second - 1, wr_dap->pid);
+            wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
         }
-        if( right_sib ){
-            for(PageOffset i = 0; i != right_sib->item_count; ++i){
-                Val val;
-                Val key = right_sib->get_item_kv(page_size, i, val);
-                wr_dap->insert_at(page_size, wr_dap->item_count, key, val);
-            }
-            mark_free_in_future_page(right_sib->pid); // unlink right, remove its slot in parent
+        if( right_sib.page ){
+            wr_dap.append_range(right_sib, 0, right_sib.size());
+            mark_free_in_future_page(right_sib.page->pid); // unlink right, remove its slot in parent
             wr_parent.erase(path_pa.second + 1);
         }
-        if( left_sib || right_sib )
+        if( left_sib.page || right_sib.page )
             merge_if_needed_node(cur, cur.path.size() - 2, wr_parent);
     }
 
     bool TX::put(const Val & key, const Val & value, bool nooverwrite){
         lower_bound(main_cursor, key);
-        const LeafPage * dap = readable_leaf(main_cursor.path.back().first);
+        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
         PageOffset item = main_cursor.path.back().second;
-        bool same_key = item != dap->item_count && Val(dap->get_item_key(page_size, item)) == key;
+        bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
         if( same_key && nooverwrite )
             return false;
         // TODO - optimize - if page will split and it is not writable yet, we can save make_page_writable
-        LeafPage * wr_dap = (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1);
+        LeafPtr wr_dap(page_size, (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1));
         if( same_key )
-            wr_dap->remove_simple(page_size, main_cursor.path.back().second);
-        size_t required_size = sizeof(PageOffset) + wr_dap->kv_size(page_size, key, value);
-        if( !wr_dap->has_enough_free_space(page_size, required_size) ){
-            wr_dap = force_split_leaf(main_cursor, main_cursor.path.size() - 1, key, value);
+            wr_dap.erase(main_cursor.path.back().second);
+        size_t required_size = wr_dap.get_item_size(key, value);
+        if( required_size <= wr_dap.free_capacity() ){
+            force_split_leaf(main_cursor, main_cursor.path.size() - 1, key, value);
 //            Cursor cur2 = lower_bound(key);
 //            if( cur.path != cur2.path )
 //                std::cout << "cur != cur2" << std::endl;
             return true;
         }
-        wr_dap->insert_at(page_size, main_cursor.path.back().second, key, value);
-        merge_if_needed_leaf(main_cursor, wr_dap);
+        wr_dap.insert_at(main_cursor.path.back().second, key, value);
+        //merge_if_needed_leaf(main_cursor, wr_dap);
         return true;
     }
     bool TX::get(const Val & key, Val & value){
         lower_bound(main_cursor, key);
-        const LeafPage * dap = readable_leaf(main_cursor.path.back().first);
+        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
         PageOffset item = main_cursor.path.back().second;
-        Val tmp_value;
-        bool same_key = item != dap->item_count && Val(dap->get_item_kv(page_size, item, tmp_value)) == key;
-        if( !same_key )
+        if( item == dap.size() )
             return false;
-        value = tmp_value;
+        auto kv = dap.get_kv(item);
+        if( kv.key != key )
+            return false;
+        value = kv.value;
         return true;
     }
     bool TX::del(const Val & key, bool must_exist){
         lower_bound(main_cursor, key);
-        const LeafPage * dap = readable_leaf(main_cursor.path.back().first);
+        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
         PageOffset item = main_cursor.path.back().second;
-        Val tmp_value;
-        bool same_key = item != dap->item_count && Val(dap->get_item_kv(page_size, item, tmp_value)) == key;
+        bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
         if( !same_key )
-            return false;
-        LeafPage * wr_dap = (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1);
-        wr_dap->remove_simple(page_size, main_cursor.path.back().second);
+            return !must_exist;
+        LeafPtr wr_dap(page_size, (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1));
+        wr_dap.erase(main_cursor.path.back().second);
         merge_if_needed_leaf(main_cursor, wr_dap);
         return true;
     }
@@ -676,8 +647,8 @@ namespace mustela {
         cur.path.resize(height + 1);
         while(true){
             if( height == 0 ){
-                const LeafPage * dap = readable_leaf(pa);
-                PageOffset item = dap->lower_bound_item(page_size, key);
+                CLeafPtr dap(page_size, readable_leaf(pa));
+                PageOffset item = dap.lower_bound_item(key);
                 cur.path[meta_page.main_height - height] = std::make_pair(pa, item);
                 break;
             }
@@ -700,15 +671,14 @@ namespace mustela {
     std::string TX::print_db(Pid pid, size_t height){
         std::string result = "{\"keys\":[";
         if( height == 0 ){
-            const LeafPage * dap = readable_leaf(pid);
+            CLeafPtr dap(page_size, readable_leaf(pid));
             std::cout << "Leaf pid=" << pid << " [";
-            for(int i = 0; i != dap->item_count; ++i){
+            for(int i = 0; i != dap.size(); ++i){
                 if( i != 0)
                     result += ",";
-                Val value;
-                Val key = dap->get_item_kv(page_size, i, value);
-                std::cout << key.to_string() << ":" << value.to_string() << ", ";
-                result += "\"" + key.to_string() + "\""; //  + ":" + value.to_string() +
+                auto kv = dap.get_kv(i);
+                std::cout << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
+                result += "\"" + kv.key.to_string() + "\""; //  + ":" + value.to_string() +
             }
             std::cout << "]" << std::endl;
             return result + "]}";

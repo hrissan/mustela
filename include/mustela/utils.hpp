@@ -98,7 +98,12 @@ constexpr int NODE_PID_SIZE = 4; // 4 bytes to store page index will result in ~
         ValPid():pid(0) {}
         ValPid(Val key, Pid pid):key(key), pid(pid) {}
     };
-
+    struct ValVal {
+        Val key;
+        Val value;
+        ValVal() {}
+        ValVal(Val key, Val value):key(key), value(value) {}
+    };
 }
 
 #endif /* utils_hpp */

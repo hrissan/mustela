@@ -55,7 +55,7 @@ namespace mustela {
         return first;
         
     }
-    size_t DataPage::item_size(uint32_t page_size, bool is_leaf, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const{
+    size_t DataPage::get_item_size(uint32_t page_size, bool is_leaf, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const{
         ass(item < item_count, "item_size item too large");
         const char * raw_this = (const char *)this;
         PageOffset item_offset = item_offsets[item];
@@ -70,29 +70,31 @@ namespace mustela {
             result = keysizesize + keysize + NODE_PID_SIZE;
         }
         ass(item_offset + result <= page_size, "item_size item spills over page");
-        return result;
+        return result + sizeof(PageOffset);
     }
 
     void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item){
         char * raw_this = (char *)this;
-        auto rem_size = item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
-        memset(raw_this + item_offsets[to_remove_item], 0, rem_size); // clear unused part
+        auto rem_size = get_item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
+        auto kv_size = rem_size - sizeof(PageOffset);
+        memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
         if( item_offsets[to_remove_item] == free_end_offset )
-            free_end_offset += rem_size; // Luck, removed item is after free middle space
+            free_end_offset += kv_size; // Luck, removed item is after free middle space
         for(PageOffset pos = to_remove_item; pos != item_count - 1; ++pos)
             item_offsets[pos] = item_offsets[pos+1];
         items_size -= rem_size;
         item_count -= 1;
         item_offsets[item_count] = 0; // clear unused part
     }
-    MVal DataPage::insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset insert_index, Val key, size_t kv_size){
+    MVal DataPage::insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset insert_index, Val key, size_t item_size){
         char * raw_this = (char *)this;
+        auto kv_size = item_size - sizeof(PageOffset);
         for(PageOffset pos = item_count; pos-- > insert_index;)
             item_offsets[pos + 1] = item_offsets[pos];
         auto insert_offset = free_end_offset - kv_size;
         item_offsets[insert_index] = insert_offset;
         free_end_offset -= kv_size;
-        items_size += kv_size;
+        items_size += item_size;
         item_count += 1;
         auto keysizesize = write_u64_sqlite4(key.size, raw_this + insert_offset);
         memmove(raw_this + insert_offset + keysizesize, key.data, key.size);
@@ -105,8 +107,8 @@ namespace mustela {
         mpage()->tid = new_tid;
         mpage()->free_end_offset = page_size - NODE_PID_SIZE;
     }
-    void NodePtr::compact(size_t kv_size2){
-        if(NODE_HEADER_SIZE + sizeof(PageOffset)*(page->item_count + 1) + kv_size2 <= page->free_end_offset)
+    void NodePtr::compact(size_t item_size){
+        if(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
             return;
         char buf[page_size]; // TODO - remove copy from stack
         memmove(buf, page, page_size);
@@ -116,10 +118,10 @@ namespace mustela {
         append_range(my_copy, 0, my_copy.size());
     }
 
-    PageOffset CNodePtr::kv_size(Val key, Pid value)const{
-        size_t kv_size = get_compact_size_sqlite4(key.size) + key.size + NODE_PID_SIZE;
-        if( kv_size <= page_size - NODE_HEADER_SIZE - 1 * sizeof(PageOffset) )
-            return kv_size;
+    PageOffset CNodePtr::get_item_size(Val key, Pid value)const{
+        size_t item_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + NODE_PID_SIZE;
+        if( item_size <= capacity() )
+            return item_size;
         throw std::runtime_error("Item does not fit in node");
     }
     Pid CNodePtr::get_value(PageOffset item)const{
@@ -149,36 +151,44 @@ namespace mustela {
         pack_uint_be(result.end(), NODE_PID_SIZE, value);
     }
 
-    void LeafPage::compact(uint32_t page_size, size_t kv_size2){
-        if(LEAF_HEADER_SIZE + sizeof(PageOffset)*(item_count + 1) + kv_size2 <= free_end_offset)
+    void LeafPtr::init_dirty(Tid new_tid){
+        char * raw_page = (char *)mpage();
+        memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
+        mpage()->tid = new_tid;
+        mpage()->free_end_offset = page_size;
+    }
+
+    void LeafPtr::compact(size_t item_size){
+        if(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
             return;
-        char buf[page_size];
-        memmove(buf, this, page_size);
-        LeafPage * my_copy = (LeafPage *)buf;
-        clear(page_size);
-        for(PageOffset i = 0; i != my_copy->item_count; ++i){
-            Val val;
-            Val key = my_copy->get_item_kv(page_size, i, val);
-            insert_at(page_size, i, key, val);
-        }
+        char buf[page_size]; // TODO - remove copy from stack
+        memmove(buf, page, page_size);
+        CLeafPtr my_copy(page_size, (LeafPage *)buf);
+        clear();
+        append_range(my_copy, 0, my_copy.size());
     }
-    void LeafPage::init_dirty(uint32_t page_size, Tid new_tid){
-        char * raw_this = (char *)this;
-        memset(raw_this + sizeof(DataPage), 0, page_size - sizeof(DataPage));
-        tid = new_tid;
-        free_end_offset = page_size;
+    void LeafPtr::insert_at(PageOffset insert_index, Val key, Val value){
+        ass(insert_index <= mpage()->item_count, "Cannot insert at this index");
+        size_t item_size = get_item_size(key, value);
+        compact(item_size);
+        ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
+        MVal new_key = mpage()->insert_at(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, insert_index, key, item_size);
+        auto valuesizesize = write_u64_sqlite4(value.size, new_key.end());
+        memmove(new_key.end() + valuesizesize, value.data, value.size);
     }
-    PageOffset LeafPage::kv_size(uint32_t page_size, Val key, Val value)const{
-        size_t kv_size = get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value.size) + value.size;
-        if( kv_size <= page_size - LEAF_HEADER_SIZE - 1 * sizeof(PageOffset) )
+
+    PageOffset CLeafPtr::get_item_size(Val key, Val value)const{
+        size_t kv_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value.size) + value.size;
+        if( kv_size <= capacity() )
             return kv_size;
         throw std::runtime_error("Item does not fit in leaf");
     }
-    Val LeafPage::get_item_kv(uint32_t page_size, PageOffset item, Val & val)const{
-        Val result = get_item_key(page_size, item);
+    ValVal CLeafPtr::get_kv(PageOffset item)const{
+        ValVal result;
+        result.key = get_key(item);
         uint64_t valuesize;
-        auto valuesizesize = read_u64_sqlite4(valuesize, result.end());
-        val = Val(result.end() + valuesizesize, valuesize);
+        auto valuesizesize = read_u64_sqlite4(valuesize, result.key.end());
+        result.value = Val(result.key.end() + valuesizesize, valuesize);
         return result;
     }
 
@@ -200,9 +210,9 @@ namespace mustela {
                 pa.erase(existing_item);
                 mirror.erase(key);
             }
-            size_t new_kvsize = pa.kv_size(Val(key), val);
+            size_t new_kvsize = pa.get_item_size(Val(key), val);
             bool add_new = rand() % 2;
-            if( add_new && pa.has_enough_free_space(sizeof(PageOffset) + new_kvsize) ){
+            if( add_new && pa.free_capacity() >= new_kvsize ){
                 pa.insert_at(existing_item, Val(key), val);
                 mirror[key] = val;
             }
@@ -220,25 +230,25 @@ namespace mustela {
     void test_data_pages(){
         test_node_page();
         const uint32_t page_size = 256;
-        LeafPage * pa = (LeafPage *)malloc(page_size);
-        pa->init_dirty(page_size, 10);
+        LeafPtr pa(page_size, (LeafPage *)malloc(page_size));
+        pa.init_dirty(10);
         std::map<std::string, std::string> mirror;
         for(int i = 0; i != 1000; ++i){
             std::string key = "key" + std::to_string(rand() % 100);
             std::string val = "value" + std::to_string(rand() % 100000);
             bool same_key;
-            PageOffset existing_item = pa->lower_bound_item(page_size, Val(key), &same_key);
+            PageOffset existing_item = pa.lower_bound_item(Val(key), &same_key);
             bool remove_existing = rand() % 2;
             if( same_key ){
                 if( !remove_existing )
                     continue;
-                pa->remove_simple(page_size, existing_item);
+                pa.erase(existing_item);
                 mirror.erase(key);
             }
-            size_t new_kvsize = pa->kv_size(page_size, Val(key), Val(val));
+            size_t new_kvsize = pa.get_item_size(Val(key), Val(val));
             bool add_new = rand() % 2;
-            if( add_new && pa->has_enough_free_space(page_size, sizeof(PageOffset) + new_kvsize) ){
-                pa->insert_at(page_size, existing_item, Val(key), Val(val));
+            if( add_new && new_kvsize <= pa.free_capacity() ){
+                pa.insert_at(existing_item, Val(key), Val(val));
                 mirror[key] = val;
             }
         }
@@ -246,10 +256,9 @@ namespace mustela {
         for(auto && ma : mirror)
             std::cout << ma.first << ":" << ma.second << std::endl;
         std::cout << "Page" << std::endl;
-        for(int i = 0; i != pa->item_count; ++i){
-            Val value;
-            Val key = pa->get_item_kv(page_size, i, value);
-            std::cout << key.to_string() << ":" << value.to_string() << std::endl;
+        for(int i = 0; i != pa.size(); ++i){
+            ValVal va = pa.get_kv(i);
+            std::cout << va.key.to_string() << ":" << va.value.to_string() << std::endl;
         }
     }
 
