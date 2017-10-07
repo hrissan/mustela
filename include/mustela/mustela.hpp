@@ -39,15 +39,15 @@ namespace mustela {
 
         size_t meta_page_index;
         std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
-        NodePage * push_tmp_copy(const NodePage * other){
+        NodePtr push_tmp_copy(const NodePage * other){
             tmp_pages.push_back(std::vector<char>(page_size, 0));
             memmove(tmp_pages.back().data(), other, page_size);
-            return (NodePage * )tmp_pages.back().data();
+            return NodePtr(page_size, (NodePage * )tmp_pages.back().data());
         }
-        LeafPage * push_tmp_copy(const LeafPage * other){
+        LeafPtr push_tmp_copy(const LeafPage * other){
             tmp_pages.push_back(std::vector<char>(page_size, 0));
             memmove(tmp_pages.back().data(), other, page_size);
-            return (LeafPage * )tmp_pages.back().data();
+            return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
         }
         void pop_tmp_copy(){
             tmp_pages.pop_back();
@@ -72,10 +72,10 @@ namespace mustela {
         void merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap);
         void merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap);
 
-        const LeafPage * readable_leaf(Pid pa);
-        const NodePage * readable_node(Pid pa);
-        LeafPage * writable_leaf(Pid pa);
-        NodePage * writable_node(Pid pa);
+        CLeafPtr readable_leaf(Pid pa);
+        CNodePtr readable_node(Pid pa);
+        LeafPtr writable_leaf(Pid pa);
+        NodePtr writable_node(Pid pa);
 
         void start_transaction();
         std::string print_db(Pid pa, size_t height);

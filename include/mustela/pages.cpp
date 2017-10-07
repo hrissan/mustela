@@ -161,7 +161,7 @@ namespace mustela {
     void LeafPtr::compact(size_t item_size){
         if(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
             return;
-        char buf[page_size]; // TODO - remove copy from stack
+        char buf[page_size]; // This is last call in recursion, so we might just keep this allocation in stack
         memmove(buf, page, page_size);
         CLeafPtr my_copy(page_size, (LeafPage *)buf);
         clear();

@@ -150,21 +150,21 @@ namespace mustela {
         //if( !cursors.empty() )
         //    throw Exception("cursors should be destroyed before transaction they are in");
     }
-    const LeafPage * TX::readable_leaf(Pid pa){
-        return (const LeafPage *)my_db.readable_page(pa);
+    CLeafPtr TX::readable_leaf(Pid pa){
+        return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa));
     }
-    const NodePage * TX::readable_node(Pid pa){
-        return (const NodePage *)my_db.readable_page(pa);
+    CNodePtr TX::readable_node(Pid pa){
+        return CNodePtr(page_size, (const NodePage *)my_db.readable_page(pa));
     }
-    LeafPage * TX::writable_leaf(Pid pa){
+    LeafPtr TX::writable_leaf(Pid pa){
         LeafPage * result = (LeafPage *)my_db.writable_page(pa);
         ass(result->tid == meta_page.tid, "writable_leaf is not from our transaction");
-        return result;
+        return LeafPtr(page_size, result);
     }
-    NodePage * TX::writable_node(Pid pa){
+    NodePtr TX::writable_node(Pid pa){
         NodePage * result = (NodePage *)my_db.writable_page(pa);
         ass(result->tid == meta_page.tid, "writable_node is not from our transaction");
-        return result;
+        return NodePtr(page_size, result);
     }
     void TX::mark_free_in_future_page(Pid page){
         // NOP for now
@@ -207,16 +207,8 @@ namespace mustela {
     }
     void TX::insert_pages_to_node(Cursor & cur, size_t height, Val key, Pid new_pid){
         if( height == size_t(-1)){ // making new root
-            //cur.path.insert(cur.path.begin(), std::make_pair(root_pid, PageOffset(-1))); // update all cursors with new root
-/*            Pid root_pid = get_free_page(1);
-            NodePage * wr_root = writable_node(root_pid);
-            wr_root->init_dirty(page_size, meta_page.tid);
-            wr_root->set_item_value(page_size, -1, meta_page.main_root_page);
-            wr_root->insert_at(page_size, wr_root->item_count, key, new_pid);
-            meta_page.main_root_page = root_pid;
-            meta_page.main_height += 1;*/
             // TODO - check that cur is correctly updated
-            NodePtr wr_root(page_size, writable_node(get_free_page(1)));
+            NodePtr wr_root = writable_node(get_free_page(1));
             wr_root.init_dirty(meta_page.tid);
             wr_root.set_value(-1, meta_page.main_root_page);
             wr_root.append(key, new_pid);
@@ -225,7 +217,7 @@ namespace mustela {
             return;
         }
         auto & path_el = cur.path.at(height);
-        NodePtr wr_dap(page_size, writable_node(path_el.first));
+        NodePtr wr_dap = writable_node(path_el.first);
         size_t required_size = wr_dap.get_item_size(key, new_pid);
         if( wr_dap.free_capacity() < required_size ){
             force_split_node(cur, height, key, new_pid);
@@ -277,7 +269,7 @@ namespace mustela {
     }
     NodePage * TX::force_split_node(Cursor & cur, size_t height, Val insert_key, Pid insert_page){
         auto & path_el = cur.path.at(height);
-        NodePtr wr_dap(page_size, writable_node(path_el.first));
+        NodePtr wr_dap = writable_node(path_el.first);
         ass(wr_dap.size() >= 3, "Node being split contains < 3 items");
         // Find split index so that either of split pages will fit new value and disbalance is minimal
         PageOffset insert_index = path_el.second;
@@ -286,10 +278,10 @@ namespace mustela {
         PageOffset split_index_r = insert_direction == 0 ? split_index : split_index + 1;
         //ass(split_index >= 0 && split_index < wr_dap->item_count, "Could not find split index for node");
         
-        NodePtr wr_right(page_size, writable_node(get_free_page(1)));
+        NodePtr wr_right = writable_node(get_free_page(1));
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
-        NodePtr my_copy(page_size, push_tmp_copy(wr_dap.page));
+        NodePtr my_copy = push_tmp_copy(wr_dap.page);
         wr_dap.clear();
         wr_dap.set_value(-1, my_copy.get_value(-1));
         wr_dap.append_range(my_copy, 0, split_index);
@@ -322,7 +314,7 @@ namespace mustela {
     }
     LeafPage * TX::force_split_leaf(Cursor & cur, size_t height, Val insert_key, Val insert_val){
         auto & path_el = cur.path.at(height);
-        LeafPtr wr_dap(page_size, writable_leaf(path_el.first));
+        LeafPtr wr_dap = writable_leaf(path_el.first);
         size_t required_size = wr_dap.get_item_size(insert_key, insert_val);
         // Find split index so that either of split pages will fit new value and disbalance is minimal
         PageOffset insert_index = path_el.second;
@@ -358,10 +350,10 @@ namespace mustela {
             split_index = insert_index;
             insert_direction = 0;
         }
-        LeafPtr wr_right(page_size, writable_leaf(get_free_page(1)));
+        LeafPtr wr_right = writable_leaf(get_free_page(1));
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index, wr_dap.size());
-        LeafPtr my_copy(page_size, push_tmp_copy(wr_dap.page));
+        LeafPtr my_copy = push_tmp_copy(wr_dap.page);
         wr_dap.clear();
         wr_dap.append_range(my_copy, 0, split_index);
         LeafPage * result_page = nullptr;
@@ -386,7 +378,7 @@ namespace mustela {
             wr_right.insert_at(insert_index - split_index, insert_key, insert_val);
             insert_pages_to_node(cur, height - 1, Val(wr_right.get_key(0)), wr_right.page->pid);
         }else {
-            LeafPtr wr_middle(page_size, writable_leaf(get_free_page(1)));
+            LeafPtr wr_middle = writable_leaf(get_free_page(1));
             wr_middle.init_dirty(meta_page.tid);
             //path_el.first = middle_pid;
             //path_el.second = 0;
@@ -411,7 +403,7 @@ namespace mustela {
         }
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[height - 1];
-        NodePtr wr_parent(page_size, writable_node(path_pa.first));
+        NodePtr wr_parent = writable_node(path_pa.first);
         ass(wr_parent.size() > 0, "Found parent node with 0 items");
         CNodePtr left_sib;
         bool use_left_sib = false;
@@ -428,14 +420,14 @@ namespace mustela {
             required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
             ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
             Pid left_pid = wr_parent.get_value(path_pa.second - 1);
-            left_sib = CNodePtr(page_size, readable_node(left_pid));
+            left_sib = readable_node(left_pid);
             left_data_size = left_sib.data_size();
             left_data_size += left_sib.get_item_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
             use_left_sib = left_data_size <= wr_dap.free_capacity();
         }
         if(path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
             right_kv = wr_parent.get_kv(path_pa.second + 1);
-            right_sib = CNodePtr(page_size, readable_node(right_kv.pid));
+            right_sib = readable_node(right_kv.pid);
             right_data_size = right_sib.data_size();
             right_data_size += right_sib.get_item_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
             use_right_sib = right_data_size <= wr_dap.free_capacity();
@@ -524,20 +516,20 @@ namespace mustela {
             return;
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[cur.path.size() - 2];
-        NodePtr wr_parent(page_size, writable_node(path_pa.first));
+        NodePtr wr_parent = writable_node(path_pa.first);
         ass(wr_parent.size() > 0, "Found parent node with 0 items");
         //PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
         CLeafPtr left_sib;
         CLeafPtr right_sib;
         if( path_pa.second != PageOffset(-1)){
             Pid left_pid = wr_parent.get_value(path_pa.second - 1);
-            left_sib = CLeafPtr(page_size, readable_leaf(left_pid));
+            left_sib = readable_leaf(left_pid);
             if( wr_dap.capacity() < left_sib.data_size() )
                 left_sib = CLeafPtr(); // forget about left!
         }
         if( path_pa.second < wr_parent.size() - 1){
             Pid right_pid = wr_parent.get_value(path_pa.second + 1);
-            right_sib = CLeafPtr(page_size, readable_leaf(right_pid));
+            right_sib = readable_leaf(right_pid);
             if( wr_dap.capacity() < right_sib.data_size() )
                 right_sib = CLeafPtr(); // forget about right!
         }
@@ -565,7 +557,7 @@ namespace mustela {
 
     bool TX::put(const Val & key, const Val & value, bool nooverwrite){
         lower_bound(main_cursor, key);
-        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
+        CLeafPtr dap = readable_leaf(main_cursor.path.back().first);
         PageOffset item = main_cursor.path.back().second;
         bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
         if( same_key && nooverwrite )
@@ -584,7 +576,7 @@ namespace mustela {
     }
     bool TX::get(const Val & key, Val & value){
         lower_bound(main_cursor, key);
-        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
+        CLeafPtr dap = readable_leaf(main_cursor.path.back().first);
         PageOffset item = main_cursor.path.back().second;
         if( item == dap.size() )
             return false;
@@ -596,7 +588,7 @@ namespace mustela {
     }
     bool TX::del(const Val & key, bool must_exist){
         lower_bound(main_cursor, key);
-        CLeafPtr dap(page_size, readable_leaf(main_cursor.path.back().first));
+        CLeafPtr dap = readable_leaf(main_cursor.path.back().first);
         PageOffset item = main_cursor.path.back().second;
         bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
         if( !same_key )
@@ -633,12 +625,12 @@ namespace mustela {
         cur.path.resize(height + 1);
         while(true){
             if( height == 0 ){
-                CLeafPtr dap(page_size, readable_leaf(pa));
+                CLeafPtr dap = readable_leaf(pa);
                 PageOffset item = dap.lower_bound_item(key);
                 cur.path[meta_page.main_height - height] = std::make_pair(pa, item);
                 break;
             }
-            CNodePtr nap(page_size, readable_node(pa));
+            CNodePtr nap = readable_node(pa);
             PageOffset nitem = nap.upper_bound_item(key) - 1;
             cur.path[meta_page.main_height - height] = std::make_pair(pa, nitem);
 //            result.path.push_back(std::make_pair(pa, nitem));
@@ -657,7 +649,7 @@ namespace mustela {
     std::string TX::print_db(Pid pid, size_t height){
         std::string result = "{\"keys\":[";
         if( height == 0 ){
-            CLeafPtr dap(page_size, readable_leaf(pid));
+            CLeafPtr dap = readable_leaf(pid);
             std::cout << "Leaf pid=" << pid << " [";
             for(int i = 0; i != dap.size(); ++i){
                 if( i != 0)
@@ -669,7 +661,7 @@ namespace mustela {
             std::cout << "]" << std::endl;
             return result + "]}";
         }
-        CNodePtr nap(page_size, readable_node(pid));
+        CNodePtr nap = readable_node(pid);
         Pid spec_value = nap.get_value(-1);
         std::cout << "Node pid=" << pid << " [" << spec_value << ", ";
         for(int i = 0; i != nap.size(); ++i){
