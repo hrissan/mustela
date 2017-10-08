@@ -112,6 +112,11 @@ namespace mustela {
             if( mpage()->item_count == 0)
                 mpage()->free_end_offset = page_size - NODE_PID_SIZE; // compact on last delete :)
         }
+        void erase(PageOffset begin, PageOffset end){
+            ass(begin <= end, "Invalid range at erase");
+            for(PageOffset it = end; it-- > begin; )
+                erase(it);
+        }
         void compact(size_t item_size);
         void insert_at(PageOffset insert_index, Val key, Pid value){
             ass(insert_index <= mpage()->item_count, "Cannot insert at this index");

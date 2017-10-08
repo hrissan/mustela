@@ -19,7 +19,7 @@ int main(int argc, char * argv[]){
 
     txn.commit();*/
 
-    const bool insert = true;
+    const bool insert = false;
     std::map<std::string, std::string> mirror;
     for(int i = 0; i != 1000000; ++i){
 //        std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
@@ -29,9 +29,6 @@ int main(int argc, char * argv[]){
         std::string val = "value" + std::to_string(i);
 
         mustela::Val got;
-//        if( !txn.get(mustela::Val(key), got) ){
-//
-//        }
         if( insert ){
             if( txn.put(mustela::Val(key), mustela::Val(val), true) )
             {
@@ -39,10 +36,14 @@ int main(int argc, char * argv[]){
                 continue;
             }
         }else{
+            bool was = txn.get(mustela::Val(key), got);
             if( !txn.del(mustela::Val(key), true) ){
+                std::cout << "del failed" << std::endl;
                 //            mirror.erase(key);
                 continue;
             }
+            if( txn.get(mustela::Val(key), got) )
+                std::cout << "after del key is still there" << std::endl;
         }
     }
 /*    txn.del(mustela::Val("A"), true);
@@ -55,7 +56,11 @@ int main(int argc, char * argv[]){
         if( ma.second != value.to_string())
             std::cout << "Bad " << ma.first << ":" << ma.second << " in db result=" << int(result) << " value=" << value.to_string() << std::endl;
     }
-    txn.commit();
+    if( !insert){
+        std::string json = txn.print_db();
+        std::cout << json << std::endl;
+    }
+//    txn.commit();
 /*    std::cout << "Page" << std::endl;
     for(int i = 0; i != pa->item_count; ++i){
         Val value;

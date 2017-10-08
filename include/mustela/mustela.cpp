@@ -440,55 +440,72 @@ namespace mustela {
         }
         if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
             if( left_sib.page && right_sib.page){ // Select larger one
-                if( left_sib.data_size() > right_sib.data_size() )
-                    use_left_sib = true;
-                else
-                    use_right_sib = true;
+                if( left_sib.page->tid == meta_page.tid && right_sib.page->tid == meta_page.tid ){
+                    if( left_sib.data_size() > right_sib.data_size() ) // both writable and left > right
+                        use_left_sib = true;
+                    else
+                        use_right_sib = true;
+                }else
+                    if( left_sib.page->tid == meta_page.tid ) // left writable
+                        use_left_sib = true;
+                    else
+                        use_right_sib = true;
             }else if( left_sib.page )
                 use_left_sib = true;
             else if( right_sib.page )
                 use_right_sib = true;
             ass(use_left_sib || use_right_sib, "Node is empty and cannot borrow from siblings");
-/*            if( remember_left_sib ){
-                Pid spec_val = wr_dap->get_item_value(page_size, -1);
+            if( use_left_sib ){
+                NodePtr wr_left;
+                if( left_sib.page->tid == meta_page.tid ) // already writable
+                    wr_left = writable_node(left_sib.page->pid);
+                else{ // Not writable yet
+                    Cursor left_cur = cur;
+                    left_cur.path[height - 1].second -= 1;
+                    left_cur.truncate(height);
+                    wr_left = NodePtr(page_size, (NodePage *)make_pages_writable(left_cur, left_cur.path.size() - 1)); // TODO - check correctness
+                }
+                Pid spec_val = wr_dap.get_value(-1);
                 int insert_direction = 0;
-                PageOffset split_index = find_split_index(remember_left_sib, &insert_direction, remember_left_sib->item_count, my_key, spec_val, 0, 0);
+                PageOffset split_index = find_split_index(wr_left, &insert_direction, wr_left.size(), my_kv.key, spec_val, 0, 0);
                 if( split_index == 0 )
                     split_index = 1;
-                ass(insert_direction != 0 && split_index < remember_left_sib->item_count, "Split index to the right");
-                Pid split_val;
-                Val split_key = remember_left_sib->get_item_kv(page_size, split_index, split_val);
-                for(PageOffset i = split_index + 1; i != remember_left_sib->item_count; ++i){
-                    Pid val;
-                    Val key = remember_left_sib->get_item_kv(page_size, i, val);
-                    wr_dap->insert_at(page_size, i - split_index - 1, key, val);
-                }
-                wr_dap->insert_at(page_size, wr_dap->item_count, my_key, spec_val);
-                wr_dap->set_item_value(page_size, -1, split_val);
-                wr_parent->remove_simple(page_size, path_pa.second);
-                // TODO split parent if needed
-                wr_parent->insert_at(page_size, path_pa.second, split_key, wr_dap->pid);
+                ass(insert_direction != 0 && split_index < wr_left.size(), "Split index to the right");
+                auto split_kv = wr_left.get_kv(split_index);
+                wr_dap.append_range(wr_left, split_index + 1, wr_left.size());
+                wr_dap.append(my_kv.key, spec_val);
+                wr_dap.set_value(-1, split_kv.pid);
+                wr_parent.erase(path_pa.second);
+                insert_pages_to_node(cur, height - 1, split_kv.key, wr_dap.page->pid);
+                wr_left.erase(split_index, wr_left.size()); // will invalidate split_kv pointed into wr_left
             }
-            if( remember_right_sib ){
-                Pid spec_val = remember_right_sib->get_item_value(page_size, -1);
+            if( use_right_sib ){
+                NodePtr wr_right;
+                if( right_sib.page->tid == meta_page.tid ) // already writable
+                    wr_right = writable_node(right_sib.page->pid);
+                else{ // Not writable yet
+                    Cursor right_cur = cur;
+                    right_cur.path[height - 1].second += 1;
+                    right_cur.truncate(height);
+                    wr_right = NodePtr(page_size, (NodePage *)make_pages_writable(right_cur, right_cur.path.size() - 1)); // TODO - check correctness
+                }
+                Pid spec_val = wr_right.get_value(-1);
                 int insert_direction = 0;
-                PageOffset split_index = find_split_index(remember_right_sib, &insert_direction, 0, right_key, spec_val, 0, 0);
-                if( split_index == remember_right_sib->item_count - 1 )
+                PageOffset split_index = find_split_index(wr_right, &insert_direction, 0, right_kv.key, spec_val, 0, 0);
+                if( split_index == wr_right.size() - 1 ) // TODO check
                     split_index -= 1;
                 ass(insert_direction != 0 && split_index > 0, "Split index to the right");
-                Pid split_val;
-                Val split_key = remember_right_sib->get_item_kv(page_size, split_index, split_val);
-                wr_dap->insert_at(page_size, 0, right_key, spec_val);
-                for(PageOffset i = 0; i != split_index; ++i){
-                    Pid val;
-                    Val key = remember_right_sib->get_item_kv(page_size, i, val);
-                    wr_dap->insert_at(page_size, wr_dap->item_count, key, val);
-                }
-                remember_right_sib->set_item_value(page_size, -1, split_val);
-                wr_parent->remove_simple(page_size, path_pa.second + 1);
-                // TODO split parent if needed
-                wr_parent->insert_at(page_size, path_pa.second + 1, split_key, wr_dap->pid);
-            }*/
+                ValPid split_kv = wr_right.get_kv(split_index);
+                wr_dap.append(right_kv.key, spec_val);
+                wr_dap.append_range(wr_right, 0, split_index);
+                wr_right.set_value(-1, split_kv.pid);
+                wr_parent.erase(path_pa.second + 1);
+                cur.path[height - 1].second += 1;
+                insert_pages_to_node(cur, height - 1, split_kv.key, wr_right.page->pid);
+                wr_right.erase(0, split_index + 1);
+            }
+            merge_if_needed_node(cur, height - 1, wr_parent);
+            return;
         }
         if( use_left_sib ){
             Pid spec_val = wr_dap.get_value(-1);
