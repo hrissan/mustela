@@ -192,7 +192,7 @@ namespace mustela {
         }
 //        void set_value(PageOffset item, Pid value);
         void erase(PageOffset to_remove_item){
-            mpage()->remove_simple(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item);
+            mpage()->remove_simple(page_size, true, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item);
             if( mpage()->item_count == 0)
                 mpage()->free_end_offset = page_size; // compact on last delete :)
         }

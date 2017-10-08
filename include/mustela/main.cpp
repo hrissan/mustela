@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <map>
+#include <random>
 #include "mustela.hpp"
 
 int main(int argc, char * argv[]){
@@ -21,12 +22,16 @@ int main(int argc, char * argv[]){
 
     const bool insert = false;
     std::map<std::string, std::string> mirror;
-    for(int i = 0; i != 1000000; ++i){
+    std::default_random_engine e;
+    std::uniform_int_distribution<int> dist(0, 999999);
+    for(int i = 1000000; i-- > 0; ){
+//    for(int i = 0; i != 10000000; ++i){
 //        std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
 //        std::string json = txn.print_db();
 //        std::cout << json << std::endl;
-        std::string key = std::to_string(i);
-        std::string val = "value" + std::to_string(i);
+        int j = i;//dist(e);
+        std::string key = std::to_string(j);
+        std::string val = "value" + std::to_string(j);
 
         mustela::Val got;
         if( insert ){
@@ -37,7 +42,7 @@ int main(int argc, char * argv[]){
             }
         }else{
             bool was = txn.get(mustela::Val(key), got);
-            if( !txn.del(mustela::Val(key), true) ){
+            if( was && !txn.del(mustela::Val(key), true) ){
                 std::cout << "del failed" << std::endl;
                 //            mirror.erase(key);
                 continue;
@@ -60,7 +65,7 @@ int main(int argc, char * argv[]){
         std::string json = txn.print_db();
         std::cout << json << std::endl;
     }
-//    txn.commit();
+    txn.commit();
 /*    std::cout << "Page" << std::endl;
     for(int i = 0; i != pa->item_count; ++i){
         Val value;

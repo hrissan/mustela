@@ -541,21 +541,22 @@ namespace mustela {
         if( path_pa.second != PageOffset(-1)){
             Pid left_pid = wr_parent.get_value(path_pa.second - 1);
             left_sib = readable_leaf(left_pid);
-            if( wr_dap.capacity() < left_sib.data_size() )
+            if( wr_dap.free_capacity() < left_sib.data_size() )
                 left_sib = CLeafPtr(); // forget about left!
         }
-        if( path_pa.second < wr_parent.size() - 1){
+        if( path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
             Pid right_pid = wr_parent.get_value(path_pa.second + 1);
             right_sib = readable_leaf(right_pid);
-            if( wr_dap.capacity() < right_sib.data_size() )
+            if( wr_dap.free_capacity() < right_sib.data_size() )
                 right_sib = CLeafPtr(); // forget about right!
         }
-        if( left_sib.page && right_sib.page && wr_dap.capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
+        if( left_sib.page && right_sib.page && wr_dap.free_capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
             if( left_sib.data_size() < right_sib.data_size() ) // <= will also work
                 right_sib = CLeafPtr();
             else
                 left_sib = CLeafPtr();
         }
+        ass( wr_dap.size() != 0 || (left_sib.page || right_sib.page), "Cannot merge leaf with 0 items" );
         if( left_sib.page ){
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
