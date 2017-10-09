@@ -97,7 +97,7 @@ namespace mustela {
         items_size += item_size;
         item_count += 1;
         auto keysizesize = write_u64_sqlite4(key.size, raw_this + insert_offset);
-        memmove(raw_this + insert_offset + keysizesize, key.data, key.size);
+        memcpy(raw_this + insert_offset + keysizesize, key.data, key.size);
         return MVal(raw_this + insert_offset + keysizesize, key.size);
     }
 
@@ -110,8 +110,8 @@ namespace mustela {
     void NodePtr::compact(size_t item_size){
         if(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
             return;
-        char buf[page_size]; // TODO - remove copy from stack
-        memmove(buf, page, page_size);
+        char buf[page_size]; // This fun is always last call in recursion, so not a problem
+        memcpy(buf, page, page_size);
         CNodePtr my_copy(page_size, (NodePage *)buf);
         clear();
         set_value(-1, my_copy.get_value(-1));
@@ -162,7 +162,7 @@ namespace mustela {
         if(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
             return;
         char buf[page_size]; // This is last call in recursion, so we might just keep this allocation in stack
-        memmove(buf, page, page_size);
+        memcpy(buf, page, page_size);
         CLeafPtr my_copy(page_size, (LeafPage *)buf);
         clear();
         append_range(my_copy, 0, my_copy.size());
@@ -174,7 +174,7 @@ namespace mustela {
         ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
         MVal new_key = mpage()->insert_at(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, insert_index, key, item_size);
         auto valuesizesize = write_u64_sqlite4(value.size, new_key.end());
-        memmove(new_key.end() + valuesizesize, value.data, value.size);
+        memcpy(new_key.end() + valuesizesize, value.data, value.size);
     }
 
     PageOffset CLeafPtr::get_item_size(Val key, Val value)const{

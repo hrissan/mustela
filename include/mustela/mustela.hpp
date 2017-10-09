@@ -41,12 +41,12 @@ namespace mustela {
         std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
         NodePtr push_tmp_copy(const NodePage * other){
             tmp_pages.push_back(std::vector<char>(page_size, 0));
-            memmove(tmp_pages.back().data(), other, page_size);
+            memcpy(tmp_pages.back().data(), other, page_size);
             return NodePtr(page_size, (NodePage * )tmp_pages.back().data());
         }
         LeafPtr push_tmp_copy(const LeafPage * other){
             tmp_pages.push_back(std::vector<char>(page_size, 0));
-            memmove(tmp_pages.back().data(), other, page_size);
+            memcpy(tmp_pages.back().data(), other, page_size);
             return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
         }
         void pop_tmp_copy(){

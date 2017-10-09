@@ -9,10 +9,31 @@ namespace mustela {
     template<class T>
 void unpack_uint_be(const unsigned char * buf, unsigned si, T & val){
     T result = 0;
-    for(unsigned i = 0; i != si; ++i ) {
-        result <<= 8;
-        result |= buf[i];
+    switch(si)
+    {
+        case 8:
+            result = buf[si - 8];
+        case 7:
+            result = (result << 8) + buf[si - 7];
+        case 6:
+            result = (result << 8) + buf[si - 6];
+        case 5:
+            result = (result << 8) + buf[si - 5];
+        case 4:
+            result = (result << 8) + buf[si - 4];
+        case 3:
+            result = (result << 8) + buf[si - 3];
+        case 2:
+            result = (result << 8) + buf[si - 2];
+        case 1:
+            result = (result << 8) + buf[si - 1];
+        case 0:
+            break;
     }
+/*    for(unsigned i = 0; i != si; ++i ) {
+        result <<= 8;
+        result += buf[i];
+    }*/
     val = result;
 }
 template<class T>

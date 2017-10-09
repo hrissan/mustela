@@ -20,11 +20,12 @@ int main(int argc, char * argv[]){
 
     txn.commit();*/
 
-    const bool insert = true;
+    const bool insert = false;
     std::map<std::string, std::string> mirror;
     std::random_device r;
     std::default_random_engine e{r()};
     std::uniform_int_distribution<int> dist(0, 999999);
+    int lucky_counter = 0;
 //    for(int i = 1000000; i-- > 0; ){
     for(int i = 0; i != 1000000; ++i){
 //        std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
@@ -38,30 +39,32 @@ int main(int argc, char * argv[]){
         if( insert ){
             if( txn.put(mustela::Val(key), mustela::Val(val), true) )
             {
-                mirror[key] = val;
+//                mirror[key] = val;
                 continue;
             }
         }else{
             bool was = txn.get(mustela::Val(key), got);
-            if( was && !txn.del(mustela::Val(key), true) ){
+            lucky_counter += was ? 1 : 0;
+/*            if( was && !txn.del(mustela::Val(key), true) ){
                 std::cout << "del failed" << std::endl;
                 //            mirror.erase(key);
                 continue;
             }
             if( txn.get(mustela::Val(key), got) )
                 std::cout << "after del key is still there" << std::endl;
+ */
         }
     }
 /*    txn.del(mustela::Val("A"), true);
     txn.del(mustela::Val("B"), true);
     txn.del(mustela::Val("C"), true);*/
-    std::cout << "Mirror" << std::endl;
-    for(auto && ma : mirror){
+    std::cout << "Mirror lucky_counter=" << lucky_counter << std::endl;
+/*    for(auto && ma : mirror){
         mustela::Val value;
         bool result = txn.get(mustela::Val(ma.first), value);
         if( ma.second != value.to_string())
             std::cout << "Bad " << ma.first << ":" << ma.second << " in db result=" << int(result) << " value=" << value.to_string() << std::endl;
-    }
+    }*/
 /*    if( !insert){
         std::string json = txn.print_db();
         std::cout << json << std::endl;

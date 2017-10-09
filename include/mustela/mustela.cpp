@@ -197,7 +197,7 @@ namespace mustela {
         mark_free_in_future_page(path_el.first);
         path_el.first = get_free_page(1);
         DataPage * wr_dap = my_db.writable_page(path_el.first);
-        memmove(wr_dap, dap, page_size);
+        memcpy(wr_dap, dap, page_size);
         wr_dap->pid = path_el.first;
         wr_dap->tid = meta_page.tid;
         if(height == 0){ // node is root
