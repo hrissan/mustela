@@ -18,6 +18,9 @@ namespace mustela {
         uint64_t free_root_page;
         uint64_t main_root_page;
         uint64_t main_height; // 0 when root is leaf
+        uint64_t main_count;
+        uint64_t main_leaf_page_count;
+        uint64_t main_node_page_count;
         // uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
 
         bool check(uint32_t system_page_size, uint64_t file_size)const;

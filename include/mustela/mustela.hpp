@@ -85,6 +85,7 @@ namespace mustela {
         explicit TX(DB & my_db);
         ~TX();
         std::string print_db();
+        std::string get_stats()const;
         bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
         bool get(const Val & key, Val & value);
         bool del(const Val & key, bool must_exist);

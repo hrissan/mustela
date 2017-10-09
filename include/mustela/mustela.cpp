@@ -80,6 +80,9 @@ namespace mustela {
             mp->main_root_page = 3;
             mp->main_height = 0;
             mp->free_root_page = 4;
+            mp->main_count = 0;
+            mp->main_leaf_page_count = 1;
+            mp->main_node_page_count = 0;
             if( write(fd, meta_buf, page_size) == -1)
                 throw Exception("file write failed in create_db");
             mp->pid = 1;
@@ -209,6 +212,7 @@ namespace mustela {
         if( height == size_t(-1)){ // making new root
             // TODO - check that cur is correctly updated
             NodePtr wr_root = writable_node(get_free_page(1));
+            meta_page.main_node_page_count += 1;
             wr_root.init_dirty(meta_page.tid);
             wr_root.set_value(-1, meta_page.main_root_page);
             wr_root.append(key, new_pid);
@@ -279,6 +283,7 @@ namespace mustela {
         //ass(split_index >= 0 && split_index < wr_dap->item_count, "Could not find split index for node");
         
         NodePtr wr_right = writable_node(get_free_page(1));
+        meta_page.main_node_page_count += 1;
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
         NodePtr my_copy = push_tmp_copy(wr_dap.page);
@@ -351,6 +356,7 @@ namespace mustela {
             insert_direction = 0;
         }
         LeafPtr wr_right = writable_leaf(get_free_page(1));
+        meta_page.main_leaf_page_count += 1;
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index, wr_dap.size());
         LeafPtr my_copy = push_tmp_copy(wr_dap.page);
@@ -379,6 +385,7 @@ namespace mustela {
             insert_pages_to_node(cur, height - 1, Val(wr_right.get_key(0)), wr_right.page->pid);
         }else {
             LeafPtr wr_middle = writable_leaf(get_free_page(1));
+            meta_page.main_leaf_page_count += 1;
             wr_middle.init_dirty(meta_page.tid);
             //path_el.first = middle_pid;
             //path_el.second = 0;
@@ -396,6 +403,7 @@ namespace mustela {
             if( wr_dap.size() != 0) // wait until 1 key remains, make it new root
                 return;
             mark_free_in_future_page(meta_page.main_root_page);
+            meta_page.main_node_page_count -= 1;
             meta_page.main_root_page = wr_dap.get_value(-1);
             meta_page.main_height -= 1;
             cur.path.erase(cur.path.begin()); // TODO - check
@@ -513,6 +521,7 @@ namespace mustela {
             wr_dap.set_value(-1, left_sib.get_value(-1));
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
+            meta_page.main_node_page_count -= 1;
             wr_parent.erase(path_pa.second);
             wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
@@ -522,6 +531,7 @@ namespace mustela {
             wr_dap.append(right_kv.key, spec_val);
             wr_dap.append_range(right_sib, 0, right_sib.size());
             mark_free_in_future_page(right_sib.page->pid); // unlink right, remove its slot in parent
+            meta_page.main_node_page_count -= 1;
             wr_parent.erase(path_pa.second + 1);
         }
         merge_if_needed_node(cur, height - 1, wr_parent);
@@ -560,6 +570,7 @@ namespace mustela {
         if( left_sib.page ){
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
+            meta_page.main_leaf_page_count -= 1;
             wr_parent.erase(path_pa.second);
             wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
@@ -567,6 +578,7 @@ namespace mustela {
         if( right_sib.page ){
             wr_dap.append_range(right_sib, 0, right_sib.size());
             mark_free_in_future_page(right_sib.page->pid); // unlink right, remove its slot in parent
+            meta_page.main_leaf_page_count -= 1;
             wr_parent.erase(path_pa.second + 1);
         }
         if( left_sib.page || right_sib.page )
@@ -589,6 +601,8 @@ namespace mustela {
             wr_dap.insert_at(main_cursor.path.back().second, key, value);
         else
             force_split_leaf(main_cursor, main_cursor.path.size() - 1, key, value);
+        if( !same_key )
+            meta_page.main_count += 1;
         clear_tmp_copies();
         return true;
     }
@@ -614,6 +628,7 @@ namespace mustela {
         LeafPtr wr_dap(page_size, (LeafPage *)make_pages_writable(main_cursor, main_cursor.path.size() - 1));
         wr_dap.erase(main_cursor.path.back().second);
         merge_if_needed_leaf(main_cursor, wr_dap);
+        meta_page.main_count -= 1;
         clear_tmp_copies();
         return true;
     }
@@ -658,6 +673,22 @@ namespace mustela {
             pa = nap.get_value(nitem);
             height -= 1;
         }
+    }
+    //{'branch_pages': 1040L,
+        //    'depth': 4L,
+        //    'entries': 3761848L,
+        //    'leaf_pages': 73658L,
+        //    'overflow_pages': 0L,
+        //    'psize': 4096L}
+    std::string TX::get_stats()const{
+        std::string result;
+        result += "{'branch_pages': " + std::to_string(meta_page.main_node_page_count) +
+        ",\n\t'depth': " + std::to_string(meta_page.main_height) +
+        ",\n\t'entries': " + std::to_string(meta_page.main_count) +
+        ",\n\t'leaf_pages': " + std::to_string(meta_page.main_leaf_page_count) +
+        ",\n\t'overflow_pages': " + std::to_string(0) +
+        ",\n\t'psize': " + std::to_string(page_size) + "}";
+        return result;
     }
     std::string TX::print_db(){
         Pid pa = meta_page.main_root_page;

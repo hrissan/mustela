@@ -20,16 +20,17 @@ int main(int argc, char * argv[]){
 
     txn.commit();*/
 
-    const bool insert = false;
+    const bool insert = true;
     std::map<std::string, std::string> mirror;
-    std::default_random_engine e;
+    std::random_device r;
+    std::default_random_engine e{r()};
     std::uniform_int_distribution<int> dist(0, 999999);
-    for(int i = 1000000; i-- > 0; ){
-//    for(int i = 0; i != 10000000; ++i){
+//    for(int i = 1000000; i-- > 0; ){
+    for(int i = 0; i != 1000000; ++i){
 //        std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
 //        std::string json = txn.print_db();
 //        std::cout << json << std::endl;
-        int j = i;//dist(e);
+        int j = dist(e);
         std::string key = std::to_string(j);
         std::string val = "value" + std::to_string(j);
 
@@ -61,10 +62,11 @@ int main(int argc, char * argv[]){
         if( ma.second != value.to_string())
             std::cout << "Bad " << ma.first << ":" << ma.second << " in db result=" << int(result) << " value=" << value.to_string() << std::endl;
     }
-    if( !insert){
+/*    if( !insert){
         std::string json = txn.print_db();
         std::cout << json << std::endl;
-    }
+    }*/
+    std::cout << txn.get_stats() << std::endl;
     txn.commit();
 /*    std::cout << "Page" << std::endl;
     for(int i = 0; i != pa->item_count; ++i){
