@@ -20,14 +20,15 @@ int main(int argc, char * argv[]){
 
     txn.commit();*/
 
-    const bool insert = false;
+    const bool insert = true;
     std::map<std::string, std::string> mirror;
-    std::random_device r;
-    std::default_random_engine e{r()};
-    std::uniform_int_distribution<int> dist(0, 999999);
+//    std::random_device r;
+    std::default_random_engine e;//{r()};
+    const int items_counter = 1000000;
+    std::uniform_int_distribution<int> dist(0, items_counter - 1);
     int lucky_counter = 0;
-//    for(int i = 1000000; i-- > 0; ){
-    for(int i = 0; i != 1000000; ++i){
+//    for(int i = items_counter - 200; i-- > 0; ){
+    for(int i = 0; i != 200; ++i){
 //        std::cout << std::endl << "print_db i=" << i << std::endl << std::endl;
 //        std::string json = txn.print_db();
 //        std::cout << json << std::endl;
@@ -45,14 +46,14 @@ int main(int argc, char * argv[]){
         }else{
             bool was = txn.get(mustela::Val(key), got);
             lucky_counter += was ? 1 : 0;
-/*            if( was && !txn.del(mustela::Val(key), true) ){
+            if( was && !txn.del(mustela::Val(key), true) ){
                 std::cout << "del failed" << std::endl;
                 //            mirror.erase(key);
                 continue;
             }
             if( txn.get(mustela::Val(key), got) )
                 std::cout << "after del key is still there" << std::endl;
- */
+ 
         }
     }
 /*    txn.del(mustela::Val("A"), true);
@@ -65,10 +66,11 @@ int main(int argc, char * argv[]){
         if( ma.second != value.to_string())
             std::cout << "Bad " << ma.first << ":" << ma.second << " in db result=" << int(result) << " value=" << value.to_string() << std::endl;
     }*/
-/*    if( !insert){
+    //if( !insert)
+    {
         std::string json = txn.print_db();
         std::cout << json << std::endl;
-    }*/
+    }
     std::cout << txn.get_stats() << std::endl;
     txn.commit();
 /*    std::cout << "Page" << std::endl;

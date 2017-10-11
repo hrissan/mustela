@@ -412,7 +412,7 @@ namespace mustela {
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[height - 1];
         NodePtr wr_parent = writable_node(path_pa.first);
-        ass(wr_parent.size() > 0, "Found parent node with 0 items");
+        //ass(wr_parent.size() > 0, "Found parent node with 0 items");
         CNodePtr left_sib;
         bool use_left_sib = false;
         PageOffset left_data_size = 0;
@@ -433,7 +433,7 @@ namespace mustela {
             left_data_size += left_sib.get_item_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
             use_left_sib = left_data_size <= wr_dap.free_capacity();
         }
-        if(path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
+        if(PageOffset(path_pa.second + 1) < wr_parent.size()){
             right_kv = wr_parent.get_kv(path_pa.second + 1);
             right_sib = readable_node(right_kv.pid);
             right_data_size = right_sib.data_size();
@@ -447,7 +447,8 @@ namespace mustela {
                 use_left_sib = false;
         }
         if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
-            if( left_sib.page && right_sib.page){ // Select larger one
+//            std::cout << "Node with 0 items and cannot merge :)" << std::endl;
+/*            if( left_sib.page && right_sib.page){ // Select larger one
                 if( left_sib.page->tid == meta_page.tid && right_sib.page->tid == meta_page.tid ){
                     if( left_sib.data_size() > right_sib.data_size() ) // both writable and left > right
                         use_left_sib = true;
@@ -513,7 +514,7 @@ namespace mustela {
                 wr_right.erase(0, split_index + 1);
             }
             merge_if_needed_node(cur, height - 1, wr_parent);
-            return;
+            return;*/
         }
         if( use_left_sib ){
             Pid spec_val = wr_dap.get_value(-1);
@@ -536,6 +537,25 @@ namespace mustela {
         }
         merge_if_needed_node(cur, height - 1, wr_parent);
     }
+    void TX::prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap){
+        mark_free_in_future_page(wr_dap.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent
+        meta_page.main_node_page_count -= 1;
+        auto & path_el = cur.path.at(height);
+        auto & path_pa = cur.path.at(height - 1);
+        NodePtr wr_parent = writable_node(path_pa.first);
+        if( wr_parent.size() == 0){
+            prune_empty_node(cur, height - 1, wr_parent);
+            return;
+        }
+        if( path_pa.second == PageOffset(-1) ){
+            ValPid zero_val = wr_parent.get_kv(0);
+            wr_parent.erase(0);
+            wr_parent.set_value(-1, zero_val.pid);
+        }else{
+            wr_parent.erase(path_pa.second);
+        }
+        merge_if_needed_node(cur, height - 1, wr_parent);
+    }
     void TX::merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap){
         if( wr_dap.data_size() >= wr_dap.capacity()/2 )
             return;
@@ -544,7 +564,16 @@ namespace mustela {
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path[cur.path.size() - 2];
         NodePtr wr_parent = writable_node(path_pa.first);
-        ass(wr_parent.size() > 0, "Found parent node with 0 items");
+        int c = 0;
+        if( wr_dap.size() == 0)
+            c = 1;
+        if( wr_dap.size() == 0 && wr_parent.size() == 0 ){ // Prune empty leaf + nodes
+            mark_free_in_future_page(wr_dap.page->pid);
+            meta_page.main_leaf_page_count -= 1;
+            prune_empty_node(cur, cur.path.size() - 2, wr_parent);
+            return;
+        }
+        //ass(wr_parent.size() > 0, "Found parent node with 0 items");
         //PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
         CLeafPtr left_sib;
         CLeafPtr right_sib;
@@ -554,7 +583,7 @@ namespace mustela {
             if( wr_dap.free_capacity() < left_sib.data_size() )
                 left_sib = CLeafPtr(); // forget about left!
         }
-        if( path_pa.second == PageOffset(-1) || path_pa.second < wr_parent.size() - 1){
+        if( PageOffset(path_pa.second + 1) < wr_parent.size()){
             Pid right_pid = wr_parent.get_value(path_pa.second + 1);
             right_sib = readable_leaf(right_pid);
             if( wr_dap.free_capacity() < right_sib.data_size() )
@@ -566,7 +595,10 @@ namespace mustela {
             else
                 left_sib = CLeafPtr();
         }
-        ass( wr_dap.size() != 0 || (left_sib.page || right_sib.page), "Cannot merge leaf with 0 items" );
+        if( wr_dap.size() == 0){
+            ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
+//            std::cout << "We could optimize by unlinking our leaf" << std::endl;
+        }
         if( left_sib.page ){
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid); // unlink left, point its slot in parent to us, remove our slot in parent

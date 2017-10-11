@@ -71,6 +71,7 @@ namespace mustela {
         LeafPage * force_split_leaf(Cursor & cur, size_t height, Val insert_key, Val insert_val);
         void merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap);
         void merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap);
+        void prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap);
 
         CLeafPtr readable_leaf(Pid pa);
         CNodePtr readable_node(Pid pa);
