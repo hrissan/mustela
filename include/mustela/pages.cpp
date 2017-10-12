@@ -167,18 +167,18 @@ namespace mustela {
         clear();
         append_range(my_copy, 0, my_copy.size());
     }
-    void LeafPtr::insert_at(PageOffset insert_index, Val key, Val value){
+    char * LeafPtr::insert_at(PageOffset insert_index, Val key, size_t value_size){
         ass(insert_index <= mpage()->item_count, "Cannot insert at this index");
-        size_t item_size = get_item_size(key, value);
+        size_t item_size = get_item_size(key, value_size);
         compact(item_size);
         ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
         MVal new_key = mpage()->insert_at(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, insert_index, key, item_size);
-        auto valuesizesize = write_u64_sqlite4(value.size, new_key.end());
-        memcpy(new_key.end() + valuesizesize, value.data, value.size);
+        auto valuesizesize = write_u64_sqlite4(value_size, new_key.end());
+        return new_key.end() + valuesizesize;
     }
 
-    PageOffset CLeafPtr::get_item_size(Val key, Val value)const{
-        size_t kv_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value.size) + value.size;
+    PageOffset CLeafPtr::get_item_size(Val key, size_t value_size)const{
+        size_t kv_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size) + value_size;
         if( kv_size <= capacity() )
             return kv_size;
         throw std::runtime_error("Item does not fit in leaf");
@@ -245,7 +245,7 @@ namespace mustela {
                 pa.erase(existing_item);
                 mirror.erase(key);
             }
-            size_t new_kvsize = pa.get_item_size(Val(key), Val(val));
+            size_t new_kvsize = pa.get_item_size(Val(key), Val(val).size);
             bool add_new = rand() % 2;
             if( add_new && new_kvsize <= pa.free_capacity() ){
                 pa.insert_at(existing_item, Val(key), Val(val));

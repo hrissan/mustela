@@ -1,5 +1,4 @@
-#ifndef pages_hpp
-#define pages_hpp
+#pragma once
 
 #include <string>
 #include <cstring>
@@ -21,7 +20,8 @@ namespace mustela {
         uint64_t main_count;
         uint64_t main_leaf_page_count;
         uint64_t main_node_page_count;
-        // uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
+        uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
+        bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
 
         bool check(uint32_t system_page_size, uint64_t file_size)const;
     };
@@ -168,7 +168,7 @@ namespace mustela {
 //        PageOffset upper_bound_item(Val key)const{
 //            return page->upper_bound_item(page_size, page->item_offsets, page->item_count, key);
 //        }
-        PageOffset get_item_size(Val key, Val value)const;
+        PageOffset get_item_size(Val key, size_t value_size)const;
         PageOffset capacity()const{
             return page_size - LEAF_HEADER_SIZE;
         }
@@ -200,7 +200,11 @@ namespace mustela {
                 mpage()->free_end_offset = page_size; // compact on last delete :)
         }
         void compact(size_t item_size);
-        void insert_at(PageOffset insert_index, Val key, Val value);
+        char * insert_at(PageOffset insert_index, Val key, size_t value_size);
+        void insert_at(PageOffset insert_index, Val key, Val value){
+            char * dst = insert_at(insert_index, key, value.size);
+            memcpy(dst, value.data, value.size);
+        }
         void append(Val key, Val value){
             insert_at(page->item_count, key, value);
         }
@@ -220,4 +224,3 @@ namespace mustela {
     void test_data_pages();
 }
 
-#endif /* pages_hpp */

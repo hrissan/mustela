@@ -1,5 +1,4 @@
-#ifndef utils_hpp
-#define utils_hpp
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -127,4 +126,3 @@ constexpr int NODE_PID_SIZE = 4; // 4 bytes to store page index will result in ~
     };
 }
 
-#endif /* utils_hpp */
