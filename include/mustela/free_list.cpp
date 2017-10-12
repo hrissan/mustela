@@ -49,6 +49,7 @@ namespace mustela {
                     max_batch = std::max(max_batch, it->second.max_batch);
                 else
                     tid = std::max(tid, it->second.max_tid);
+                it = free_pages.erase(it);
             }
         }
         free_pages.insert(std::make_pair(page, FreePageRange(count, tid, max_batch)));
@@ -99,6 +100,7 @@ namespace mustela {
             if( it->first + it->second.count == page){
                 page = it->first;
                 count += it->second.count;
+                it = future_pages.erase(it);
             }
         }
         future_pages.insert(std::make_pair(page, FreePageRange(count, 0, 0)));
@@ -113,6 +115,25 @@ namespace mustela {
         // old_mvals.push_back( add_key(last_scanned_tid - 1, old_batch++) );
         
         // Now fill space with actual pids, and we are set to go
+    }
+    void FreeList::print_db(){
+        std::cout << "FreeList future pages:";
+        int counter = 0;
+        for(auto && it : future_pages){
+            if( counter++ % 10 == 0)
+                std::cout << std::endl;
+            std::cout << "[" << it.first << ":" << it.second.count << "] ";
+        }
+        std::cout << std::endl;
+    }
+    void FreeList::test(){
+        FreeList list;
+        list.mark_free_in_future_page(1, 2);
+        list.mark_free_in_future_page(7, 4);
+        list.mark_free_in_future_page(4, 2);
+        list.mark_free_in_future_page(3, 1);
+        list.mark_free_in_future_page(6, 1);
+        list.print_db();
     }
 
 }

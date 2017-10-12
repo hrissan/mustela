@@ -8,7 +8,7 @@
 #include "mustela.hpp"
 
 int main(int argc, char * argv[]){
-    
+    mustela::FreeList::test();
     mustela::test_data_pages();
     
     mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");

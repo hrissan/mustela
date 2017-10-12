@@ -34,6 +34,9 @@ namespace mustela {
         Pid get_free_page(Pid contigous_count, Tid oldest_read_tid);
         void mark_free_in_future_page(Pid page, Pid count);
        void commit_free_pages(Tid write_tid);
+       
+       void print_db();
+       static void test();
     };
 }
 
