@@ -52,7 +52,6 @@ void interactive_test(){
                 std::cout << "Bad check" << std::endl;
         }
         txn.commit();
-        txn.commit();
     }
 }
 
