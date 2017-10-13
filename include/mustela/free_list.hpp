@@ -10,21 +10,15 @@
 namespace mustela {
 
    class FreeList {
-        struct FreePageRange {
-            Pid count;
-            Tid max_tid;
-            uint32_t max_batch; // if more than FREE_BATCH pages are freed in transaction, each one gets batch identifier
-            explicit FreePageRange(Pid count, Tid max_tid, uint32_t max_batch):count(count), max_tid(max_tid), max_batch(max_batch)
-            {}
-        };
-        std::map<Pid, FreePageRange> free_pages;
+        std::map<Pid, Pid> free_pages;
         std::map<Pid, std::set<Pid>> size_index;
-       std::map<Pid, FreePageRange> future_pages;
+       std::map<Pid, Pid> future_pages;
+       //std::set<Pid> back_from_future_pages; // If pages we gave are returned to us, we return them into free_pages instead of future_pages
        void add_to_size_index(Pid page, Pid count);
        void remove_from_size_index(Pid page, Pid count);
        
-       void add_to_cache(Pid page, Pid count, Tid tid, uint32_t max_batch);
-       void remove_from_cache(Pid page, Pid count);
+       void add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, bool update_index);
+       void remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, bool update_index);
        
         Tid last_scanned_tid;
         uint32_t last_scanned_batch;
