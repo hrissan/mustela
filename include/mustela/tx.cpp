@@ -50,7 +50,7 @@ namespace mustela {
         // NOP for now
     }
     Pid TX::get_free_page(Pid contigous_count){
-        Pid pa = free_list.get_free_page(contigous_count, oldest_reader_tid);
+        Pid pa = free_list.get_free_page(*this, contigous_count, oldest_reader_tid);
         if( pa )
             return pa;
         my_db.grow_mappings(meta_page.page_count + contigous_count);
@@ -543,7 +543,7 @@ namespace mustela {
     void TX::commit(){
         if( my_db.mappings.empty() || !meta_page.dirty )
             return;
-        free_list.commit_free_pages(meta_page.tid);
+        free_list.commit_free_pages(*this, meta_page.tid);
         meta_page.dirty = false;
         // First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
         for(size_t i = 0; i != my_db.mappings.size(); ++i){

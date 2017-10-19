@@ -27,13 +27,14 @@ using namespace mustela;
             size_index.erase(siit);
     }
 
-    void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, bool update_index){
+    void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & raw_size, bool update_index){
         auto it = cache.lower_bound(page);
         ass(it == cache.end() || it->first != page, "adding existing page to cache");
         if(it != cache.end() && it->first == page + count){
             if( update_index)
                 remove_from_size_index(it->first, it->second);
             count += it->second;
+            raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
             it = cache.erase(it);
         }
         if( it != cache.begin() ){
@@ -42,36 +43,42 @@ using namespace mustela;
                 remove_from_size_index(it->first, it->second);
                 page = it->first;
                 count += it->second;
+                raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
                 it = cache.erase(it);
             }
         }
-        free_pages.insert(std::make_pair(page, count));
+        raw_size += NODE_PID_SIZE + get_compact_size_sqlite4(count);
+        cache.insert(std::make_pair(page, count));
         if( update_index)
             add_to_size_index(page, count);
     }
-    void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, bool update_index){
+    void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & raw_size, bool update_index){
         auto it = cache.find(page);
         ass(it != free_pages.end() && it->second >= count, "invalid remove from cache");
         if( update_index )
             remove_from_size_index(it->first, it->second);
         if( count == it->second ){
-            free_pages.erase(it);
+            raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+            cache.erase(it);
             return;
         }
         auto old_count = it->second;
+        raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+        cache.erase(it);
         old_count -= count;
         page += count;
         if( update_index )
             add_to_size_index(page, old_count);
+        raw_size += NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
         free_pages.insert(std::make_pair(page, old_count));
     }
 
-    Pid FreeList::get_free_page(Pid contigous_count, Tid oldest_read_tid){
+    Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
         while( last_scanned_tid < oldest_read_tid ){
             auto siit = size_index.lower_bound(contigous_count);
             if( siit != size_index.end() ){
                 Pid pa = *(siit->second.begin());
-                remove_from_cache(pa, contigous_count, free_pages, true);
+                remove_from_cache(pa, contigous_count, free_pages, free_pages_raw_size, true);
                 return pa;
             }
             // scan a batch from DB starting from last_scanned_tid, last_scanned_batch
@@ -85,9 +92,9 @@ using namespace mustela;
         return 0;
     }
     void FreeList::mark_free_in_future_page(Pid page, Pid count){
-        add_to_cache(page, count, future_pages, false);
+        add_to_cache(page, count, future_pages, future_pages_raw_size, false);
     }
-    void FreeList::commit_free_pages(Tid write_tid){
+    void FreeList::commit_free_pages(TX & tx, Tid write_tid){
         uint32_t future_batch = 0;
         uint32_t old_batch = 0;
         // while(total_future_keys_space < future_pages.size() && total_old_keys_space < free_pages.size() )

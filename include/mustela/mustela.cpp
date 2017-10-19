@@ -84,6 +84,7 @@ namespace mustela {
             mp->main_count = 0;
             mp->main_leaf_page_count = 1;
             mp->main_node_page_count = 0;
+            mp->main_overflow_page_count = 0;
             mp->dirty = false;
             if( write(fd, meta_buf, page_size) == -1)
                 throw Exception("file write failed in create_db");
