@@ -40,7 +40,8 @@ using namespace mustela;
         if( it != cache.begin() ){
             --it;
             if( it->first + it->second == page){
-                remove_from_size_index(it->first, it->second);
+                if( update_index)
+                    remove_from_size_index(it->first, it->second);
                 page = it->first;
                 count += it->second;
                 raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
