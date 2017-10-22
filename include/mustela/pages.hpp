@@ -37,8 +37,8 @@ namespace mustela {
         Val get_item_key(uint32_t page_size, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const{
             return const_cast<DataPage *>(this)->get_item_key(page_size, item_offsets, item_count, item);
         }
-        size_t get_item_size(uint32_t page_size, bool is_leaf, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const;
-        void remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item);
+//        size_t get_item_size(uint32_t page_size, bool is_leaf, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const;
+        void remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item, size_t item_size);
         MVal insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset insert_index, Val key, size_t item_size);
     };
     constexpr PageOffset NODE_HEADER_SIZE = sizeof(Pid) + sizeof(Tid) + 3*sizeof(PageOffset);
@@ -76,9 +76,7 @@ namespace mustela {
         }
         Pid get_value(PageOffset item)const;
         ValPid get_kv(PageOffset item)const;
-        size_t get_item_size(PageOffset item)const{
-            return page->get_item_size(page_size, false, page->item_offsets, page->item_count, item);
-        }
+        size_t get_item_size(PageOffset item)const;
         PageOffset lower_bound_item(Val key, bool * found = nullptr)const{
             return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
         }
@@ -88,6 +86,12 @@ namespace mustela {
         PageOffset get_item_size(Val key, Pid value)const;
         PageOffset capacity()const{
             return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
+        }
+        PageOffset max_key()const{
+            constexpr int KEY_COUNT = 2; // min keys per page
+            PageOffset space = capacity()/KEY_COUNT - NODE_PID_SIZE;
+            space -= get_compact_size_sqlite4(space);
+            return space;
         }
         PageOffset free_capacity()const{
             return capacity() - data_size();
@@ -112,7 +116,8 @@ namespace mustela {
         }
         void set_value(PageOffset item, Pid value);
         void erase(PageOffset to_remove_item){
-            mpage()->remove_simple(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item);
+            size_t item_size = get_item_size(to_remove_item);
+            mpage()->remove_simple(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item, item_size);
             if( mpage()->item_count == 0)
                 mpage()->free_end_offset = page_size - NODE_PID_SIZE; // compact on last delete :)
         }
@@ -160,9 +165,7 @@ namespace mustela {
         }
 //        Val get_value(PageOffset item)const;
         ValVal get_kv(PageOffset item)const;
-        size_t get_item_size(PageOffset item)const{
-            return page->get_item_size(page_size, false, page->item_offsets, page->item_count, item);
-        }
+        size_t get_item_size(PageOffset item)const;
         PageOffset lower_bound_item(Val key, bool * found = nullptr)const{
             return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
         }
@@ -196,7 +199,8 @@ namespace mustela {
         }
 //        void set_value(PageOffset item, Pid value);
         void erase(PageOffset to_remove_item){
-            mpage()->remove_simple(page_size, true, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item);
+            size_t item_size = get_item_size(to_remove_item);
+            mpage()->remove_simple(page_size, true, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item, item_size);
             if( mpage()->item_count == 0)
                 mpage()->free_end_offset = page_size; // compact on last delete :)
         }

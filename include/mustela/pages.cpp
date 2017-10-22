@@ -55,34 +55,17 @@ namespace mustela {
         return first;
         
     }
-    size_t DataPage::get_item_size(uint32_t page_size, bool is_leaf, const PageOffset * item_offsets, PageOffset item_count, PageOffset item)const{
-        ass(item < item_count, "item_size item too large");
-        const char * raw_this = (const char *)this;
-        PageOffset item_offset = item_offsets[item];
-        uint64_t keysize;
-        auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
-        size_t result;
-        if( is_leaf ){
-            uint64_t valuesize;
-            auto valuesizesize = read_u64_sqlite4(valuesize, raw_this + item_offset + keysizesize + keysize);
-            result = keysizesize + keysize + valuesizesize + valuesize;
-        }else{
-            result = keysizesize + keysize + NODE_PID_SIZE;
-        }
-        ass(item_offset + result <= page_size, "item_size item spills over page");
-        return result + sizeof(PageOffset);
-    }
 
-    void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item){
+    void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item, size_t item_size){
         char * raw_this = (char *)this;
-        auto rem_size = get_item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
-        auto kv_size = rem_size - sizeof(PageOffset);
+//        auto rem_size = get_item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
+        auto kv_size = item_size - sizeof(PageOffset);
         memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
         if( item_offsets[to_remove_item] == free_end_offset )
             free_end_offset += kv_size; // Luck, removed item is after free middle space
         for(PageOffset pos = to_remove_item; pos != item_count - 1; ++pos)
             item_offsets[pos] = item_offsets[pos+1];
-        items_size -= rem_size;
+        items_size -= item_size;
         item_count -= 1;
         item_offsets[item_count] = 0; // clear unused part
     }
@@ -124,6 +107,15 @@ namespace mustela {
             return item_size;
         throw std::runtime_error("Item does not fit in node");
     }
+    size_t CNodePtr::get_item_size(PageOffset item)const{
+        ass(item < page->item_count, "item_size item too large");
+        const char * raw_page = (const char *)page;
+        PageOffset item_offset = page->item_offsets[item];
+        uint64_t keysize;
+        auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
+        return sizeof(PageOffset) + keysizesize + keysize + NODE_PID_SIZE;
+    }
+
     Pid CNodePtr::get_value(PageOffset item)const{
         Pid value;
         if( item == PageOffset(-1) ){
@@ -182,6 +174,16 @@ namespace mustela {
         if( kv_size <= capacity() )
             return kv_size;
         throw std::runtime_error("Item does not fit in leaf");
+    }
+    size_t CLeafPtr::get_item_size(PageOffset item)const{
+        ass(item < page->item_count, "item_size item too large");
+        const char * raw_page = (const char *)page;
+        PageOffset item_offset = page->item_offsets[item];
+        uint64_t keysize;
+        auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
+        uint64_t valuesize;
+        auto valuesizesize = read_u64_sqlite4(valuesize, raw_page + item_offset + keysizesize + keysize);
+        return sizeof(PageOffset) + keysizesize + keysize + valuesizesize + valuesize;
     }
     ValVal CLeafPtr::get_kv(PageOffset item)const{
         ValVal result;
