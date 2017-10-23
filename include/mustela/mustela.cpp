@@ -109,19 +109,23 @@ namespace mustela {
         if( fsync(fd) == -1 )
             throw Exception("fsync failed in create_db");
     }
-    DataPage * DB::writable_page(Pid page)const{
-        auto it = std::upper_bound(mappings.begin(), mappings.end(), page, [](Pid p, const Mapping & ma) {
+    DataPage * DB::writable_page(Pid page, Pid count)const{
+/*        auto it = std::upper_bound(mappings.begin(), mappings.end(), page, [](Pid p, const Mapping & ma) {
             return p < ma.end_page;
         });
-        if( it == mappings.end() )
-            throw Exception("writable_page out of range");
+        ass(it != mappings.end(), "writable_page out of range");
+        ass(page + count <= it->end_page, "writable_page range crosses mapping boundary");
         return (DataPage *)(it->addr + (page - it->begin_page)*page_size);
+ */
+        ass( page + count <= mappings.back().end_page, "writable_page out of range");
+        return (DataPage *)(mappings.back().addr + page * page_size);
     }
-
     void DB::grow_mappings(Pid new_page_count){
         auto old_page_count = mappings.empty() ? 0 : mappings.back().end_page;
         if( new_page_count <= old_page_count )
             return;
+        if( new_page_count * page_size < (1 << 20) )
+            new_page_count = (3 + new_page_count) * 2; // grow aggressively while file is small
         new_page_count = ((3 + new_page_count) * 5 / 4); // reserve 20% excess space, make first mapping include at least 3 meta pages
         size_t additional_granularity = 1;// 65536;  // on Windows mmapped regions should be aligned to 65536
         if( page_size < additional_granularity )
@@ -133,11 +137,24 @@ namespace mustela {
             throw Exception("file seek failed in grow_mappings");
         if( write(fd, "", 1) != 1 )
             throw Exception("file write failed in grow_mappings");
-        uint64_t map_size = new_file_size - old_page_count * page_size;
+        void * wm = mmap(0, new_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (wm == MAP_FAILED)
+            throw Exception("mmap PROT_READ | PROT_WRITE failed");
+        mappings.push_back(Mapping(0, new_page_count, (char *)wm));
+/*        uint64_t map_size = new_file_size - old_page_count * page_size;
         uint64_t map_offset = old_page_count * page_size;
         void * wm = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, map_offset);
         if (wm == MAP_FAILED)
             throw Exception("mmap PROT_READ | PROT_WRITE failed");
-        mappings.push_back(Mapping(old_page_count, new_page_count, (char *)wm));
+        mappings.push_back(Mapping(old_page_count, new_page_count, (char *)wm));*/
     }
+    void DB::trim_old_mappings(){
+        if( mappings.empty() )
+            return;
+        for(size_t m = 0; m != mappings.size() - 1; ++m){
+            munmap(mappings[m].addr, (mappings[m].end_page - mappings[m].begin_page) * page_size);
+        }
+        mappings.erase(mappings.begin(), mappings.end() - 1);
+    }
+
 }

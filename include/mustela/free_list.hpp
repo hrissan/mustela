@@ -16,7 +16,7 @@ namespace mustela {
         std::map<Pid, std::set<Pid>> size_index;
        std::map<Pid, Pid> future_pages;
        size_t future_pages_raw_size;
-       //std::set<Pid> back_from_future_pages; // If pages we gave are returned to us, we return them into free_pages instead of future_pages
+//       std::set<Pid> back_from_future_pages; // If pages we gave are returned to us, we return them into free_pages instead of future_pages
        void add_to_size_index(Pid page, Pid count);
        void remove_from_size_index(Pid page, Pid count);
        

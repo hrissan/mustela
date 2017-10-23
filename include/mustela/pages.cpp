@@ -159,9 +159,9 @@ namespace mustela {
         clear();
         append_range(my_copy, 0, my_copy.size());
     }
-    char * LeafPtr::insert_at(PageOffset insert_index, Val key, size_t value_size){
+    char * LeafPtr::insert_at(PageOffset insert_index, Val key, size_t value_size, bool & overflow){
         ass(insert_index <= mpage()->item_count, "Cannot insert at this index");
-        size_t item_size = get_item_size(key, value_size);
+        size_t item_size = get_item_size(key, value_size, overflow);
         compact(item_size);
         ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
         MVal new_key = mpage()->insert_at(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, insert_index, key, item_size);
@@ -169,13 +169,13 @@ namespace mustela {
         return new_key.end() + valuesizesize;
     }
 
-    PageOffset CLeafPtr::get_item_size(Val key, size_t value_size)const{
-        size_t kv_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size) + value_size;
-        if( kv_size <= capacity() )
-            return kv_size;
-        throw std::runtime_error("Item does not fit in leaf");
+    PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const{
+        size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size);
+        if( kvs_size + value_size <= capacity() )
+            return overflow = false, kvs_size + value_size;
+        return overflow = true, kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
     }
-    size_t CLeafPtr::get_item_size(PageOffset item)const{
+    size_t CLeafPtr::get_item_size(PageOffset item, Pid & overflow_page, Pid & overflow_count)const{
         ass(item < page->item_count, "item_size item too large");
         const char * raw_page = (const char *)page;
         PageOffset item_offset = page->item_offsets[item];
@@ -183,14 +183,26 @@ namespace mustela {
         auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
         uint64_t valuesize;
         auto valuesizesize = read_u64_sqlite4(valuesize, raw_page + item_offset + keysizesize + keysize);
-        return sizeof(PageOffset) + keysizesize + keysize + valuesizesize + valuesize;
+        size_t kvs_size = sizeof(PageOffset) + keysizesize + keysize + valuesizesize;
+        if( kvs_size + valuesize <= capacity() )
+            return overflow_page = 0, overflow_count = 0, kvs_size + valuesize;
+        unpack_uint_be(raw_page + item_offset + keysizesize + keysize + valuesizesize, NODE_PID_SIZE, overflow_page);
+        overflow_count = (valuesize + page_size - 1)/page_size;
+        return kvs_size + NODE_PID_SIZE;
     }
-    ValVal CLeafPtr::get_kv(PageOffset item)const{
+    ValVal CLeafPtr::get_kv(PageOffset item, Pid & overflow_page)const{
         ValVal result;
         result.key = get_key(item);
         uint64_t valuesize;
         auto valuesizesize = read_u64_sqlite4(valuesize, result.key.end());
-        result.value = Val(result.key.end() + valuesizesize, valuesize);
+        size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(result.key.size) + result.key.size + valuesizesize;
+        if( kvs_size + valuesize <= capacity() ){
+            overflow_page = 0;
+            result.value = Val(result.key.end() + valuesizesize, valuesize);
+        }else{
+            unpack_uint_be(result.key.end() + valuesizesize, NODE_PID_SIZE, overflow_page);
+            result.value = Val(result.key.end() + valuesizesize, valuesize);
+        }
         return result;
     }
 
@@ -244,10 +256,14 @@ namespace mustela {
             if( same_key ){
                 if( !remove_existing )
                     continue;
-                pa.erase(existing_item);
+                Pid overflow_page, overflow_count;
+                pa.erase(existing_item, overflow_page, overflow_count);
+                ass(overflow_page == 0, "This test should not use overflow");
                 mirror.erase(key);
             }
-            size_t new_kvsize = pa.get_item_size(Val(key), Val(val).size);
+            bool overflow;
+            size_t new_kvsize = pa.get_item_size(Val(key), Val(val).size, overflow);
+            ass(!overflow, "This test should not use overflow");
             bool add_new = rand() % 2;
             if( add_new && new_kvsize <= pa.free_capacity() ){
                 pa.insert_at(existing_item, Val(key), Val(val));
@@ -259,7 +275,9 @@ namespace mustela {
             std::cout << ma.first << ":" << ma.second << std::endl;
         std::cout << "Page" << std::endl;
         for(int i = 0; i != pa.size(); ++i){
-            ValVal va = pa.get_kv(i);
+            Pid overflow_page;
+            ValVal va = pa.get_kv(i, overflow_page);
+            ass(overflow_page == 0, "This test should not use overflow");
             std::cout << va.key.to_string() << ":" << va.value.to_string() << std::endl;
         }
     }
