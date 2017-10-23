@@ -15,6 +15,9 @@ void interactive_test(){
     const int items_counter = 1000;
     std::default_random_engine e;//{r()};
     std::uniform_int_distribution<int> dist(0, items_counter - 1);
+    for(int i = 0; i != items_counter * 4; ++i){
+        int j = dist(e);
+    }
     while(true){
         std::cout << txn.get_stats() << std::endl;
         std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
@@ -32,14 +35,14 @@ void interactive_test(){
         bool back = input.find("b") != std::string::npos;
         std::cout << "add=" << int(add) << " ran=" << int(ran) << " back=" << int(back) << std::endl;
             for(int i = 0; i != items_counter; ++i){
-//                std::string json = txn.print_db();
-//                std::cout << json << std::endl;
                 int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
                 std::string key = std::to_string(j);
                 std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
                 mustela::Val got;
-                if( i == 140 ){
+                if( i == 849 ){
                     got.size = 0;
+                    std::string json = txn.print_db();
+                    std::cout << json << std::endl;
                 }
                 bool in_db = txn.get(mustela::Val(key), got) && got.to_string() == val;
                 auto mit = mirror.find(key);
