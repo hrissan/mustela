@@ -12,6 +12,7 @@ namespace mustela {
     class DB;
     class TX;
     struct Cursor {
+        TableDesc & table;
         std::vector<std::pair<Pid, PageOffset>> path;
         
         void truncate(size_t height){
@@ -25,7 +26,7 @@ namespace mustela {
     public:
         Cursor(Cursor && other);
         Cursor & operator=(Cursor && other)=delete;
-        explicit Cursor(TX & my_txn);
+        explicit Cursor(TX & my_txn, TableDesc & table);
         ~Cursor();
         void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
             if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= split_index ){
@@ -73,6 +74,20 @@ namespace mustela {
             tmp_pages.clear();
         }
         MetaPage meta_page;
+        std::map<std::string, TableDesc> tables;
+        TableDesc * load_table_desc(const Val & table){
+            auto tit = tables.find(table.to_string());
+            if( tit != tables.end() )
+                return &tit->second;
+            std::string key = "table/" + table.to_string();
+            Val value;
+            if( !get(meta_page.free_table, Val(key), value) )
+                return nullptr;
+            TableDesc & td = tables[table.to_string()];
+            ass(value.size == sizeof(td), "TableDesc size in DB is wrong");
+            memmove(&td, value.data, value.size);
+            return &td;
+        }
         
         FreeList free_list;
         Pid get_free_page(Pid contigous_count);
@@ -101,20 +116,72 @@ namespace mustela {
         std::string print_db(Pid pa, size_t height);
         
 //        Cursor main_cursor;
-    public:
-        explicit TX(DB & my_db);
-        ~TX();
-        std::string print_db();
-        std::string get_stats()const;
-        bool put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
-            char * dst = put(key, value.size, nooverwrite);
+        char * put(TableDesc & table, const Val & key, size_t value_size, bool nooverwrite);
+        bool put(TableDesc & table, const Val & key, const Val & value, bool nooverwrite) {
+            char * dst = put(table, key, value.size, nooverwrite);
             if( dst )
                 memcpy(dst, value.data, value.size);
             return dst != nullptr;
         }
-        char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
-        bool get(const Val & key, Val & value);
-        bool del(const Val & key, bool must_exist);
+        bool get(TableDesc & table, const Val & key, Val & value);
+        bool del(TableDesc & table, const Val & key, bool must_exist);
+        std::string print_db(const TableDesc & table);
+        std::string get_stats(const TableDesc & table, std::string name);
+    public:
+        explicit TX(DB & my_db);
+        ~TX();
+        std::string print_db(){
+            return print_db(meta_page.free_table);
+        }
+        std::string print_db(const Val & table){
+            TableDesc * td = load_table_desc(table);
+            if(!td)
+                return std::string();
+            return print_db(*td);
+        }
+        std::string get_stats(){
+            return get_stats(meta_page.free_table, std::string());
+        }
+        std::string get_stats(const Val & table){
+            TableDesc * td = load_table_desc(table);
+            if(!td)
+                return std::string();
+            return get_stats(*td, table.to_string());
+        }
+        bool create_table(const Val & table){ // true if just created, false if already existed
+            if( load_table_desc(table) )
+                return false;
+            TableDesc & td = tables[table.to_string()];
+            td = TableDesc{};
+            td.root_page = get_free_page(1);
+            td.leaf_page_count = 1;
+            // We will put it in DB on commit
+            return true;
+        }
+        bool put(const Val & table, const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
+            char * dst = put(table, key, value.size, nooverwrite);
+            if( dst )
+                memcpy(dst, value.data, value.size);
+            return dst != nullptr;
+        }
+        char * put(const Val & table, const Val & key, size_t value_size, bool nooverwrite){ // danger! db will alloc space for key/value in db and return address for you to copy value to
+            TableDesc * td = load_table_desc(table);
+            if(!td)
+                return nullptr;
+            return put(*td, key, value_size, nooverwrite);
+        }
+        bool get(const Val & table, const Val & key, Val & value){
+            TableDesc * td = load_table_desc(table);
+            if(!td)
+                return false;
+            return get(*td, key, value);
+        }
+        bool del(const Val & table, const Val & key, bool must_exist){
+            TableDesc * td = load_table_desc(table);
+            if(!td)
+                return false;
+            return del(*td, key, must_exist);
+        }
         void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
     };
 }

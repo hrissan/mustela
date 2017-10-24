@@ -5,7 +5,7 @@
 namespace mustela {
  
     bool MetaPage::check(uint32_t system_page_size, uint64_t file_size)const{
-        return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && main_root_page < page_count && free_root_page < page_count;
+        return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && free_table.root_page < page_count;
     }
 
     MVal DataPage::get_item_key(uint32_t page_size, const PageOffset * item_offsets, PageOffset item_count, PageOffset item){

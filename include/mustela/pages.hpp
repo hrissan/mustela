@@ -7,6 +7,14 @@
 namespace mustela {
 
 #pragma pack(push, 1)
+    struct TableDesc {
+        uint64_t root_page;
+        uint64_t height; // 0 when root is leaf
+        uint64_t count;
+        uint64_t leaf_page_count;
+        uint64_t node_page_count;
+        uint64_t overflow_page_count;
+    };
     struct MetaPage { // We use uint64_t here independent of Page and PageOffset to make meta pages readable across platforms
         uint64_t pid;
         uint64_t tid;
@@ -14,16 +22,11 @@ namespace mustela {
         uint32_t version;
         uint32_t page_size;
         uint64_t page_count; // excess pages in file are all free
-        uint64_t free_root_page;
-        uint64_t main_root_page;
-        uint64_t main_height; // 0 when root is leaf
-        uint64_t main_count;
-        uint64_t main_leaf_page_count;
-        uint64_t main_node_page_count;
-        uint64_t main_overflow_page_count;
+        TableDesc free_table; // All other table descs are stored in free_table together with freelist
         uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
         bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
 
+        Tid effective_tid()const { return std::min(tid, tid2); }
         bool check(uint32_t system_page_size, uint64_t file_size)const;
     };
     struct DataPage {

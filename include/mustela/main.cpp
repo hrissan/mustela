@@ -10,6 +10,8 @@
 void interactive_test(){
     mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
     mustela::TX txn(db);
+    mustela::Val main_table("main");
+    txn.create_table(main_table);
     std::map<std::string, std::string> mirror;
     // TODO - load mirror from db
     const int items_counter = 1000;
@@ -20,6 +22,7 @@ void interactive_test(){
     }
     while(true){
         std::cout << txn.get_stats() << std::endl;
+        std::cout << txn.get_stats(main_table) << std::endl;
         std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
         std::string input;
         getline(std::cin, input);
@@ -27,6 +30,8 @@ void interactive_test(){
             break;
         if( input == "p"){
             std::string json = txn.print_db();
+            std::cout << json << std::endl;
+            json = txn.print_db(main_table);
             std::cout << json << std::endl;
             continue;
         }
@@ -41,30 +46,30 @@ void interactive_test(){
                 mustela::Val got;
                 if( i == 849 ){
                     got.size = 0;
-                    std::string json = txn.print_db();
+                    std::string json = txn.print_db(main_table);
                     std::cout << json << std::endl;
                 }
-                bool in_db = txn.get(mustela::Val(key), got) && got.to_string() == val;
+                bool in_db = txn.get(main_table, mustela::Val(key), got) && got.to_string() == val;
                 auto mit = mirror.find(key);
                 bool in_mirror = mit != mirror.end() && mit->second == val;
                 if( in_db != in_mirror )
                     std::cout << "BAD get" << std::endl;
                 if( add ){
-                    if( !txn.put(mustela::Val(key), mustela::Val(val), false) )
+                    if( !txn.put(main_table, mustela::Val(key), mustela::Val(val), false) )
                         std::cout << "BAD put" << std::endl;
                     mirror[key] = val;
                 }else{
-                    if( !txn.del(mustela::Val(key), false) )
+                    if( !txn.del(main_table, mustela::Val(key), false) )
                         std::cout << "BAD del" << std::endl;
                     mirror.erase(key);
                 }
             }
         for(auto && ma : mirror){
             mustela::Val value;
-            bool result = txn.get(mustela::Val(ma.first), value);
+            bool result = txn.get(main_table, mustela::Val(ma.first), value);
             if( !result || ma.second != value.to_string()){
                 std::cout << "Bad check ma=" << ma.first << std::endl;
-                result = txn.get(mustela::Val(ma.first), value);
+                result = txn.get(main_table, mustela::Val(ma.first), value);
             }
         }
         txn.commit();

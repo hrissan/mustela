@@ -49,17 +49,17 @@ namespace mustela {
     }
     size_t DB::last_meta_page_index()const{
         size_t result = 0;
-        if( readable_meta_page(1)->tid > readable_meta_page(result)->tid )
+        if( readable_meta_page(1)->effective_tid() > readable_meta_page(result)->effective_tid() )
             result = 1;
-        if( readable_meta_page(2)->tid > readable_meta_page(result)->tid )
+        if( readable_meta_page(2)->effective_tid() > readable_meta_page(result)->effective_tid() )
             result = 2;
         return result;
     }
     size_t DB::oldest_meta_page_index()const{
         size_t result = 0;
-        if( readable_meta_page(1)->tid < readable_meta_page(result)->tid )
+        if( readable_meta_page(1)->effective_tid() < readable_meta_page(result)->effective_tid() )
             result = 1;
-        if( readable_meta_page(2)->tid < readable_meta_page(result)->tid )
+        if( readable_meta_page(2)->effective_tid() < readable_meta_page(result)->effective_tid() )
             result = 2;
         return result;
     }
@@ -74,17 +74,9 @@ namespace mustela {
             mp->magic = META_MAGIC;
             mp->version = OUR_VERSION;
             mp->page_size = page_size;
-            mp->page_count = 5;
-            mp->pid = 0;
-            mp->tid = 0;
-            mp->tid2 = 0;
-            mp->main_root_page = 3;
-            mp->main_height = 0;
-            mp->free_root_page = 4;
-            mp->main_count = 0;
-            mp->main_leaf_page_count = 1;
-            mp->main_node_page_count = 0;
-            mp->main_overflow_page_count = 0;
+            mp->page_count = 4;
+            mp->free_table.leaf_page_count = 1;
+            mp->free_table.root_page = 3;
             mp->dirty = false;
             if( write(fd, meta_buf, page_size) == -1)
                 throw Exception("file write failed in create_db");

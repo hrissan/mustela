@@ -12,13 +12,13 @@
 
 namespace mustela {
     
-    Cursor::Cursor(TX & my_txn):my_txn(my_txn){
+    Cursor::Cursor(TX & my_txn, TableDesc & table):my_txn(my_txn), table(table){
         my_txn.my_cursors.insert(this);
     }
     Cursor::~Cursor(){
         my_txn.my_cursors.erase(this);
     }
-    Cursor::Cursor(Cursor && other):my_txn(other.my_txn){
+    Cursor::Cursor(Cursor && other):my_txn(other.my_txn), table(other.table){
         my_txn.my_cursors.insert(this);
         path = std::move(other.path);
     }
@@ -101,8 +101,8 @@ namespace mustela {
         memcpy(wr_dap, dap, page_size);
         wr_dap->pid = new_page;
         wr_dap->tid = meta_page.tid;
-        if(height == meta_page.main_height){ // node is root
-            meta_page.main_root_page = new_page;
+        if(height == cur.table.height){ // node is root
+            cur.table.root_page = new_page;
             return wr_dap;
         }
         NodePtr wr_parent(page_size, (NodePage *)make_pages_writable(cur, height + 1));
@@ -110,23 +110,23 @@ namespace mustela {
         return wr_dap;
     }
     Cursor TX::insert_pages_to_node(Cursor & cur, size_t height, Val key, Pid new_pid){
-        if( height == meta_page.main_height + 1){ // making new root
+        if( height == cur.table.height + 1){ // making new root
             NodePtr wr_root = writable_node(get_free_page(1));
-            meta_page.main_node_page_count += 1;
+            cur.table.node_page_count += 1;
             wr_root.init_dirty(meta_page.tid);
-            Pid previous_root = meta_page.main_root_page;
+            Pid previous_root = cur.table.root_page;
             wr_root.set_value(-1, previous_root);
             wr_root.append(key, new_pid);
-            meta_page.main_root_page = wr_root.page->pid;
-            meta_page.main_height += 1;
+            cur.table.root_page = wr_root.page->pid;
+            cur.table.height += 1;
             for(auto && c : my_cursors)
-                c->path.push_back(std::make_pair(meta_page.main_root_page, -1) );
+                c->path.push_back(std::make_pair(cur.table.root_page, -1) );
 //                ass(c->path.at[0].first == new_pid || c->path.at[0].first == previous_root, "Increasing height, but stray cursor found");
 //                bool was_left = c->path.at[0].first == previous_root;
-            Cursor cur2(*this);
+            Cursor cur2(*this, cur.table);
             cur2.path = cur.path;//.resize(meta_page.main_height, std::make_pair(-1, -1));
 //            cur2.path[meta_page.main_height - 1] = std::make_pair(new_pid, 0);
-            cur2.path.at(meta_page.main_height) = std::make_pair(meta_page.main_root_page, 0);
+            cur2.path.at(cur.table.height) = std::make_pair(cur.table.root_page, 0);
             return cur2;
         }
         auto path_el = cur.path.at(height);
@@ -140,7 +140,7 @@ namespace mustela {
         wr_dap.insert_at(path_el.second + 1, key, new_pid);
         for(auto && c : my_cursors)
             c->on_insert(height, path_el.first, path_el.second + 1);
-        Cursor cur2(*this);
+        Cursor cur2(*this, cur.table);
         cur2.path = cur.path;//.insert(cur2.path.end(), cur.path.begin(), cur.path.begin() + height + 1);
         cur2.path.at(height).second += 1;// = std::make_pair(new_pid, 0);
         return cur2;
@@ -196,7 +196,7 @@ namespace mustela {
         //ass(split_index >= 0 && split_index < wr_dap->item_count, "Could not find split index for node");
         
         NodePtr wr_right = writable_node(get_free_page(1));
-        meta_page.main_node_page_count += 1;
+        cur.table.node_page_count += 1;
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
         NodePtr my_copy = push_tmp_copy(wr_dap.page);
@@ -271,7 +271,7 @@ namespace mustela {
             insert_direction = 0;
         }
         LeafPtr wr_right = writable_leaf(get_free_page(1));
-        meta_page.main_leaf_page_count += 1;
+        cur.table.leaf_page_count += 1;
         wr_right.init_dirty(meta_page.tid);
         wr_right.append_range(wr_dap, split_index, wr_dap.size());
         Val right_key0 = (insert_direction == 1 && insert_index == split_index) ? insert_key : wr_right.get_key(0);
@@ -292,7 +292,7 @@ namespace mustela {
                 c->on_insert(0, wr_right.page->pid, insert_index - split_index);
         }else {
             LeafPtr wr_middle = writable_leaf(get_free_page(1));
-            meta_page.main_leaf_page_count += 1;
+            cur.table.leaf_page_count += 1;
             wr_middle.init_dirty(meta_page.tid);
             result = wr_middle.insert_at(0, insert_key, insert_val_size, overflow);
             insert_pages_to_node(cur, 1, insert_key, wr_middle.page->pid);
@@ -302,13 +302,13 @@ namespace mustela {
     void TX::merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap){
         if( wr_dap.data_size() >= wr_dap.capacity()/2 )
             return;
-        if(height == meta_page.main_height){ // merging root
+        if(height == cur.table.height){ // merging root
             if( wr_dap.size() != 0) // wait until 1 key remains, make it new root
                 return;
-            mark_free_in_future_page(meta_page.main_root_page, 1);
-            meta_page.main_node_page_count -= 1;
-            meta_page.main_root_page = wr_dap.get_value(-1);
-            meta_page.main_height -= 1;
+            mark_free_in_future_page(cur.table.root_page, 1);
+            cur.table.node_page_count -= 1;
+            cur.table.root_page = wr_dap.get_value(-1);
+            cur.table.height -= 1;
             for(auto && c : my_cursors)
                 c->path.pop_back();
             return;
@@ -426,7 +426,7 @@ namespace mustela {
             wr_dap.set_value(-1, left_sib.get_value(-1));
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
-            meta_page.main_node_page_count -= 1;
+            cur.table.node_page_count -= 1;
             wr_parent.erase(path_pa.second);
             wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
@@ -436,14 +436,14 @@ namespace mustela {
             wr_dap.append(right_kv.key, spec_val);
             wr_dap.append_range(right_sib, 0, right_sib.size());
             mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
-            meta_page.main_node_page_count -= 1;
+            cur.table.node_page_count -= 1;
             wr_parent.erase(path_pa.second + 1);
         }
         merge_if_needed_node(cur, height + 1, wr_parent);
     }
     void TX::prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap){
         mark_free_in_future_page(wr_dap.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
-        meta_page.main_node_page_count -= 1;
+        cur.table.node_page_count -= 1;
         auto & path_el = cur.path.at(height);
         auto & path_pa = cur.path.at(height + 1);
         NodePtr wr_parent = writable_node(path_pa.first);
@@ -473,7 +473,7 @@ namespace mustela {
             c = 1;
         if( wr_dap.size() == 0 && wr_parent.size() == 0 ){ // Prune empty leaf + nodes
             mark_free_in_future_page(wr_dap.page->pid, 1);
-            meta_page.main_leaf_page_count -= 1;
+            cur.table.leaf_page_count -= 1;
             prune_empty_node(cur, 1, wr_parent);
             return;
         }
@@ -506,7 +506,7 @@ namespace mustela {
         if( left_sib.page ){
             wr_dap.insert_range(0, left_sib, 0, left_sib.size());
             mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
-            meta_page.main_leaf_page_count -= 1;
+            cur.table.leaf_page_count -= 1;
             wr_parent.erase(path_pa.second);
             wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
             path_pa.second -= 1; // fix cursor
@@ -514,15 +514,15 @@ namespace mustela {
         if( right_sib.page ){
             wr_dap.append_range(right_sib, 0, right_sib.size());
             mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
-            meta_page.main_leaf_page_count -= 1;
+            cur.table.leaf_page_count -= 1;
             wr_parent.erase(path_pa.second + 1);
         }
         if( left_sib.page || right_sib.page )
             merge_if_needed_node(cur, 1, wr_parent);
     }
 
-    char * TX::put(const Val & key, size_t value_size, bool nooverwrite){
-        Cursor main_cursor(*this);
+    char * TX::put(TableDesc & table, const Val & key, size_t value_size, bool nooverwrite){
+        Cursor main_cursor(*this, table);
         lower_bound(main_cursor, key);
         CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
         PageOffset item = main_cursor.path.at(0).second;
@@ -536,7 +536,7 @@ namespace mustela {
             Pid overflow_page, overflow_count;
             wr_dap.erase(main_cursor.path.at(0).second, overflow_page, overflow_count);
             if( overflow_page ){
-                meta_page.main_overflow_page_count -= overflow_count;
+                table.overflow_page_count -= overflow_count;
                 mark_free_in_future_page(overflow_page, overflow_count);
             }
         }
@@ -550,17 +550,17 @@ namespace mustela {
         if( overflow ){
             Pid overflow_count = (value_size + page_size - 1)/page_size;
             Pid opa = get_free_page(overflow_count);
-            meta_page.main_overflow_page_count += overflow_count;
+            table.overflow_page_count += overflow_count;
             pack_uint_be(result, NODE_PID_SIZE, opa);
             result = writable_overflow(opa, overflow_count);
         }
         if( !same_key )
-            meta_page.main_count += 1;
+            table.count += 1;
         clear_tmp_copies();
         return result;
     }
-    bool TX::get(const Val & key, Val & value){
-        Cursor main_cursor(*this);
+    bool TX::get(TableDesc & table, const Val & key, Val & value){
+        Cursor main_cursor(*this, table);
         lower_bound(main_cursor, key);
         CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
         PageOffset item = main_cursor.path.at(0).second;
@@ -575,8 +575,8 @@ namespace mustela {
         value = kv.value;
         return true;
     }
-    bool TX::del(const Val & key, bool must_exist){
-        Cursor main_cursor(*this);
+    bool TX::del(TableDesc & table, const Val & key, bool must_exist){
+        Cursor main_cursor(*this, table);
         lower_bound(main_cursor, key);
         CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
         PageOffset item = main_cursor.path.at(0).second;
@@ -588,11 +588,11 @@ namespace mustela {
         Pid overflow_page, overflow_count;
         wr_dap.erase(main_cursor.path.at(0).second, overflow_page, overflow_count);
         if( overflow_page ) {
-            meta_page.main_overflow_page_count -= overflow_count;
+            table.overflow_page_count -= overflow_count;
             mark_free_in_future_page(overflow_page, overflow_count);
         }
         merge_if_needed_leaf(main_cursor, wr_dap);
-        meta_page.main_count -= 1;
+        table.count -= 1;
         clear_tmp_copies();
         return true;
     }
@@ -600,6 +600,14 @@ namespace mustela {
     void TX::commit(){
         if( my_db.mappings.empty() || !meta_page.dirty )
             return;
+        for(auto && tit : tables){ // First write all dirty table descriptions
+            CLeafPtr dap = readable_leaf(tit.second.root_page);
+            if( dap.page->tid != meta_page.tid ) // Table not dirty
+                continue;
+            std::string key = "table/" + tit.first;
+            Val value(reinterpret_cast<const char *>(&tit.second), sizeof(TableDesc));
+            ass(put(meta_page.free_table, Val(key), value, false), "Writing table desc failed during commit");
+        }
         free_list.commit_free_pages(*this, meta_page.tid);
         meta_page.dirty = false;
         // First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
@@ -620,8 +628,8 @@ namespace mustela {
         start_transaction();
     }
     void TX::lower_bound(Cursor & cur, const Val & key){
-        Pid pa = meta_page.main_root_page;
-        size_t height = meta_page.main_height;
+        Pid pa = cur.table.root_page;
+        size_t height = cur.table.height;
         cur.path.resize(height + 1);
         while(true){
             if( height == 0 ){
@@ -647,19 +655,20 @@ namespace mustela {
         //    'leaf_pages': 73658L,
         //    'overflow_pages': 0L,
         //    'psize': 4096L}
-    std::string TX::get_stats()const{
+    std::string TX::get_stats(const TableDesc & table, std::string name){
         std::string result;
-        result += "{'branch_pages': " + std::to_string(meta_page.main_node_page_count) +
-        ",\n\t'depth': " + std::to_string(meta_page.main_height) +
-        ",\n\t'entries': " + std::to_string(meta_page.main_count) +
-        ",\n\t'leaf_pages': " + std::to_string(meta_page.main_leaf_page_count) +
-        ",\n\t'overflow_pages': " + std::to_string(meta_page.main_overflow_page_count) +
-        ",\n\t'psize': " + std::to_string(page_size) + "}";
+        result += "{'branch_pages': " + std::to_string(table.node_page_count) +
+        ",\n\t'depth': " + std::to_string(table.height) +
+        ",\n\t'entries': " + std::to_string(table.count) +
+        ",\n\t'leaf_pages': " + std::to_string(table.leaf_page_count) +
+        ",\n\t'overflow_pages': " + std::to_string(table.overflow_page_count) +
+        ",\n\t'psize': " + std::to_string(page_size) +
+        ",\n\t'table': '" + name + "'}";
         return result;
     }
-    std::string TX::print_db(){
-        Pid pa = meta_page.main_root_page;
-        size_t height = meta_page.main_height;
+    std::string TX::print_db(const TableDesc & table){
+        Pid pa = table.root_page;
+        size_t height = table.height;
         return print_db(pa, height);
     }
     std::string TX::print_db(Pid pid, size_t height){
