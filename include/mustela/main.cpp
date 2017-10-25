@@ -8,7 +8,8 @@
 #include "mustela.hpp"
 
 void interactive_test(){
-    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
+//    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
+    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
     mustela::TX txn(db);
     mustela::Val main_table("main");
     txn.create_table(main_table);

@@ -575,6 +575,21 @@ namespace mustela {
         value = kv.value;
         return true;
     }
+    bool TX::get_next(TableDesc & table, Val & key, Val & value){
+        Cursor main_cursor(*this, table);
+        lower_bound(main_cursor, key);
+        CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
+        PageOffset item = main_cursor.path.at(0).second;
+        if( item == dap.size() )
+            return false;
+        Pid overflow_page;
+        auto kv = dap.get_kv(item, overflow_page);
+        key = kv.key;
+        if( overflow_page )
+            kv.value.data = readable_overflow(overflow_page);
+        value = kv.value;
+        return true;
+    }
     bool TX::del(TableDesc & table, const Val & key, bool must_exist){
         Cursor main_cursor(*this, table);
         lower_bound(main_cursor, key);

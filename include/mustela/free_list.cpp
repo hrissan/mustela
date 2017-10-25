@@ -21,8 +21,9 @@ static size_t get_records_count(Pid count){
     void FreeList::add_to_size_index(Pid page, Pid count){
 //        if(count == 1)
 //            return;
-        auto sitem = size_index[count];
-        ass(sitem.insert(page).second, "Page is twice in size_index");
+        auto & sitem = size_index[count];
+        bool ins = sitem.insert(page).second;
+        ass(ins, "Page is twice in size_index");
     }
     void FreeList::remove_from_size_index(Pid page, Pid count){
 //        if(count == 1)
@@ -62,7 +63,7 @@ static size_t get_records_count(Pid count){
     }
     void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index){
         auto it = cache.find(page);
-        ass(it != free_pages.end() && it->second >= count, "invalid remove from cache");
+        ass(it != cache.end() && it->second >= count, "invalid remove from cache");
         if( update_index )
             remove_from_size_index(it->first, it->second);
         if( count == it->second ){
@@ -82,7 +83,7 @@ static size_t get_records_count(Pid count){
     }
 
     Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
-        while( last_scanned_tid < oldest_read_tid ){
+        while( true ){
             auto siit = size_index.lower_bound(contigous_count);
             if( siit != size_index.end() ){
                 Pid pa = *(siit->second.begin());
@@ -90,13 +91,25 @@ static size_t get_records_count(Pid count){
                 back_from_future_pages.insert(pa);
                 return pa;
             }
-            // scan a batch from DB starting from last_scanned_tid, last_scanned_batch
-/*            Tid db_tid = 0;
-            uint32_t batch_num = 0;
-            for(auto && pidcount : pidcounts){
-                add_to_cache(pidcount.first, pidcount.second, free_pages, true);
-            }*/
-            break;
+            Val key("f");
+            Val value;
+            if( !tx.get_next(tx.meta_page.free_table, key, value))
+                break;
+            if( key.size < 1 || key.data[0] != 'f' ) // Not a free list record
+                break;
+            Tid tid;
+            size_t kpos = read_u64_sqlite4(tid, key.data + 1);
+            // We ignore batch, we know they go sequentially
+            if( tid >= oldest_read_tid )
+                break;
+            size_t rec = 0;
+            for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
+                Pid page;
+                unpack_uint_be(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
+                Pid count = value.data[rec * RECORD_SIZE + NODE_PID_SIZE];
+                add_to_cache(page, count, free_pages, free_pages_record_count, true);
+            }
+            ass(tx.del(tx.meta_page.free_table, key, true), "Failed to delete free list records after reading");
         }
         return 0;
     }
@@ -172,6 +185,11 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
         fill_record_space(tx, 0, old_space, free_pages);
         fill_record_space(tx, write_tid, future_space, future_pages);
         back_from_future_pages.clear();
+        free_pages.clear();
+        future_pages.clear();
+        size_index.clear();
+        free_pages_record_count = 0;
+        future_record_count = 0;
     }
     void FreeList::print_db(){
         std::cout << "FreeList future pages:";

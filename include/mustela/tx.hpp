@@ -123,6 +123,7 @@ namespace mustela {
             return dst != nullptr;
         }
         bool get(TableDesc & table, const Val & key, Val & value);
+        bool get_next(TableDesc & table, Val & key, Val & value);
         bool del(TableDesc & table, const Val & key, bool must_exist);
         std::string print_db(const TableDesc & table);
         std::string get_stats(const TableDesc & table, std::string name);
