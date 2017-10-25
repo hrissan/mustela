@@ -158,6 +158,16 @@ namespace mustela {
             // We will put it in DB on commit
             return true;
         }
+        bool drop_table(const Val & table){ // true if dropped, false if did not exist
+            if( load_table_desc(table) )
+                return false;
+            // TODO - iterate cursors and throw if any points to this table
+            // TODO - mark all table pages as free
+            std::string key = "table/" + table.to_string();
+            ass(del(meta_page.free_table, Val(key), true), "Error while dropping table");
+            tables.erase(key);
+            return true;
+        }
         bool put(const Val & table, const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
             char * dst = put(table, key, value.size, nooverwrite);
             if( dst )
