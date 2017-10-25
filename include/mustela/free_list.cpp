@@ -8,8 +8,15 @@
 #include <errno.h>
 #include <iostream>
 #include <algorithm>
+#include "tx.hpp"
 
 using namespace mustela;
+
+constexpr size_t RECORD_SIZE = NODE_PID_SIZE + 1;
+// Use store fixed-size records of NODE_PID_SIZE page + 1-byte count
+static size_t get_records_count(Pid count){
+    return ((count + 254) / 255);
+}
 
     void FreeList::add_to_size_index(Pid page, Pid count){
 //        if(count == 1)
@@ -27,14 +34,14 @@ using namespace mustela;
             size_index.erase(siit);
     }
 
-    void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & raw_size, bool update_index){
+    void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index){
         auto it = cache.lower_bound(page);
         ass(it == cache.end() || it->first != page, "adding existing page to cache");
         if(it != cache.end() && it->first == page + count){
             if( update_index)
                 remove_from_size_index(it->first, it->second);
             count += it->second;
-            raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+            record_count -= get_records_count(it->second);
             it = cache.erase(it);
         }
         if( it != cache.begin() ){
@@ -44,33 +51,33 @@ using namespace mustela;
                     remove_from_size_index(it->first, it->second);
                 page = it->first;
                 count += it->second;
-                raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+                record_count -= get_records_count(it->second);
                 it = cache.erase(it);
             }
         }
-        raw_size += NODE_PID_SIZE + get_compact_size_sqlite4(count);
+        record_count += get_records_count(count);
         cache.insert(std::make_pair(page, count));
         if( update_index)
             add_to_size_index(page, count);
     }
-    void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & raw_size, bool update_index){
+    void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index){
         auto it = cache.find(page);
         ass(it != free_pages.end() && it->second >= count, "invalid remove from cache");
         if( update_index )
             remove_from_size_index(it->first, it->second);
         if( count == it->second ){
-            raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+            record_count -= get_records_count(it->second);
             cache.erase(it);
             return;
         }
         auto old_count = it->second;
-        raw_size -= NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+        record_count -= get_records_count(it->second);
         cache.erase(it);
         old_count -= count;
         page += count;
         if( update_index )
             add_to_size_index(page, old_count);
-        raw_size += NODE_PID_SIZE + get_compact_size_sqlite4(it->second);
+        record_count += get_records_count(it->second);
         free_pages.insert(std::make_pair(page, old_count));
     }
 
@@ -79,7 +86,8 @@ using namespace mustela;
             auto siit = size_index.lower_bound(contigous_count);
             if( siit != size_index.end() ){
                 Pid pa = *(siit->second.begin());
-                remove_from_cache(pa, contigous_count, free_pages, free_pages_raw_size, true);
+                remove_from_cache(pa, contigous_count, free_pages, free_pages_record_count, true);
+                back_from_future_pages.insert(pa);
                 return pa;
             }
             // scan a batch from DB starting from last_scanned_tid, last_scanned_batch
@@ -93,18 +101,77 @@ using namespace mustela;
         return 0;
     }
     void FreeList::mark_free_in_future_page(Pid page, Pid count){
-        add_to_cache(page, count, future_pages, future_pages_raw_size, false);
+        auto bfit = back_from_future_pages.find(page);
+        if( bfit != back_from_future_pages.end()){
+            back_from_future_pages.erase(bfit);
+            add_to_cache(page, count, free_pages, free_pages_record_count, true);
+            return;
+        }
+        add_to_cache(page, count, future_pages, future_pages_record_count, false);
     }
+void FreeList::fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages){
+    size_t space_count = 0;
+    size_t space_pos = 0;
+    for(auto && pa : pages){
+        Pid pid = pa.first;
+        Pid count = pa.second;
+        while( count > 0 ){
+            Pid r_count = std::min<Pid>(count, 255);
+            ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
+            pack_uint_be(space[space_count].data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
+            space[space_count].data[space_pos] = r_count; space_pos += 1;
+            ass( space_pos <= space[space_count].size, "Overshoot of space_pos while writing free list");
+            if( space_pos == space[space_count].size){
+                space_pos = 0;
+                space_count += 1;
+            }
+            count -= r_count;
+        }
+    }
+    for(;space_count < space.size(); space_count += 1){
+        memset(space[space_count].data + space_pos, 0, space[space_count].size - space_pos);
+        space_pos = 0;
+    }
+}
+void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count){
+    const size_t page_records = tx.page_size / RECORD_SIZE;
+    while(space_record_count < record_count){
+        char keybuf[20]="f";
+        size_t p1 = 1;
+        p1 += write_u64_sqlite4(tid, keybuf + p1);
+        p1 += write_u64_sqlite4(batch, keybuf + p1);
+        batch += 1;
+        size_t recs = std::min(page_records, record_count - space_record_count);
+        char * raw_space = tx.put(tx.meta_page.free_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
+        space.push_back(MVal(raw_space, recs * RECORD_SIZE));
+        space_record_count += recs;
+    }
+}
     void FreeList::commit_free_pages(TX & tx, Tid write_tid){
-        uint32_t future_batch = 0;
         uint32_t old_batch = 0;
-        // while(total_future_keys_space < future_pages.size() && total_old_keys_space < free_pages.size() )
-        // while(total_future_keys_space < future_pages.size())
-        // future_mvals.push_back( add_key(write_tid, future_batch++) );
-        // while(total_old_keys_space < free_pages.size())
-        // old_mvals.push_back( add_key(last_scanned_tid-1, old_batch++) );
-        
-        // Now fill space with actual pids, and we are set to go
+        size_t old_record_count = 0;
+        std::vector<MVal> old_space;
+        uint32_t future_batch = 0;
+        size_t future_record_count = 0;
+        std::vector<MVal> future_space;
+        const size_t page_records = tx.page_size / RECORD_SIZE;
+        while(old_record_count < free_pages_record_count || future_record_count < future_pages_record_count){
+            grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages_record_count);
+            grow_record_space(tx, write_tid, future_batch, future_space, future_record_count, future_pages_record_count);
+        }
+        if( !free_pages.empty() ){ // Try to defrag the end of file
+            auto fit = free_pages.end();
+            --fit;
+            Pid last_page = fit->first;
+            Pid last_count = fit->second;
+            if( last_page + last_count == tx.meta_page.page_count){
+                tx.meta_page.page_count -= last_count;
+                free_pages.erase(fit);
+            }
+        }
+        fill_record_space(tx, 0, old_space, free_pages);
+        fill_record_space(tx, write_tid, future_space, future_pages);
+        back_from_future_pages.clear();
     }
     void FreeList::print_db(){
         std::cout << "FreeList future pages:";

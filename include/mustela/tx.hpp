@@ -52,8 +52,7 @@ namespace mustela {
         DB & my_db;
         std::set<Cursor *> my_cursors;
         friend class Cursor;
-        const uint32_t page_size; // copy from my_db
-
+        friend class FreeList;
         size_t meta_page_index;
         Tid oldest_reader_tid;
         std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
@@ -128,6 +127,7 @@ namespace mustela {
         std::string print_db(const TableDesc & table);
         std::string get_stats(const TableDesc & table, std::string name);
     public:
+        const uint32_t page_size; // copy from my_db
         explicit TX(DB & my_db);
         ~TX();
         std::string print_db(){
