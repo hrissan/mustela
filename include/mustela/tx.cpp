@@ -35,8 +35,9 @@ namespace mustela {
     }
     void TX::start_transaction(){
         meta_page_index = my_db.oldest_meta_page_index(); // Overwrite oldest page
+        auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
+        oldest_reader_tid = oldest_meta_page->tid; // TODO ask from reader-writer lock
         auto newest_page_index = my_db.last_meta_page_index(); // by newest
-        oldest_reader_tid = my_db.oldest_meta_page_index(); // TODO ask from reader-writer lock
         meta_page = *(my_db.readable_meta_page(newest_page_index));
         meta_page.tid += 1;
         meta_page.tid2 = meta_page.tid;
@@ -74,11 +75,11 @@ namespace mustela {
     }
     Pid TX::get_free_page(Pid contigous_count){
         Pid pa = free_list.get_free_page(*this, contigous_count, oldest_reader_tid);
-        if( pa )
-            return pa;
-        my_db.grow_mappings(meta_page.page_count + contigous_count);
-        pa = meta_page.page_count;
-        meta_page.page_count += contigous_count;
+        if( !pa ){
+            my_db.grow_mappings(meta_page.page_count + contigous_count);
+            pa = meta_page.page_count;
+            meta_page.page_count += contigous_count;
+        }
         DataPage * new_pa = my_db.writable_page(pa, contigous_count);
         new_pa->pid = pa;
         new_pa->tid = meta_page.tid;
@@ -227,7 +228,7 @@ namespace mustela {
             return cur2;
         }
         wr_right.set_value(-1, insert_page);
-        cur2.path.at(height) = std::make_pair(insert_page, -1);
+        cur2.path.at(height) = std::make_pair(wr_right.page->pid, -1);
         return cur2;
 //        insert_pages_to_node(cur, height - 1, insert_key, wr_right.page->pid);
     }

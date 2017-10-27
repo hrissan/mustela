@@ -132,6 +132,14 @@ namespace mustela {
         void compact(size_t item_size);
         void insert_at(PageOffset insert_index, Val key, Pid value){
             ass(insert_index <= mpage()->item_count, "Cannot insert at this index");
+            if(insert_index < mpage()->item_count){
+                ValPid right_kv = get_kv(insert_index);
+                ass(key < right_kv.key, "Wrong insert order 1");
+            }
+            if( insert_index > 0){
+                ValPid left_kv = get_kv(insert_index - 1);
+                ass(left_kv.key < key, "Wrong insert order 2");
+            }
             size_t item_size = get_item_size(key, value);
             compact(item_size);
             ass(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");

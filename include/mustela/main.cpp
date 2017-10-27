@@ -21,19 +21,24 @@ void interactive_test(){
     for(int i = 0; i != items_counter * 4; ++i){
         int j = dist(e);
     }
+    std::vector<std::string> cmds{"ar", "ar", "dr", "dr", "ar", "ar"};
     while(true){
+//        std::string json = txn.print_db();
+//        std::cout << json << std::endl;
         std::cout << txn.get_stats() << std::endl;
         std::cout << txn.get_stats(main_table) << std::endl;
         std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
         std::string input;
-        getline(std::cin, input);
+        if( !cmds.empty()){
+            input = cmds.at(0);
+            cmds.erase(cmds.begin());
+        }else
+            getline(std::cin, input);
         if( input == "q")
             break;
         if( input == "p"){
-            std::string json = txn.print_db();
-            std::cout << json << std::endl;
-            json = txn.print_db(main_table);
-            std::cout << json << std::endl;
+            //json = txn.print_db(main_table);
+            //std::cout << json << std::endl;
             continue;
         }
         bool add = input.find("a") != std::string::npos;
@@ -45,7 +50,7 @@ void interactive_test(){
                 std::string key = std::to_string(j);
                 std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
                 mustela::Val got;
-                if( i == 849 ){
+                if( (i == 549 && j == 70) || (i == 550 && j == 295) ){
                     got.size = 0;
                     std::string json = txn.print_db(main_table);
                     std::cout << json << std::endl;

@@ -30,7 +30,8 @@ namespace mustela {
         ~Cursor();
         void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
             if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= split_index ){
-                for(size_t i = 0; i != height; ++i)
+                for(size_t i = height + 1; i != table.height + 1; ++i)
+//                for(size_t i = 0; i != height; ++i)
                     path.at(i).first = cur2.path.at(i).first;
                 path.at(height).second -= split_index_r;
             }
