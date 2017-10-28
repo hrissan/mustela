@@ -80,6 +80,8 @@ namespace mustela {
             pa = meta_page.page_count;
             meta_page.page_count += contigous_count;
         }
+        if( 3731 >= pa && 3731 < pa + contigous_count )
+            pa = pa;
         DataPage * new_pa = my_db.writable_page(pa, contigous_count);
         new_pa->pid = pa;
         new_pa->tid = meta_page.tid;
@@ -128,6 +130,7 @@ namespace mustela {
             cur2.path = cur.path;//.resize(meta_page.main_height, std::make_pair(-1, -1));
 //            cur2.path[meta_page.main_height - 1] = std::make_pair(new_pid, 0);
             cur2.path.at(cur.table.height) = std::make_pair(cur.table.root_page, 0);
+            cur2.path.at(height - 1) = std::make_pair(new_pid, 0);
             return cur2;
         }
         auto path_el = cur.path.at(height);
@@ -135,7 +138,7 @@ namespace mustela {
         size_t required_size = wr_dap.get_item_size(key, new_pid);
         if( wr_dap.free_capacity() < required_size ){
             Cursor cur3 = force_split_node(cur, height, key, new_pid);
-            //cur3.path[height] = std::make_pair(new_pid, 0);
+            cur3.path.at(height - 1) = std::make_pair(new_pid, 0);
             return cur3;
         }
         wr_dap.insert_at(path_el.second + 1, key, new_pid);
@@ -144,6 +147,7 @@ namespace mustela {
         Cursor cur2(*this, cur.table);
         cur2.path = cur.path;//.insert(cur2.path.end(), cur.path.begin(), cur.path.begin() + height + 1);
         cur2.path.at(height).second += 1;// = std::make_pair(new_pid, 0);
+        cur2.path.at(height - 1) = std::make_pair(new_pid, 0);
         return cur2;
     }
     PageOffset TX::find_split_index(const CNodePtr & wr_dap, int * insert_direction, PageOffset insert_index, Val insert_key, Pid insert_page, size_t add_size_left, size_t add_size_right){
@@ -445,7 +449,7 @@ namespace mustela {
     void TX::prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap){
         mark_free_in_future_page(wr_dap.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
         cur.table.node_page_count -= 1;
-        auto & path_el = cur.path.at(height);
+//        auto & path_el = cur.path.at(height);
         auto & path_pa = cur.path.at(height + 1);
         NodePtr wr_parent = writable_node(path_pa.first);
         if( wr_parent.size() == 0){
@@ -622,7 +626,7 @@ namespace mustela {
                 continue;
             std::string key = "table/" + tit.first;
             Val value(reinterpret_cast<const char *>(&tit.second), sizeof(TableDesc));
-            ass(put(meta_page.free_table, Val(key), value, false), "Writing table desc failed during commit");
+            ass(put(meta_page.meta_table, Val(key), value, false), "Writing table desc failed during commit");
         }
         free_list.commit_free_pages(*this, meta_page.tid);
         meta_page.dirty = false;
@@ -682,6 +686,15 @@ namespace mustela {
         ",\n\t'table': '" + name + "'}";
         return result;
     }
+    static std::string trim_key(const std::string & key){
+        std::string result;
+        for(auto && ch : key)
+            if( std::isprint(ch) && ch != '"')
+                result += ch;
+            else
+                result += "$" + std::to_string(unsigned(ch));
+        return result;
+    }
     std::string TX::print_db(const TableDesc & table){
         Pid pa = table.root_page;
         size_t height = table.height;
@@ -700,8 +713,8 @@ namespace mustela {
                 if( overflow_page )
                     kv.value.data = readable_overflow(overflow_page);
 //                std::cout << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
-                std::cout << kv.key.to_string() << ", ";
-                result += "\"" + kv.key.to_string() + "\""; //  + ":" + value.to_string() +
+                std::cout << trim_key(kv.key.to_string()) << ", ";
+                result += "\"" + trim_key(kv.key.to_string()) + "\""; //  + ":" + value.to_string() +
             }
             std::cout << "]" << std::endl;
             return result + "]}";
@@ -713,8 +726,8 @@ namespace mustela {
             if( i != 0)
                 result += ",";
             ValPid va = nap.get_kv(i);
-            std::cout << va.key.to_string() << ":" << va.pid << ", ";
-            result += "\"" + va.key.to_string() + ":" + std::to_string(va.pid) + "\"";
+            std::cout << trim_key(va.key.to_string()) << ":" << va.pid << ", ";
+            result += "\"" + trim_key(va.key.to_string()) + ":" + std::to_string(va.pid) + "\"";
         }
         result += "],\"children\":[";
         std::cout << "]" << std::endl;

@@ -18,10 +18,10 @@ void interactive_test(){
     const int items_counter = 1000;
     std::default_random_engine e;//{r()};
     std::uniform_int_distribution<int> dist(0, items_counter - 1);
-    for(int i = 0; i != items_counter * 4; ++i){
-        int j = dist(e);
-    }
-    std::vector<std::string> cmds{"ar", "ar", "dr", "dr", "ar", "ar"};
+//    for(int i = 0; i != items_counter * 4; ++i){
+//        int j = dist(e);
+//    }
+    std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
     while(true){
 //        std::string json = txn.print_db();
 //        std::cout << json << std::endl;
@@ -37,23 +37,36 @@ void interactive_test(){
         if( input == "q")
             break;
         if( input == "p"){
-            //json = txn.print_db(main_table);
-            //std::cout << json << std::endl;
+            std::string json = txn.print_db();
+            std::cout << json << std::endl;
             continue;
         }
+        bool new_range = input.find("n") != std::string::npos;
         bool add = input.find("a") != std::string::npos;
         bool ran = input.find("r") != std::string::npos;
         bool back = input.find("b") != std::string::npos;
         std::cout << "add=" << int(add) << " ran=" << int(ran) << " back=" << int(back) << std::endl;
+        if( input == "t"){
+            int j = dist(e);
+            std::string key = std::to_string(j);
+            std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
+            if( !txn.put(main_table, mustela::Val(key), mustela::Val(val), true) )
+                std::cout << "BAD put" << std::endl;
+            mirror[key] = val;
+            txn.commit();
+            continue;
+        }
             for(int i = 0; i != items_counter; ++i){
                 int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
+                if( new_range )
+                    j += items_counter;
                 std::string key = std::to_string(j);
-                std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
+                std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
                 mustela::Val got;
-                if( (i == 549 && j == 70) || (i == 550 && j == 295) ){
+                if( (i == 4 && j == 584) || (i == 5 && j == 402) || (i == 549 && j == 70) || (i == 550 && j == 295) ){
                     got.size = 0;
-                    std::string json = txn.print_db(main_table);
-                    std::cout << json << std::endl;
+//                    std::string json = txn.print_db(main_table);
+//                    std::cout << json << std::endl;
                 }
                 bool in_db = txn.get(main_table, mustela::Val(key), got) && got.to_string() == val;
                 auto mit = mirror.find(key);

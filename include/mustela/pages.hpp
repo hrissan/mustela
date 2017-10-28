@@ -22,7 +22,7 @@ namespace mustela {
         uint32_t version;
         uint32_t page_size;
         uint64_t page_count; // excess pages in file are all free
-        TableDesc free_table; // All other table descs are stored in free_table together with freelist
+        TableDesc meta_table; // All other table descs are stored in meta_table together with freelist
         uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
         bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
 

@@ -29,10 +29,11 @@ namespace mustela {
         explicit Cursor(TX & my_txn, TableDesc & table);
         ~Cursor();
         void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
-            if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= split_index ){
+            if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
                 for(size_t i = height + 1; i != table.height + 1; ++i)
 //                for(size_t i = 0; i != height; ++i)
-                    path.at(i).first = cur2.path.at(i).first;
+                    path.at(i) = cur2.path.at(i);
+                path.at(height).first = cur2.path.at(height).first;
                 path.at(height).second -= split_index_r;
             }
         }
@@ -81,7 +82,7 @@ namespace mustela {
                 return &tit->second;
             std::string key = "table/" + table.to_string();
             Val value;
-            if( !get(meta_page.free_table, Val(key), value) )
+            if( !get(meta_page.meta_table, Val(key), value) )
                 return nullptr;
             TableDesc & td = tables[table.to_string()];
             ass(value.size == sizeof(td), "TableDesc size in DB is wrong");
@@ -133,7 +134,7 @@ namespace mustela {
         explicit TX(DB & my_db);
         ~TX();
         std::string print_db(){
-            return print_db(meta_page.free_table);
+            return print_db(meta_page.meta_table);
         }
         std::string print_db(const Val & table){
             TableDesc * td = load_table_desc(table);
@@ -142,7 +143,7 @@ namespace mustela {
             return print_db(*td);
         }
         std::string get_stats(){
-            return get_stats(meta_page.free_table, std::string());
+            return get_stats(meta_page.meta_table, std::string());
         }
         std::string get_stats(const Val & table){
             TableDesc * td = load_table_desc(table);
@@ -166,7 +167,7 @@ namespace mustela {
             // TODO - iterate cursors and throw if any points to this table
             // TODO - mark all table pages as free
             std::string key = "table/" + table.to_string();
-            ass(del(meta_page.free_table, Val(key), true), "Error while dropping table");
+            ass(del(meta_page.meta_table, Val(key), true), "Error while dropping table");
             tables.erase(key);
             return true;
         }

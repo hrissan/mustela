@@ -57,6 +57,8 @@ static size_t get_records_count(Pid count){
             }
         }
         record_count += get_records_count(count);
+        if( count == 0 || count > 1000000000)
+            count = count;
         cache.insert(std::make_pair(page, count));
         if( update_index)
             add_to_size_index(page, count);
@@ -79,9 +81,10 @@ static size_t get_records_count(Pid count){
         if( update_index )
             add_to_size_index(page, old_count);
         record_count += get_records_count(it->second);
+        if( old_count == 0 || old_count > 1000000000)
+            old_count = old_count;
         free_pages.insert(std::make_pair(page, old_count));
     }
-
     Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
         while( true ){
             auto siit = size_index.lower_bound(contigous_count);
@@ -99,7 +102,7 @@ static size_t get_records_count(Pid count){
             p1 += write_u64_sqlite4(next_record_batch, keybuf + p1);
             Val key(keybuf, p1);
             Val value;
-            if( !tx.get_next(tx.meta_page.free_table, key, value))
+            if( !tx.get_next(tx.meta_page.meta_table, key, value))
                 break;
             if( key.size < 1 || key.data[0] != 'f' ) // Free list finished
                 break;
@@ -117,10 +120,20 @@ static size_t get_records_count(Pid count){
             for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
                 Pid page;
                 unpack_uint_be(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
-                Pid count = value.data[rec * RECORD_SIZE + NODE_PID_SIZE];
+                Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
                 if( count == 0) // Marker of unused space
                     break;
                 add_to_cache(page, count, free_pages, free_pages_record_count, true);
+            }
+            if( !free_pages.empty() ){ // Try to defrag the end of file
+                auto fit = free_pages.end();
+                --fit;
+                Pid last_page = fit->first;
+                Pid last_count = fit->second;
+                if( last_page + last_count == tx.meta_page.page_count){
+                    tx.meta_page.page_count -= last_count;
+                    free_pages.erase(fit);
+                }
             }
         }
         return 0;
@@ -165,10 +178,12 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
         size_t p1 = 1;
         p1 += write_u64_sqlite4(tid, keybuf + p1);
         p1 += write_u64_sqlite4(batch, keybuf + p1);
-        std::cout << "FreeList write " << tid << ":" << batch << std::endl;
-        batch += 1;
         size_t recs = std::min(page_records, record_count - space_record_count);
-        char * raw_space = tx.put(tx.meta_page.free_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
+        std::cout << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
+        recs = page_records;
+        batch += 1;
+        char * raw_space = tx.put(tx.meta_page.meta_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
+//        std::cout << tx.print_db() << std::endl;
         space.push_back(MVal(raw_space, recs * RECORD_SIZE));
         space_record_count += recs;
     }
@@ -189,29 +204,23 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
                 p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
                 std::cout << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
                 records_to_delete.pop_back();
-                ass(tx.del(tx.meta_page.free_table, Val(keybuf, p1), true), "Failed to delete free list records after reading");
+                ass(tx.del(tx.meta_page.meta_table, Val(keybuf, p1), true), "Failed to delete free list records after reading");
+//                std::cout << tx.print_db() << std::endl;
             }
             grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages_record_count);
             grow_record_space(tx, write_tid, future_batch, future_space, future_record_count, future_pages_record_count);
         }
-        if( !free_pages.empty() ){ // Try to defrag the end of file
-            auto fit = free_pages.end();
-            --fit;
-            Pid last_page = fit->first;
-            Pid last_count = fit->second;
-            if( last_page + last_count == tx.meta_page.page_count){
-                tx.meta_page.page_count -= last_count;
-                free_pages.erase(fit);
-            }
-        }
+//        std::cout << tx.print_db() << std::endl;
         fill_record_space(tx, 0, old_space, free_pages);
+//        std::cout << tx.print_db() << std::endl;
         fill_record_space(tx, write_tid, future_space, future_pages);
+//        std::cout << tx.print_db() << std::endl;
         back_from_future_pages.clear();
         free_pages.clear();
         future_pages.clear();
         size_index.clear();
         free_pages_record_count = 0;
-        future_record_count = 0;
+        future_pages_record_count = 0;
         next_record_tid = 0;
         next_record_batch = 0;
     }
