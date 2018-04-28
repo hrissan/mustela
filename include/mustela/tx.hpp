@@ -12,6 +12,7 @@ namespace mustela {
     class DB;
     class TX;
     struct Cursor {
+        TX & my_txn;
         TableDesc & table;
         std::vector<std::pair<Pid, PageOffset>> path;
         
@@ -47,14 +48,15 @@ namespace mustela {
                 path.at(height).second -= 1;
             }
         }
-    private:
-        TX & my_txn;
     };
+    class Bucket;
     class TX {
         DB & my_db;
+        const Pid c_mappings_end_page; // We keep c_mappings while TX is uinsg it
         std::set<Cursor *> my_cursors;
         friend class Cursor;
         friend class FreeList;
+        friend class Bucket;
         size_t meta_page_index;
         Tid oldest_reader_tid;
         std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
@@ -68,9 +70,9 @@ namespace mustela {
             memcpy(tmp_pages.back().data(), other, page_size);
             return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
         }
-        void pop_tmp_copy(){
-            tmp_pages.pop_back();
-        }
+//        void pop_tmp_copy(){
+//            tmp_pages.pop_back();
+//        }
         void clear_tmp_copies(){
             tmp_pages.clear();
         }
@@ -197,5 +199,41 @@ namespace mustela {
         }
         void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
     };
+/*    class Bucket {
+        TX & tx;
+        TableDesc * td;
+    public:
+        Bucket(TX & tx, const Val & table, bool create_if_not_exists = true):tx(tx), td( tx.load_table_desc(table) )
+        {
+            if(!td && create_if_not_exists){
+                // Create
+            }
+        }
+        bool put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
+            char * dst = put(key, value.size, nooverwrite);
+            if( dst )
+                memcpy(dst, value.data, value.size);
+            return dst != nullptr;
+        }
+        char * put(const Val & key, size_t value_size, bool nooverwrite){ // danger! db will alloc space for key/value in db and return address for you to copy value to
+            if(!td)
+                return nullptr;
+            return tx.put(*td, key, value_size, nooverwrite);
+        }
+        bool get(const Val & table, const Val & key, Val & value){
+            if(!td)
+                return false;
+            return tx.get(*td, key, value);
+        }
+        bool del(const Val & table, const Val & key, bool must_exist){
+            if(!td)
+                return false;
+            return tx.del(*td, key, must_exist);
+        }
+    };
+
+
+
+    */
 }
 

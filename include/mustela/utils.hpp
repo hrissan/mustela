@@ -108,7 +108,7 @@ typedef uint16_t PageOffset;
 
 constexpr uint32_t OUR_VERSION = 1;
 
-constexpr uint64_t MAX_MAPPING_SIZE = 1ULL << 34; // 16GB for now
+//constexpr uint64_t MAX_MAPPING_SIZE = 1ULL << 34; // 16GB for now
 constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form
 constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
 constexpr int NODE_PID_SIZE = 4; // 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pyges

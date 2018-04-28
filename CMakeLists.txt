@@ -3,6 +3,9 @@ project(mustela)
 
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0 -Wall -Wextra -Werror=return-type -Wno-unused-parameter")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O0 -Wall -Wextra -Werror=return-type -Wno-unused-parameter")
+
 set(SOURCE_FILES
         include/mustela/free_list.hpp
         include/mustela/free_list.cpp

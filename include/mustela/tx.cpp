@@ -30,7 +30,8 @@ namespace mustela {
         return *this;
     }*/
 
-    TX::TX(DB & my_db):my_db(my_db), page_size(my_db.page_size) {
+    TX::TX(DB & my_db):my_db(my_db), c_mappings_end_page(my_db.c_mappings.back().end_page), page_size(my_db.page_size) {
+        my_db.c_mappings.back().ref_count += 1;
         start_transaction();
     }
     void TX::start_transaction(){
@@ -46,6 +47,7 @@ namespace mustela {
     TX::~TX(){
         // rollback is nop
         ass( my_cursors.empty(), "All cursors should be destroyed before transaction they are in"); // potential throw in destructor ahaha
+        my_db.trim_old_c_mappings(c_mappings_end_page);
     }
     CLeafPtr TX::readable_leaf(Pid pa){
         return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa));
@@ -76,7 +78,7 @@ namespace mustela {
     Pid TX::get_free_page(Pid contigous_count){
         Pid pa = free_list.get_free_page(*this, contigous_count, oldest_reader_tid);
         if( !pa ){
-            my_db.grow_mappings(meta_page.page_count + contigous_count);
+            my_db.grow_file(meta_page.page_count + contigous_count);
             pa = meta_page.page_count;
             meta_page.page_count += contigous_count;
         }
@@ -473,9 +475,9 @@ namespace mustela {
         // TODO - redistribute value between siblings instead of outright merging
         auto & path_pa = cur.path.at(1);
         NodePtr wr_parent = writable_node(path_pa.first);
-        int c = 0;
-        if( wr_dap.size() == 0)
-            c = 1;
+//        int c = 0;
+//        if( wr_dap.size() == 0)
+//            c = 1;
         if( wr_dap.size() == 0 && wr_parent.size() == 0 ){ // Prune empty leaf + nodes
             mark_free_in_future_page(wr_dap.page->pid, 1);
             cur.table.leaf_page_count -= 1;
@@ -634,7 +636,7 @@ namespace mustela {
         my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
         for(size_t i = 0; i != my_db.mappings.size(); ++i){
             Mapping & ma = my_db.mappings[i];
-            msync(ma.addr, (ma.end_page - ma.begin_page) * page_size, MS_SYNC);
+            msync(ma.addr, ma.end_page * page_size, MS_SYNC);
         }
         // Now modify and sync our meta page
         MetaPage * wr_meta = my_db.writable_meta_page(meta_page_index);

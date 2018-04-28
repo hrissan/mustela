@@ -11,22 +11,27 @@
 
 namespace mustela {
 
+    const size_t additional_granularity = 1;// 65536;  // on Windows mmapped regions should be aligned to 65536
+
+    static uint64_t grow_to_granularity(uint64_t value, uint64_t page_size){
+        return ((value + page_size - 1) / page_size) * page_size;
+    }
+    static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint64_t c){
+        return grow_to_granularity(grow_to_granularity(grow_to_granularity(value, a), b), c);
+    }
     DB::DB(const std::string & file_path, bool read_only):read_only(read_only), page_size(128), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
         fd = open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600);
         if( fd == -1)
             throw Exception("file open failed");
-        uint64_t file_size = lseek(fd, 0, SEEK_END);
-        if( file_size == -1)
+        file_size = lseek(fd, 0, SEEK_END);
+        if( file_size == uint64_t(-1))
             throw Exception("file lseek SEEK_END failed");
-        void * cm = mmap(0, MAX_MAPPING_SIZE, PROT_READ, MAP_SHARED, fd, 0);
-        if (cm == MAP_FAILED)
-            throw Exception("mmap PROT_READ failed");
-        c_mapping = (char *)cm;
         if( file_size < sizeof(MetaPage) ){
             create_db();
             return;
         }
 //        throw Exception("mmap file_size too small (corrupted or different platform)");
+        grow_c_mappings();
         const MetaPage * meta_pages[3]{readable_meta_page(0), readable_meta_page(1), readable_meta_page(2)};
         if( meta_pages[0]->magic != META_MAGIC && meta_pages[0]->magic != META_MAGIC_ALTENDIAN )
             throw Exception("file is either not mustela DB or corrupted");
@@ -100,53 +105,81 @@ namespace mustela {
         }
         if( fsync(fd) == -1 )
             throw Exception("fsync failed in create_db");
+        file_size = lseek(fd, 0, SEEK_END);
+        if( file_size == uint64_t(-1))
+            throw Exception("file lseek SEEK_END failed");
+        grow_c_mappings();
     }
-    DataPage * DB::writable_page(Pid page, Pid count)const{
-/*        auto it = std::upper_bound(mappings.begin(), mappings.end(), page, [](Pid p, const Mapping & ma) {
-            return p < ma.end_page;
-        });
-        ass(it != mappings.end(), "writable_page out of range");
-        ass(page + count <= it->end_page, "writable_page range crosses mapping boundary");
-        return (DataPage *)(it->addr + (page - it->begin_page)*page_size);
- */
-        ass( page + count <= mappings.back().end_page, "writable_page out of range");
+    void DB::grow_c_mappings() {
+        if( !c_mappings.empty() && c_mappings.back().end_page * page_size >= file_size )
+            return;
+        uint64_t fs = read_only ? file_size : (file_size + 1024*1024*1024) * 3 / 2;
+        uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
+        void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd, 0);
+        if (cm == MAP_FAILED)
+            throw Exception("mmap PROT_READ failed");
+        c_mappings.push_back(Mapping(new_fs / page_size, (char *)cm));
+    }
+    const DataPage * DB::readable_page(Pid page)const{
+        ass( !c_mappings.empty() && page + 1 <= c_mappings.back().end_page, "readable_page out of range");
+        return (const DataPage * )(c_mappings.back().addr + page_size * page);
+    }
+    void DB::trim_old_c_mappings(Pid end_page){
+        for(auto && ma : c_mappings)
+            if( ma.end_page == end_page ) {
+                ma.ref_count -= 1;
+                break;
+            }
+        while( c_mappings.size() > 1 && c_mappings.front().ref_count == 0) {
+            munmap(c_mappings.front().addr, c_mappings.front().end_page * page_size);
+            c_mappings.erase(c_mappings.begin());
+        }
+    }
+
+    // Mappings cannot be in chunks, because count pages could fall onto the edge between chunkcs
+    DataPage * DB::writable_page(Pid page, Pid count){
+        if( mappings.empty() ){
+            uint64_t new_fs = grow_to_granularity(file_size, page_size, physical_page_size, additional_granularity);
+            if( new_fs > file_size ){
+                if( lseek(fd, new_fs - 1, SEEK_SET) == -1 )
+                    throw Exception("file seek failed in writable_page");
+                if( write(fd, "", 1) != 1 )
+                    throw Exception("file write failed in writable_page");
+                file_size = lseek(fd, 0, SEEK_END);
+                if( new_fs != file_size )
+                    throw Exception("file failed to grow in writable_page");
+            }
+            void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            if (wm == MAP_FAILED)
+                throw Exception("mmap PROT_READ failed");
+            mappings.push_back(Mapping(new_fs / page_size, (char *)wm));
+        }
+        ass( !mappings.empty() && page + count <= mappings.back().end_page, "writable_page out of range");
         return (DataPage *)(mappings.back().addr + page * page_size);
     }
-    void DB::grow_mappings(Pid new_page_count){
-        auto old_page_count = mappings.empty() ? 0 : mappings.back().end_page;
-        if( new_page_count <= old_page_count )
+    void DB::grow_file(Pid new_page_count){
+        if( new_page_count * page_size <= file_size )
             return;
-        if( new_page_count * page_size < (1 << 20) )
-            new_page_count = (3 + new_page_count) * 2; // grow aggressively while file is small
-        new_page_count = ((3 + new_page_count) * 5 / 4); // reserve 20% excess space, make first mapping include at least 3 meta pages
-        size_t additional_granularity = 1;// 65536;  // on Windows mmapped regions should be aligned to 65536
-        if( page_size < additional_granularity )
-            new_page_count = ((new_page_count * page_size + additional_granularity - 1) / additional_granularity) * additional_granularity / page_size;
-        if( page_size < physical_page_size )
-            new_page_count = ((new_page_count * page_size + physical_page_size - 1) / physical_page_size) * physical_page_size / page_size;
-        uint64_t new_file_size = new_page_count * page_size;
-        if( lseek(fd, new_file_size - 1, SEEK_SET) == -1 )
-            throw Exception("file seek failed in grow_mappings");
+        uint64_t fs = (file_size + 1024 * page_size) * 5 / 4; // grow faster while file size is small
+        uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
+        if( lseek(fd, new_fs - 1, SEEK_SET) == -1 )
+            throw Exception("file seek failed in grow_file");
         if( write(fd, "", 1) != 1 )
-            throw Exception("file write failed in grow_mappings");
-        void * wm = mmap(0, new_file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            throw Exception("file write failed in grow_file");
+        file_size = lseek(fd, 0, SEEK_END);
+        if( new_fs != file_size )
+            throw Exception("file failed to grow in grow_file");
+        void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (wm == MAP_FAILED)
             throw Exception("mmap PROT_READ | PROT_WRITE failed");
-        mappings.push_back(Mapping(0, new_page_count, (char *)wm));
-/*        uint64_t map_size = new_file_size - old_page_count * page_size;
-        uint64_t map_offset = old_page_count * page_size;
-        void * wm = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, map_offset);
-        if (wm == MAP_FAILED)
-            throw Exception("mmap PROT_READ | PROT_WRITE failed");
-        mappings.push_back(Mapping(old_page_count, new_page_count, (char *)wm));*/
+        mappings.push_back(Mapping(new_fs / page_size, (char *)wm));
     }
     void DB::trim_old_mappings(){
         if( mappings.empty() )
             return;
         for(size_t m = 0; m != mappings.size() - 1; ++m){
-            munmap(mappings[m].addr, (mappings[m].end_page - mappings[m].begin_page) * page_size);
+            munmap(mappings[m].addr, mappings[m].end_page * page_size);
         }
         mappings.erase(mappings.begin(), mappings.end() - 1);
     }
-
 }

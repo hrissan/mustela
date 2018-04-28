@@ -8,14 +8,15 @@
 #include "mustela.hpp"
 
 void interactive_test(){
-    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
+//    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
 //    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
+    mustela::DB db("test.mustella");
     mustela::TX txn(db);
     mustela::Val main_table("main");
     txn.create_table(main_table);
     std::map<std::string, std::string> mirror;
     // TODO - load mirror from db
-    const int items_counter = 1000;
+    const int items_counter = 1000000;
     std::default_random_engine e;//{r()};
     std::uniform_int_distribution<int> dist(0, items_counter - 1);
 //    for(int i = 0; i != items_counter * 4; ++i){
