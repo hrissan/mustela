@@ -97,8 +97,8 @@ namespace mustela {
 			return cmp;
 		return int(size) - int(other.size);
 	}
-	size_t Val::encoded_size()const{
-		return get_compact_size_sqlite4(size) + size;
-	}
+//	size_t Val::encoded_size()const{
+//		return get_compact_size_sqlite4(size) + size;
+//	}
 	
 }

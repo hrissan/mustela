@@ -13,7 +13,21 @@ void interactive_test(){
 	mustela::DB db("test.mustella");
 	mustela::TX txn(db);
 	mustela::Val main_table("main");
+
+    std::string json = txn.print_db();
+    std::cout << "Meta table: " << json << std::endl;
+
+	for(auto && tt : txn.get_tables() )
+	    std::cout << "Table: " << tt.to_string() << std::endl;
+
 	txn.create_table(main_table);
+
+	for(auto && tt : txn.get_tables() )
+		std::cout << "Table: " << tt.to_string() << std::endl;
+
+	txn.create_table(mustela::Val("Evil"));
+	txn.create_table(mustela::Val("Hren"));
+
 	std::map<std::string, std::string> mirror;
 
     {

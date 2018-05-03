@@ -109,12 +109,14 @@ namespace mustela {
 			height -= 1;
 		}
 	}
-	void Cursor::seek(const Val & key){
+	bool Cursor::seek(const Val & key){
 		lower_bound(key);
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
+		bool same_key = path_el.second != dap.size() && Val(dap.get_key(path_el.second)) == key;
 		if( path_el.second == dap.size() )
 			jump_next();
+		return same_key;
 	}
 	void Cursor::first(){
 		Pid pa = table->root_page;
@@ -155,7 +157,7 @@ namespace mustela {
 			return false;
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		if( path_el.second == dap.size() )
+		if( path_el.second == dap.size() ) // After seek("zzz"), when all keys are less than "z"
 			return false;
 		Pid overflow_page;
 		auto kv = dap.get_kv(path_el.second, overflow_page);
@@ -164,6 +166,28 @@ namespace mustela {
 		key = kv.key;
 		value = kv.value;
 		return true;
+	}
+	void Cursor::del(){
+		if( path.empty() )
+			return;
+		auto & path_el = path.at(0);
+		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
+		if( path_el.second == dap.size() ) // After seek("zzz"), when all keys are less than "z"
+			return;
+		my_txn.meta_page.dirty = true;
+		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
+		Pid overflow_page, overflow_count;
+		wr_dap.erase(path_el.second, overflow_page, overflow_count);
+		if( overflow_page ) {
+			table->overflow_page_count -= overflow_count;
+			my_txn.mark_free_in_future_page(overflow_page, overflow_count);
+		}
+		my_txn.merge_if_needed_leaf(*this, wr_dap);
+		table->count -= 1;
+		my_txn.clear_tmp_copies();
+        dap = my_txn.readable_leaf(path_el.first);
+        if( path_el.second == dap.size() )
+            jump_next();
 	}
 	void Cursor::next(){
 		if( path.empty() )
@@ -231,7 +255,6 @@ namespace mustela {
 	}
 	void TX::mark_free_in_future_page(Pid page, Pid contigous_count){
 		free_list.mark_free_in_future_page(page, contigous_count);
-		// NOP for now
 	}
 	Pid TX::get_free_page(Pid contigous_count){
 		Pid pa = free_list.get_free_page(*this, contigous_count, oldest_reader_tid);
@@ -726,6 +749,11 @@ namespace mustela {
 	}
 	bool TX::get(TableDesc * table, const Val & key, Val & value){
 		Cursor main_cursor(*this, table);
+		if( !main_cursor.seek(key) )
+			return false;
+		Val c_key;
+		return main_cursor.get(c_key, value);
+/*		Cursor main_cursor(*this, table);
 		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
@@ -738,7 +766,7 @@ namespace mustela {
 		if( overflow_page )
 			kv.value.data = readable_overflow(overflow_page);
 		value = kv.value;
-		return true;
+		return true;*/
 	}
 	bool TX::get_next(TableDesc * table, Val & key, Val & value){
 		Cursor main_cursor(*this, table);
@@ -757,7 +785,11 @@ namespace mustela {
 	}
 	bool TX::del(TableDesc * table, const Val & key, bool must_exist){
 		Cursor main_cursor(*this, table);
-		main_cursor.lower_bound(key);
+		if( !main_cursor.seek(key) )
+			return !must_exist;
+		main_cursor.del();
+		return true;
+/*		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
@@ -774,7 +806,7 @@ namespace mustela {
 		merge_if_needed_leaf(main_cursor, wr_dap);
 		table->count -= 1;
 		clear_tmp_copies();
-		return true;
+		return true;*/
 	}
 	
 	void TX::commit(){
@@ -813,6 +845,43 @@ namespace mustela {
 	//    'leaf_pages': 73658L,
 	//    'overflow_pages': 0L,
 	//    'psize': 4096L}
+    std::vector<Val> TX::get_tables(){
+		std::vector<Val> results;
+		for(auto && tit : tables) // First write all dirty table descriptions
+			results.push_back(Val(tit.first));
+		Cursor cur(*this, &meta_page.meta_table);
+		const Val prefix("table/");
+		Val c_key, c_value, c_tail;
+		for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
+			if(tables.count(c_tail.to_string()) == 0)
+				results.push_back(c_tail);
+		return results;
+	}
+    bool TX::create_table(const Val & table){
+        if( load_table_desc(table) )
+            return false;
+        TableDesc & td = tables[table.to_string()];
+        td = TableDesc{};
+        td.root_page = get_free_page(1);
+        td.leaf_page_count = 1;
+        // We will put it in DB on commit
+        return true;
+    }
+    bool TX::drop_table(const Val & table){
+        TableDesc * td = load_table_desc(table);
+        if( !td )
+            return false;
+        for(auto && c : my_cursors) // All cursor to that table become set to end
+            if( c->table == td ) {
+                c->table = nullptr;
+                c->path.clear();
+            }
+        // TODO - mark all table pages as free
+        std::string key = "table/" + table.to_string();
+        ass(del(&meta_page.meta_table, Val(key), true), "Error while dropping table");
+        tables.erase(key);
+        return true;
+    }
 	std::string TX::get_stats(const TableDesc & table, std::string name){
 		std::string result;
 		result += "{'branch_pages': " + std::to_string(table.node_page_count) +

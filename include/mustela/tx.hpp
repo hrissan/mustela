@@ -33,10 +33,11 @@ namespace mustela {
 		~Cursor();
 		void lower_bound(const Val & key);
 
-		void seek(const Val & key);
+		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
 		void first();
 		void last();
 		bool get(Val & key, Val & value);
+		void del(); // If you can get, you can del. After del, cursor points to the next item
 		void next();
 		void prev();
 		// for( cur.first(); cur.get(key, val) && key.prefix("a"); cur.next() ) {}
@@ -103,7 +104,6 @@ namespace mustela {
 			memmove(&td, value.data, value.size);
 			return &td;
 		}
-		
 		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
@@ -129,7 +129,6 @@ namespace mustela {
 		void start_transaction();
 		std::string print_db(Pid pa, size_t height);
 		
-		//        Cursor main_cursor;
 		char * put(TableDesc * table, const Val & key, size_t value_size, bool nooverwrite);
 		bool put(TableDesc * table, const Val & key, const Val & value, bool nooverwrite) {
 			char * dst = put(table, key, value.size, nooverwrite);
@@ -164,26 +163,9 @@ namespace mustela {
 				return std::string();
 			return get_stats(*td, table.to_string());
 		}
-		bool create_table(const Val & table){ // true if just created, false if already existed
-			if( load_table_desc(table) )
-				return false;
-			TableDesc & td = tables[table.to_string()];
-			td = TableDesc{};
-			td.root_page = get_free_page(1);
-			td.leaf_page_count = 1;
-			// We will put it in DB on commit
-			return true;
-		}
-		bool drop_table(const Val & table){ // true if dropped, false if did not exist
-			if( load_table_desc(table) )
-				return false;
-			// TODO - iterate cursors and throw if any points to this table
-			// TODO - mark all table pages as free
-			std::string key = "table/" + table.to_string();
-			ass(del(&meta_page.meta_table, Val(key), true), "Error while dropping table");
-			tables.erase(key);
-			return true;
-		}
+		std::vector<Val> get_tables(); // order of returned tables can be different each call
+		bool create_table(const Val & table); // true if just created, false if already existed
+		bool drop_table(const Val & table); // true if dropped, false if did not exist
 		bool put(const Val & table, const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
 			char * dst = put(table, key, value.size, nooverwrite);
 			if( dst )

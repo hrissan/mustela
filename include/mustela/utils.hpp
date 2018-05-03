@@ -99,7 +99,16 @@ namespace mustela {
 		bool operator<(const Val & other)const{
 			return compare(other) < 0;
 		}
-		size_t encoded_size()const;
+        bool has_prefix(const Val & prefix)const {
+            return size >= prefix.size && memcmp(data, prefix.data, prefix.size) == 0;
+        }
+        bool has_prefix(const Val & prefix, Val & tail)const {
+		    if( !has_prefix(prefix) )
+		        return false;
+		    tail = Val(data + prefix.size, size - prefix.size);
+            return true;
+        }
+//		size_t encoded_size()const;
 	};
 	
 	typedef uint64_t Tid;
