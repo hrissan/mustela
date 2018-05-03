@@ -14,7 +14,7 @@ namespace mustela {
 	class Cursor {
 		friend class TX;
 		TX & my_txn;
-		TableDesc & table;
+		TableDesc * table;
 		std::vector<std::pair<Pid, PageOffset>> path;
 		
 		void truncate(size_t height){
@@ -23,17 +23,20 @@ namespace mustela {
 			if(height == path.size() - 1)
 				path[height++].second = 0; // set to first leaf kv
 		}
+        void jump_prev();
+        void jump_next();
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
-		explicit Cursor(TX & my_txn, TableDesc & table);
+        explicit Cursor(TX & my_txn, TableDesc * table);
+        explicit Cursor(TX & my_txn, Val & table);
 		~Cursor();
 		void lower_bound(const Val & key);
 
 		void seek(const Val & key);
 		void first();
 		void last();
-		bool get(Val & key, Val & val);
+		bool get(Val & key, Val & value);
 		void next();
 		void prev();
 		// for( cur.first(); cur.get(key, val) && key.prefix("a"); cur.next() ) {}
@@ -41,7 +44,7 @@ namespace mustela {
 
 		void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
 			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
-				for(size_t i = height + 1; i != table.height + 1; ++i)
+				for(size_t i = height + 1; i != table->height + 1; ++i)
 					path.at(i) = cur2.path.at(i);
 				path.at(height).first = cur2.path.at(height).first;
 				path.at(height).second -= split_index_r;
@@ -93,7 +96,7 @@ namespace mustela {
 				return &tit->second;
 			std::string key = "table/" + table.to_string();
 			Val value;
-			if( !get(meta_page.meta_table, Val(key), value) )
+			if( !get(&meta_page.meta_table, Val(key), value) )
 				return nullptr;
 			TableDesc & td = tables[table.to_string()];
 			ass(value.size == sizeof(td), "TableDesc size in DB is wrong");
@@ -127,16 +130,16 @@ namespace mustela {
 		std::string print_db(Pid pa, size_t height);
 		
 		//        Cursor main_cursor;
-		char * put(TableDesc & table, const Val & key, size_t value_size, bool nooverwrite);
-		bool put(TableDesc & table, const Val & key, const Val & value, bool nooverwrite) {
+		char * put(TableDesc * table, const Val & key, size_t value_size, bool nooverwrite);
+		bool put(TableDesc * table, const Val & key, const Val & value, bool nooverwrite) {
 			char * dst = put(table, key, value.size, nooverwrite);
 			if( dst )
 				memcpy(dst, value.data, value.size);
 			return dst != nullptr;
 		}
-		bool get(TableDesc & table, const Val & key, Val & value);
-		bool get_next(TableDesc & table, Val & key, Val & value);
-		bool del(TableDesc & table, const Val & key, bool must_exist);
+		bool get(TableDesc * table, const Val & key, Val & value);
+		bool get_next(TableDesc * table, Val & key, Val & value);
+		bool del(TableDesc * table, const Val & key, bool must_exist);
 		std::string print_db(const TableDesc & table);
 		std::string get_stats(const TableDesc & table, std::string name);
 	public:
@@ -177,7 +180,7 @@ namespace mustela {
 			// TODO - iterate cursors and throw if any points to this table
 			// TODO - mark all table pages as free
 			std::string key = "table/" + table.to_string();
-			ass(del(meta_page.meta_table, Val(key), true), "Error while dropping table");
+			ass(del(&meta_page.meta_table, Val(key), true), "Error while dropping table");
 			tables.erase(key);
 			return true;
 		}
@@ -191,19 +194,19 @@ namespace mustela {
 			TableDesc * td = load_table_desc(table);
 			if(!td)
 				return nullptr;
-			return put(*td, key, value_size, nooverwrite);
+			return put(td, key, value_size, nooverwrite);
 		}
 		bool get(const Val & table, const Val & key, Val & value){
 			TableDesc * td = load_table_desc(table);
 			if(!td)
 				return false;
-			return get(*td, key, value);
+			return get(td, key, value);
 		}
 		bool del(const Val & table, const Val & key, bool must_exist){
 			TableDesc * td = load_table_desc(table);
 			if(!td)
 				return false;
-			return del(*td, key, must_exist);
+			return del(td, key, must_exist);
 		}
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 	};

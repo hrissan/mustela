@@ -104,7 +104,7 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 		p1 += write_u64_sqlite4(next_record_batch, keybuf + p1);
 		Val key(keybuf, p1);
 		Val value;
-		if( !tx.get_next(tx.meta_page.meta_table, key, value))
+		if( !tx.get_next(&tx.meta_page.meta_table, key, value))
 			break;
 		if( key.size < 1 || key.data[0] != 'f' ) // Free list finished
 			break;
@@ -187,7 +187,7 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
 		std::cout << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
 		recs = page_records;
 		batch += 1;
-		char * raw_space = tx.put(tx.meta_page.meta_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
+		char * raw_space = tx.put(&tx.meta_page.meta_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
 		//        std::cout << tx.print_db() << std::endl;
 		space.push_back(MVal(raw_space, recs * RECORD_SIZE));
 		space_record_count += recs;
@@ -209,7 +209,7 @@ void FreeList::commit_free_pages(TX & tx, Tid write_tid){
 			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
 			std::cout << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
-			ass(tx.del(tx.meta_page.meta_table, Val(keybuf, p1), true), "Failed to delete free list records after reading");
+			ass(tx.del(&tx.meta_page.meta_table, Val(keybuf, p1), true), "Failed to delete free list records after reading");
 			//                std::cout << tx.print_db() << std::endl;
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages_record_count);

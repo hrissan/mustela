@@ -15,7 +15,15 @@ void interactive_test(){
 	mustela::Val main_table("main");
 	txn.create_table(main_table);
 	std::map<std::string, std::string> mirror;
-	// TODO - load mirror from db
+
+    {
+        mustela::Cursor cur(txn, main_table);
+        mustela::Val c_key, c_value;
+        for (cur.first(); cur.get(c_key, c_value); cur.next()) {
+            if (!mirror.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
+                std::cout << "BAD mirror insert" << std::endl;
+        }
+    }
 	const int items_counter = 1000;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
@@ -39,7 +47,9 @@ void interactive_test(){
 			break;
 		if( input == "p"){
 			std::string json = txn.print_db();
-			std::cout << json << std::endl;
+			std::cout << "Meta table: " << json << std::endl;
+			json = txn.print_db(main_table);
+            std::cout << "Main table: " << json << std::endl;
 			continue;
 		}
 		bool new_range = input.find("n") != std::string::npos;
