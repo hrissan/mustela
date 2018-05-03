@@ -85,6 +85,7 @@ namespace mustela {
 		Val(const MVal & mval):data(mval.data), size(mval.size) // allow conversion
 		{}
 		const char * end()const{ return data + size; }
+		bool empty()const{ return size == 0; }
 		
 		std::string to_string()const{
 			return std::string(data, size);

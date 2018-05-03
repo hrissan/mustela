@@ -8,36 +8,42 @@
 #include "mustela.hpp"
 
 void interactive_test(){
-//	    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
-//	    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
+	//	    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
+	//	    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
 	mustela::DB db("test.mustella");
 	mustela::TX txn(db);
-	mustela::Val main_table("main");
-
-    std::string json = txn.print_db();
-    std::cout << "Meta table: " << json << std::endl;
-
-	for(auto && tt : txn.get_tables() )
-	    std::cout << "Table: " << tt.to_string() << std::endl;
-
-	txn.create_table(main_table);
-
-	for(auto && tt : txn.get_tables() )
+	mustela::Val main_bucket_name("main");
+	
+	{
+		mustela::Bucket meta_bucket(txn, mustela::Val());
+		std::string json = meta_bucket.print_db();
+		std::cout << "Meta table: " << json << std::endl;
+	}
+	
+	for(auto && tt : txn.get_buckets() )
 		std::cout << "Table: " << tt.to_string() << std::endl;
-
-	txn.create_table(mustela::Val("Evil"));
-	txn.create_table(mustela::Val("Hren"));
-
+	
+	{
+//		mustela::Bucket main_bucket(txn, main_bucket_name);
+		
+//		for(auto && tt : txn.get_buckets() )
+//			std::cout << "Table: " << tt.to_string() << std::endl;
+		
+		mustela::Bucket evil_bucket(txn, mustela::Val("Evil"));
+		mustela::Bucket hren_bucket(txn, mustela::Val("Hren"));
+	}
+	
 	std::map<std::string, std::string> mirror;
-
-    {
-        mustela::Cursor cur(txn, main_table);
-        mustela::Val c_key, c_value;
-        for (cur.first(); cur.get(c_key, c_value); cur.next()) {
-            if (!mirror.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
-                std::cout << "BAD mirror insert" << std::endl;
-        }
-    }
+	
+	{
+		mustela::Bucket main_bucket(txn, main_bucket_name);
+		mustela::Cursor cur(main_bucket);
+		mustela::Val c_key, c_value;
+		for (cur.first(); cur.get(c_key, c_value); cur.next()) {
+			if (!mirror.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
+				std::cout << "BAD mirror insert" << std::endl;
+		}
+	}
 	const int items_counter = 1000;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
@@ -46,10 +52,12 @@ void interactive_test(){
 	//    }
 	std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
+		mustela::Bucket meta_bucket(txn, mustela::Val());
+		mustela::Bucket main_bucket(txn, main_bucket_name);
 		//        std::string json = txn.print_db();
 		//        std::cout << json << std::endl;
-		std::cout << txn.get_stats() << std::endl;
-		std::cout << txn.get_stats(main_table) << std::endl;
+		std::cout << meta_bucket.get_stats() << std::endl;
+		std::cout << main_bucket.get_stats() << std::endl;
 		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
 		std::string input;
 		if( !cmds.empty()){
@@ -60,10 +68,10 @@ void interactive_test(){
 		if( input == "q")
 			break;
 		if( input == "p"){
-			std::string json = txn.print_db();
+			std::string json = meta_bucket.print_db();
 			std::cout << "Meta table: " << json << std::endl;
-			json = txn.print_db(main_table);
-            std::cout << "Main table: " << json << std::endl;
+			json = main_bucket.print_db();
+			std::cout << "Main table: " << json << std::endl;
 			continue;
 		}
 		bool new_range = input.find("n") != std::string::npos;
@@ -75,7 +83,7 @@ void interactive_test(){
 			int j = dist(e);
 			std::string key = std::to_string(j);
 			std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
-			if( !txn.put(main_table, mustela::Val(key), mustela::Val(val), true) )
+			if( !main_bucket.put(mustela::Val(key), mustela::Val(val), true) )
 				std::cout << "BAD put" << std::endl;
 			mirror[key] = val;
 			txn.commit();
@@ -93,27 +101,27 @@ void interactive_test(){
 				//                    std::string json = txn.print_db(main_table);
 				//                    std::cout << json << std::endl;
 			}
-			bool in_db = txn.get(main_table, mustela::Val(key), got) && got.to_string() == val;
+			bool in_db = main_bucket.get(mustela::Val(key), got) && got.to_string() == val;
 			auto mit = mirror.find(key);
 			bool in_mirror = mit != mirror.end() && mit->second == val;
 			if( in_db != in_mirror )
 				std::cout << "BAD get" << std::endl;
 			if( add ){
-				if( !txn.put(main_table, mustela::Val(key), mustela::Val(val), false) )
+				if( !main_bucket.put(mustela::Val(key), mustela::Val(val), false) )
 					std::cout << "BAD put" << std::endl;
 				mirror[key] = val;
 			}else{
-				if( !txn.del(main_table, mustela::Val(key), false) )
+				if( !main_bucket.del(mustela::Val(key), false) )
 					std::cout << "BAD del" << std::endl;
 				mirror.erase(key);
 			}
 		}
 		for(auto && ma : mirror){
 			mustela::Val value;
-			bool result = txn.get(main_table, mustela::Val(ma.first), value);
+			bool result = main_bucket.get(mustela::Val(ma.first), value);
 			if( !result || ma.second != value.to_string()){
 				std::cout << "Bad check ma=" << ma.first << std::endl;
-				result = txn.get(main_table, mustela::Val(ma.first), value);
+				result = main_bucket.get(mustela::Val(ma.first), value);
 			}
 		}
 		txn.commit();

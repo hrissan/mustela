@@ -80,8 +80,8 @@ namespace mustela {
 			mp->version = OUR_VERSION;
 			mp->page_size = page_size;
 			mp->page_count = 4;
-			mp->meta_table.leaf_page_count = 1;
-			mp->meta_table.root_page = 3;
+			mp->meta_bucket.leaf_page_count = 1;
+			mp->meta_bucket.root_page = 3;
 			mp->dirty = false;
 			if( write(fd, meta_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");

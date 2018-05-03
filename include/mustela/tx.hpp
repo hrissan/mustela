@@ -11,10 +11,13 @@ namespace mustela {
 	
 	class DB;
 	class TX;
+	class Bucket;
 	class Cursor {
 		friend class TX;
+		friend class Bucket;
+		friend class FreeList;
 		TX & my_txn;
-		TableDesc * table;
+		BucketDesc * bucket_desc;
 		std::vector<std::pair<Pid, PageOffset>> path;
 		
 		void truncate(size_t height){
@@ -23,16 +26,17 @@ namespace mustela {
 			if(height == path.size() - 1)
 				path[height++].second = 0; // set to first leaf kv
 		}
-        void jump_prev();
-        void jump_next();
+		void jump_prev();
+		void jump_next();
+		
+		explicit Cursor(TX & my_txn, BucketDesc * bucket_desc);
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
-        explicit Cursor(TX & my_txn, TableDesc * table);
-        explicit Cursor(TX & my_txn, Val & table);
+		explicit Cursor(Bucket & bucket);
 		~Cursor();
 		void lower_bound(const Val & key);
-
+		
 		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
 		void first();
 		void last();
@@ -42,10 +46,10 @@ namespace mustela {
 		void prev();
 		// for( cur.first(); cur.get(key, val) && key.prefix("a"); cur.next() ) {}
 		// for( cur.last(); cur.get(key, val) && key.prefix("a"); cur.prev() ) {}
-
+		
 		void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
 			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
-				for(size_t i = height + 1; i != table->height + 1; ++i)
+				for(size_t i = height + 1; i != bucket_desc->height + 1; ++i)
 					path.at(i) = cur2.path.at(i);
 				path.at(height).first = cur2.path.at(height).first;
 				path.at(height).second -= split_index_r;
@@ -64,12 +68,14 @@ namespace mustela {
 	};
 	class Bucket;
 	class TX {
-		DB & my_db;
-		const Pid c_mappings_end_page; // We keep c_mappings while TX is uinsg it
-		std::set<Cursor *> my_cursors;
 		friend class Cursor;
 		friend class FreeList;
 		friend class Bucket;
+
+		DB & my_db;
+		const Pid c_mappings_end_page; // We keep c_mappings while TX is uinsg it
+		std::set<Cursor *> my_cursors;
+		std::set<Bucket *> my_buckets;
 		size_t meta_page_index;
 		Tid oldest_reader_tid;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
@@ -83,27 +89,12 @@ namespace mustela {
 			memcpy(tmp_pages.back().data(), other, page_size);
 			return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
 		}
-		//        void pop_tmp_copy(){
-		//            tmp_pages.pop_back();
-		//        }
 		void clear_tmp_copies(){
 			tmp_pages.clear();
 		}
 		MetaPage meta_page;
-		std::map<std::string, TableDesc> tables;
-		TableDesc * load_table_desc(const Val & table){
-			auto tit = tables.find(table.to_string());
-			if( tit != tables.end() )
-				return &tit->second;
-			std::string key = "table/" + table.to_string();
-			Val value;
-			if( !get(&meta_page.meta_table, Val(key), value) )
-				return nullptr;
-			TableDesc & td = tables[table.to_string()];
-			ass(value.size == sizeof(td), "TableDesc size in DB is wrong");
-			memmove(&td, value.data, value.size);
-			return &td;
-		}
+		std::map<std::string, BucketDesc> bucket_descs;
+		BucketDesc * load_bucket_desc(const Val & name);
 		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
@@ -127,106 +118,41 @@ namespace mustela {
 		char * writable_overflow(Pid pa, Pid count);
 		
 		void start_transaction();
-		std::string print_db(Pid pa, size_t height);
-		
-		char * put(TableDesc * table, const Val & key, size_t value_size, bool nooverwrite);
-		bool put(TableDesc * table, const Val & key, const Val & value, bool nooverwrite) {
-			char * dst = put(table, key, value.size, nooverwrite);
-			if( dst )
-				memcpy(dst, value.data, value.size);
-			return dst != nullptr;
-		}
-		bool get(TableDesc * table, const Val & key, Val & value);
-		bool get_next(TableDesc * table, Val & key, Val & value);
-		bool del(TableDesc * table, const Val & key, bool must_exist);
-		std::string print_db(const TableDesc & table);
-		std::string get_stats(const TableDesc & table, std::string name);
+
+		std::string print_db(const BucketDesc * bucket_desc);
+		std::string print_db(Pid pa, size_t height, bool parse_meta);
 	public:
 		const uint32_t page_size; // copy from my_db
+		static const std::string bucket_prefix;
+		static const char freelist_prefix = 'f';
 		explicit TX(DB & my_db);
 		~TX();
-		std::string print_db(){
-			return print_db(meta_page.meta_table);
-		}
-		std::string print_db(const Val & table){
-			TableDesc * td = load_table_desc(table);
-			if(!td)
-				return std::string();
-			return print_db(*td);
-		}
-		std::string get_stats(){
-			return get_stats(meta_page.meta_table, std::string());
-		}
-		std::string get_stats(const Val & table){
-			TableDesc * td = load_table_desc(table);
-			if(!td)
-				return std::string();
-			return get_stats(*td, table.to_string());
-		}
-		std::vector<Val> get_tables(); // order of returned tables can be different each call
-		bool create_table(const Val & table); // true if just created, false if already existed
-		bool drop_table(const Val & table); // true if dropped, false if did not exist
-		bool put(const Val & table, const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
-			char * dst = put(table, key, value.size, nooverwrite);
-			if( dst )
-				memcpy(dst, value.data, value.size);
-			return dst != nullptr;
-		}
-		char * put(const Val & table, const Val & key, size_t value_size, bool nooverwrite){ // danger! db will alloc space for key/value in db and return address for you to copy value to
-			TableDesc * td = load_table_desc(table);
-			if(!td)
-				return nullptr;
-			return put(td, key, value_size, nooverwrite);
-		}
-		bool get(const Val & table, const Val & key, Val & value){
-			TableDesc * td = load_table_desc(table);
-			if(!td)
-				return false;
-			return get(td, key, value);
-		}
-		bool del(const Val & table, const Val & key, bool must_exist){
-			TableDesc * td = load_table_desc(table);
-			if(!td)
-				return false;
-			return del(td, key, must_exist);
-		}
+		std::vector<Val> get_buckets(); // order of returned tables can be different each call. meta table not returned
+		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 	};
-	/*    class Bucket {
-	 TX & tx;
-	 TableDesc * td;
-	 public:
-	 Bucket(TX & tx, const Val & table, bool create_if_not_exists = true):tx(tx), td( tx.load_table_desc(table) )
-	 {
-	 if(!td && create_if_not_exists){
-	 // Create
-	 }
-	 }
-	 bool put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
-	 char * dst = put(key, value.size, nooverwrite);
-	 if( dst )
-	 memcpy(dst, value.data, value.size);
-	 return dst != nullptr;
-	 }
-	 char * put(const Val & key, size_t value_size, bool nooverwrite){ // danger! db will alloc space for key/value in db and return address for you to copy value to
-	 if(!td)
-	 return nullptr;
-	 return tx.put(*td, key, value_size, nooverwrite);
-	 }
-	 bool get(const Val & table, const Val & key, Val & value){
-	 if(!td)
-	 return false;
-	 return tx.get(*td, key, value);
-	 }
-	 bool del(const Val & table, const Val & key, bool must_exist){
-	 if(!td)
-	 return false;
-	 return tx.del(*td, key, must_exist);
-	 }
-	 };
-	 
-	 
-	 
-	 */
+	class Bucket {
+		friend class Cursor;
+		friend class TX;
+		friend class FreeList;
+		TX & my_txn;
+		BucketDesc * bucket_desc;
+		std::string debug_name;
+
+		Bucket(TX & my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc) {
+			my_txn.my_buckets.insert(this);
+		}
+	public:
+		Bucket(TX & my_txn, const Val & name, bool create = true);
+		~Bucket();
+		char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
+		bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
+		bool get(const Val & key, Val & value);
+		bool del(const Val & key, bool must_exist);
+		std::string print_db(){
+			return bucket_desc ? my_txn.print_db(bucket_desc) : std::string();
+		}
+		std::string get_stats()const;
+	};
 }
 

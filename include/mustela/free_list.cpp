@@ -98,15 +98,21 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 		}
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
 			break;
-		char keybuf[20]="f";
+		char keybuf[20]={TX::freelist_prefix};
 		size_t p1 = 1;
 		p1 += write_u64_sqlite4(next_record_tid, keybuf + p1);
 		p1 += write_u64_sqlite4(next_record_batch, keybuf + p1);
 		Val key(keybuf, p1);
 		Val value;
-		if( !tx.get_next(&tx.meta_page.meta_table, key, value))
-			break;
-		if( key.size < 1 || key.data[0] != 'f' ) // Free list finished
+		{
+			Cursor main_cursor(tx, &tx.meta_page.meta_bucket);
+			main_cursor.seek(key);
+			if( !main_cursor.get(key, value) )
+				break;
+		}
+//		if( !tx.get_next(&tx.meta_page.meta_bucket, key, value))
+//			break;
+		if( key.size < 1 || key.data[0] != TX::freelist_prefix ) // Free list finished
 			break;
 		//            Tid tid;
 		//            uint64_t batch;
@@ -135,7 +141,6 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 			if( last_page + last_count == tx.meta_page.page_count){
 				tx.meta_page.page_count -= last_count;
 				remove_from_cache(last_page, last_count, free_pages, free_pages_record_count, true);
-//				free_pages.erase(fit);
 			}
 		}
 	}
@@ -177,9 +182,10 @@ void FreeList::fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, co
 	}
 }
 void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count){
+	Bucket meta_bucket(tx, &tx.meta_page.meta_bucket);
 	const size_t page_records = tx.page_size / RECORD_SIZE;
 	while(space_record_count < record_count){
-		char keybuf[20]="f";
+		char keybuf[20]={TX::freelist_prefix};
 		size_t p1 = 1;
 		p1 += write_u64_sqlite4(tid, keybuf + p1);
 		p1 += write_u64_sqlite4(batch, keybuf + p1);
@@ -187,13 +193,14 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
 		std::cout << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
 		recs = page_records;
 		batch += 1;
-		char * raw_space = tx.put(&tx.meta_page.meta_table, Val(keybuf, p1), recs * RECORD_SIZE, true);
+		char * raw_space = meta_bucket.put(Val(keybuf, p1), recs * RECORD_SIZE, true);
 		//        std::cout << tx.print_db() << std::endl;
 		space.push_back(MVal(raw_space, recs * RECORD_SIZE));
 		space_record_count += recs;
 	}
 }
 void FreeList::commit_free_pages(TX & tx, Tid write_tid){
+	Bucket meta_bucket(tx, Val());
 	uint32_t old_batch = 0;
 	size_t old_record_count = 0;
 	std::vector<MVal> old_space;
@@ -203,13 +210,13 @@ void FreeList::commit_free_pages(TX & tx, Tid write_tid){
 	//        const size_t page_records = tx.page_size / RECORD_SIZE;
 	while(old_record_count < free_pages_record_count || future_record_count < future_pages_record_count || !records_to_delete.empty()){
 		while(!records_to_delete.empty()){
-			char keybuf[20]="f";
+			char keybuf[20]={TX::freelist_prefix};
 			size_t p1 = 1;
 			p1 += write_u64_sqlite4(records_to_delete.back().first, keybuf + p1);
 			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
 			std::cout << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
-			ass(tx.del(&tx.meta_page.meta_table, Val(keybuf, p1), true), "Failed to delete free list records after reading");
+			ass(meta_bucket.del(Val(keybuf, p1), true), "Failed to delete free list records after reading");
 			//                std::cout << tx.print_db() << std::endl;
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages_record_count);
@@ -249,11 +256,11 @@ void FreeList::print_db(){
 }
 void FreeList::test(){
 	FreeList list;
-	list.mark_free_in_future_page(1, 2);
-	list.mark_free_in_future_page(7, 4);
 	list.mark_free_in_future_page(4, 2);
-	list.mark_free_in_future_page(3, 1);
+	list.mark_free_in_future_page(10, 4);
+	list.mark_free_in_future_page(7, 2);
 	list.mark_free_in_future_page(6, 1);
+	list.mark_free_in_future_page(9, 1);
 	list.print_db();
 }
 
