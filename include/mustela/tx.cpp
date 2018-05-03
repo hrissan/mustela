@@ -22,13 +22,54 @@ namespace mustela {
 		my_txn.my_cursors.insert(this);
 		path = std::move(other.path);
 	}
-	/*    Cursor & Cursor::operator=(Cursor && other){
-	 my_txn.my_cursors.erase(this);
-	 my_txn = other.my_txn;
-	 path = other.path;
-	 my_txn.my_cursors.insert(this);
-	 return *this;
-	 }*/
+	void Cursor::lower_bound(const Val & key){
+		Pid pa = table.root_page;
+		size_t height = table.height;
+		path.resize(height + 1);
+		while(true){
+			if( height == 0 ){
+				CLeafPtr dap = my_txn.readable_leaf(pa);
+				PageOffset item = dap.lower_bound_item(key);
+				path.at(height) = std::make_pair(pa, item);
+				break;
+			}
+			CNodePtr nap = my_txn.readable_node(pa);
+			PageOffset nitem = nap.upper_bound_item(key) - 1;
+			path.at(height) = std::make_pair(pa, nitem);
+			pa = nap.get_value(nitem);
+			height -= 1;
+		}
+	}
+	void Cursor::first(){
+		Pid pa = table.root_page;
+		size_t height = table.height;
+		path.resize(height + 1);
+		while(true){
+			if( height == 0 ){
+				CLeafPtr dap = my_txn.readable_leaf(pa);
+				PageOffset item = 0;
+				path.at(height) = std::make_pair(pa, item);
+				break;
+			}
+			CNodePtr nap = my_txn.readable_node(pa);
+			PageOffset nitem = -1;
+			path.at(height) = std::make_pair(pa, nitem);
+			pa = nap.get_value(nitem);
+			height -= 1;
+		}
+	}
+	void Cursor::last(){
+	
+	}
+	bool Cursor::get(Val & key, Val & val){
+		return false;
+	}
+	void Cursor::next(){
+	
+	}
+	void Cursor::prev(){
+	
+	}
 	
 	TX::TX(DB & my_db):my_db(my_db), c_mappings_end_page(my_db.c_mappings.back().end_page), page_size(my_db.page_size) {
 		my_db.c_mappings.back().ref_count += 1;
@@ -475,9 +516,9 @@ namespace mustela {
 		// TODO - redistribute value between siblings instead of outright merging
 		auto & path_pa = cur.path.at(1);
 		NodePtr wr_parent = writable_node(path_pa.first);
-		//        int c = 0;
-		//        if( wr_dap.size() == 0)
-		//            c = 1;
+		int c = 0;
+		if( wr_dap.size() == 0)
+			c = 1;
 		if( wr_dap.size() == 0 && wr_parent.size() == 0 ){ // Prune empty leaf + nodes
 			mark_free_in_future_page(wr_dap.page->pid, 1);
 			cur.table.leaf_page_count -= 1;
@@ -530,7 +571,7 @@ namespace mustela {
 	
 	char * TX::put(TableDesc & table, const Val & key, size_t value_size, bool nooverwrite){
 		Cursor main_cursor(*this, table);
-		lower_bound(main_cursor, key);
+		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
@@ -568,7 +609,7 @@ namespace mustela {
 	}
 	bool TX::get(TableDesc & table, const Val & key, Val & value){
 		Cursor main_cursor(*this, table);
-		lower_bound(main_cursor, key);
+		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
 		if( item == dap.size() )
@@ -584,7 +625,7 @@ namespace mustela {
 	}
 	bool TX::get_next(TableDesc & table, Val & key, Val & value){
 		Cursor main_cursor(*this, table);
-		lower_bound(main_cursor, key);
+		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
 		if( item == dap.size() )
@@ -599,7 +640,7 @@ namespace mustela {
 	}
 	bool TX::del(TableDesc & table, const Val & key, bool must_exist){
 		Cursor main_cursor(*this, table);
-		lower_bound(main_cursor, key);
+		main_cursor.lower_bound(key);
 		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
 		PageOffset item = main_cursor.path.at(0).second;
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
@@ -648,28 +689,6 @@ namespace mustela {
 		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 		// Now start new transaction
 		start_transaction();
-	}
-	void TX::lower_bound(Cursor & cur, const Val & key){
-		Pid pa = cur.table.root_page;
-		size_t height = cur.table.height;
-		cur.path.resize(height + 1);
-		while(true){
-			if( height == 0 ){
-				CLeafPtr dap = readable_leaf(pa);
-				PageOffset item = dap.lower_bound_item(key);
-				cur.path.at(height) = std::make_pair(pa, item);
-				break;
-			}
-			CNodePtr nap = readable_node(pa);
-			PageOffset nitem = nap.upper_bound_item(key) - 1;
-			cur.path.at(height) = std::make_pair(pa, nitem);
-			//            result.path.push_back(std::make_pair(pa, nitem));
-			//ass(dap->item_count != 0, "lower_bound node contains zero keys");
-			//if( off == dap->item_count )
-			//    off -= 1;
-			pa = nap.get_value(nitem);
-			height -= 1;
-		}
 	}
 	//{'branch_pages': 1040L,
 	//    'depth': 4L,

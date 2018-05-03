@@ -74,16 +74,16 @@ void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache
 		return;
 	}
 	auto old_count = it->second;
-	record_count -= get_records_count(it->second);
+	record_count -= get_records_count(old_count);
 	cache.erase(it);
 	old_count -= count;
 	page += count;
 	if( update_index )
 		add_to_size_index(page, old_count);
-	record_count += get_records_count(it->second);
+	record_count += get_records_count(old_count);
 	if( old_count == 0 || old_count > 1000000000)
 		old_count = old_count;
-	free_pages.insert(std::make_pair(page, old_count));
+	cache.insert(std::make_pair(page, old_count));
 }
 Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 	while( true ){
@@ -92,6 +92,8 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid pa = *(siit->second.begin());
 			remove_from_cache(pa, contigous_count, free_pages, free_pages_record_count, true);
 			back_from_future_pages.insert(pa);
+			if(pa < 3)
+				std::cout << "Achtung!" << std::endl;
 			return pa;
 		}
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
@@ -132,13 +134,16 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid last_count = fit->second;
 			if( last_page + last_count == tx.meta_page.page_count){
 				tx.meta_page.page_count -= last_count;
-				free_pages.erase(fit);
+				remove_from_cache(last_page, last_count, free_pages, free_pages_record_count, true);
+//				free_pages.erase(fit);
 			}
 		}
 	}
 	return 0;
 }
 void FreeList::mark_free_in_future_page(Pid page, Pid count){
+	if(page < 3)
+		std::cout << "Achtung!" << std::endl;
 	auto bfit = back_from_future_pages.find(page);
 	if( bfit != back_from_future_pages.end()){
 		back_from_future_pages.erase(bfit);

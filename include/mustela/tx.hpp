@@ -11,7 +11,8 @@ namespace mustela {
 	
 	class DB;
 	class TX;
-	struct Cursor {
+	class Cursor {
+		friend class TX;
 		TX & my_txn;
 		TableDesc & table;
 		std::vector<std::pair<Pid, PageOffset>> path;
@@ -22,17 +23,25 @@ namespace mustela {
 			if(height == path.size() - 1)
 				path[height++].second = 0; // set to first leaf kv
 		}
-		//bool erased_left = false;
-		//bool erased_right = false;
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
 		explicit Cursor(TX & my_txn, TableDesc & table);
 		~Cursor();
+		void lower_bound(const Val & key);
+
+		void seek(const Val & key);
+		void first();
+		void last();
+		bool get(Val & key, Val & val);
+		void next();
+		void prev();
+		// for( cur.first(); cur.get(key, val) && key.prefix("a"); cur.next() ) {}
+		// for( cur.last(); cur.get(key, val) && key.prefix("a"); cur.prev() ) {}
+
 		void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
 			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
 				for(size_t i = height + 1; i != table.height + 1; ++i)
-					//                for(size_t i = 0; i != height; ++i)
 					path.at(i) = cur2.path.at(i);
 				path.at(height).first = cur2.path.at(height).first;
 				path.at(height).second -= split_index_r;
@@ -96,7 +105,6 @@ namespace mustela {
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
 		
-		void lower_bound(Cursor & cur, const Val & key);
 		DataPage * make_pages_writable(Cursor & cur, size_t height);
 		
 		PageOffset find_split_index(const CNodePtr & wr_dap, int * insert_direction, PageOffset insert_index, Val insert_key, Pid insert_page, size_t add_size_left, size_t add_size_right);
