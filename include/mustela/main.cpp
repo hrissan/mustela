@@ -37,19 +37,25 @@ void interactive_test(){
 	
 	{
 		mustela::Bucket main_bucket(txn, main_bucket_name);
+		std::string json = main_bucket.print_db();
+		std::cout << "Main table: " << json << std::endl;
 		mustela::Cursor cur(main_bucket);
 		mustela::Val c_key, c_value;
 		for (cur.first(); cur.get(c_key, c_value); cur.next()) {
 			if (!mirror.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
 				std::cout << "BAD mirror insert" << std::endl;
+			else
+				std::cout << c_key.to_string() << std::endl;
 		}
 		std::map<std::string, std::string> mirror2;
 		for (cur.last(); cur.get(c_key, c_value); cur.prev()) {
 			if (!mirror2.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
 				std::cout << "BAD mirror2 insert" << std::endl;
+			else
+				std::cout << c_key.to_string() << std::endl;
 		}
 		if( mirror != mirror2 )
-			std::cout << "Inconsistent forward/backward iteration" << std::endl;
+			std::cout << "Inconsistent forward/backward iteration " << mirror.size() << " " << mirror2.size() << std::endl;
 	}
 	const int items_counter = 1000;
 	std::default_random_engine e;//{r()};

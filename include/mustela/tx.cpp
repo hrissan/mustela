@@ -205,8 +205,9 @@ namespace mustela {
 		auto & path_el = path.at(0);
 		if( path_el.second == 0 ) {
 			jump_prev();
-			if (path.empty()) // jump_prev from begin clears cursor
-				return;
+//			if (path.empty()) // jump_prev from begin clears cursor
+//				return;
+			return;
 		}
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 		ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
