@@ -70,6 +70,8 @@ namespace mustela {
 		}
 	}
 	DB::~DB(){
+		for(auto && ma : c_mappings)
+			ass(ma.ref_count == 0, "Some TX still exist while in DB::~DB");
 	}
 	size_t DB::last_meta_page_index()const{
 		size_t result = 0;
@@ -131,7 +133,7 @@ namespace mustela {
 	void DB::grow_c_mappings() {
 		if( !c_mappings.empty() && c_mappings.back().end_page * page_size >= file_size )
 			return;
-		uint64_t fs = read_only ? file_size : (file_size + 1024*1024*1024) * 3 / 2;
+		uint64_t fs = read_only ? file_size : (file_size + 1024) * 3 / 2; // *1024*1024
 		uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 		void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd.fd, 0);
 		if (cm == MAP_FAILED)
@@ -178,7 +180,7 @@ namespace mustela {
 	void DB::grow_file(Pid new_page_count){
 		if( new_page_count * page_size <= file_size )
 			return;
-		uint64_t fs = (file_size + 1024 * page_size) * 5 / 4; // grow faster while file size is small
+		uint64_t fs = (file_size + 32 * page_size) * 5 / 4; // * 32 grow faster while file size is small
 		uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 		if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
 			throw Exception("file seek failed in grow_file");

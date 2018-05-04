@@ -212,11 +212,13 @@ namespace mustela {
 		ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
 		path_el.second -= 1;
 	}
-	TX::TX(DB & my_db):my_db(my_db), c_mappings_end_page(my_db.c_mappings.back().end_page), page_size(my_db.page_size) {
-		my_db.c_mappings.back().ref_count += 1;
+	TX::TX(DB & my_db):my_db(my_db), page_size(my_db.page_size) {
 		start_transaction();
 	}
 	void TX::start_transaction(){
+		c_mappings_end_page = my_db.c_mappings.back().end_page;
+		my_db.c_mappings.back().ref_count += 1;
+
 		meta_page_index = my_db.oldest_meta_page_index(); // Overwrite oldest page
 		auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
 		oldest_reader_tid = oldest_meta_page->tid; // TODO ask from reader-writer lock
@@ -777,6 +779,7 @@ namespace mustela {
 			b->debug_name = std::string();
 		}
 		// Now start new transaction
+		my_db.trim_old_c_mappings(c_mappings_end_page);
 		start_transaction();
 	}
 	//{'branch_pages': 1040L,

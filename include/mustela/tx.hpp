@@ -72,7 +72,7 @@ namespace mustela {
 		friend class Bucket;
 
 		DB & my_db;
-		const Pid c_mappings_end_page; // We keep c_mappings while TX is uinsg it
+		Pid c_mappings_end_page = 0; // We keep c_mappings while TX is using it
 		std::set<Cursor *> my_cursors;
 		std::set<Bucket *> my_buckets;
 		size_t meta_page_index;
