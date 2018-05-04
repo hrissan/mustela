@@ -24,11 +24,16 @@ namespace mustela {
 	//    'overflow_pages': 0L,
 	//    'psize': 4096L}
 	class DB {
+		struct FD {
+			int fd;
+			explicit FD(int fd):fd(fd) {}
+			~FD();
+		};
+		FD fd;
 		friend class TX;
-		int fd = -1;
 		uint64_t file_size;
 		const bool read_only;
-		const uint32_t page_size;
+		uint32_t page_size;
 		const uint32_t physical_page_size; // We allow to work with smaller pages when reading file from different platform (or portable variant)
 		
 		std::vector<Mapping> c_mappings;

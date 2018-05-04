@@ -19,38 +19,57 @@ namespace mustela {
 	static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint64_t c){
 		return grow_to_granularity(grow_to_granularity(grow_to_granularity(value, a), b), c);
 	}
-	DB::DB(const std::string & file_path, bool read_only):read_only(read_only), page_size(128), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
-		fd = open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600);
-		if( fd == -1)
+/*	static void initial_meta_page(MetaPage * mp, Pid pid){
+		mp->tid = mp->tid2 = 0;
+		mp->pid = pid;
+		mp->magic = META_MAGIC;
+		mp->version = OUR_VERSION;
+		mp->page_size = page_size;
+		mp->page_count = 4;
+		mp->meta_bucket.leaf_page_count = 1;
+		mp->meta_bucket.root_page = 3;
+//		mp->dirty = false;
+	}*/
+	DB::FD::~FD(){
+		close(fd); fd = -1;
+	}
+	DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(128), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+		if( fd.fd == -1)
 			throw Exception("file open failed");
-		file_size = lseek(fd, 0, SEEK_END);
+		file_size = lseek(fd.fd, 0, SEEK_END);
 		if( file_size == uint64_t(-1))
 			throw Exception("file lseek SEEK_END failed");
-		if( file_size < sizeof(MetaPage) ){
+		if( lseek(fd.fd, 0, SEEK_SET) == -1 )
+			throw Exception("file seek SEEK_SET failed");
+		if( file_size == 0 ){
 			create_db();
 			return;
 		}
-		//        throw Exception("mmap file_size too small (corrupted or different platform)");
+		MetaPage mp0{};
+		if( read(fd.fd, &mp0, sizeof(MetaPage)) != sizeof(MetaPage))
+			throw Exception("file read of meta page 0 failed in DB::DB"); // In theory, create_db could leave file size < sizeof(MetaPage)
+		if(mp0.magic != META_MAGIC)
+			throw Exception("file is either not mustela DB or corrupted - wrong meta page 0 magic");
+		if(mp0.version != OUR_VERSION)
+			throw Exception("file is from older or newer version, should convert before opening");
+		page_size = mp0.page_size; // Now we know page size and can create read-only mapping
+		if( file_size < 4 * page_size ){
+			if( mp0.tid == 0 && mp0.page_count == 4 && mp0.meta_bucket.root_page == 3 && mp0.meta_bucket.height == 0 && mp0.meta_bucket.count == 0 && mp0.meta_bucket.leaf_page_count == 1 && mp0.meta_bucket.node_page_count == 0 && mp0.meta_bucket.overflow_page_count == 0 ) { // We did not finish create_db call
+				create_db();
+				return;
+			}
+			throw Exception("file is truncated - meta page 0 is not in initial state");
+		}
 		grow_c_mappings();
 		const MetaPage * meta_pages[3]{readable_meta_page(0), readable_meta_page(1), readable_meta_page(2)};
-		if( meta_pages[0]->magic != META_MAGIC && meta_pages[0]->magic != META_MAGIC_ALTENDIAN )
-			throw Exception("file is either not mustela DB or corrupted");
-		if( meta_pages[0]->magic != META_MAGIC && meta_pages[0]->page_size != page_size )
-			throw Exception("file is from incompatible platform, should convert before opening");
-		if( meta_pages[0]->version != OUR_VERSION )
-			throw Exception("file is from older or newer version, should convert before opening");
-		if( file_size < page_size * 5 ){
-			// TODO - check pages_count, if >5 then corrupted (truncated)
-			create_db(); // We could just not finish the last create_db call
-			return;
+		for(int i = 0; i != 3; ++i) {
+			if( meta_pages[i]->magic != META_MAGIC || meta_pages[i]->version != OUR_VERSION || meta_pages[i]->page_size != page_size || meta_pages[i]->meta_bucket.root_page >= meta_pages[i]->page_count )
+				throw Exception("file is either not mustela DB or corrupted - wrong meta page");
+			if( meta_pages[i]->page_count * page_size > file_size )
+				throw Exception("file is truncated - meta page page_count does not fit file_size");
 		}
-		if( !meta_pages[0]->check(page_size, file_size) || !meta_pages[1]->check(page_size, file_size) || !meta_pages[2]->check(page_size, file_size))
-			throw Exception("meta_pages failed to check - (corrupted)");
-		//        if( meta_pages[last_meta_page()]->page_count * page_size > file_size )
-		//            throw Exception("file too short for last transaction (corrupted)");
 	}
 	DB::~DB(){
-		
 	}
 	size_t DB::last_meta_page_index()const{
 		size_t result = 0;
@@ -70,8 +89,8 @@ namespace mustela {
 	}
 	
 	void DB::create_db(){
-		if( lseek(fd, 0, SEEK_SET) == -1 )
-			throw Exception("file seek failed");
+		if( lseek(fd.fd, 0, SEEK_SET) == -1 )
+			throw Exception("file seek SEEK_SET failed");
 		{
 			char meta_buf[page_size];
 			memset(meta_buf, 0, page_size); // C++ standard URODI "variable size object cannot be initialized"
@@ -82,14 +101,13 @@ namespace mustela {
 			mp->page_count = 4;
 			mp->meta_bucket.leaf_page_count = 1;
 			mp->meta_bucket.root_page = 3;
-			mp->dirty = false;
-			if( write(fd, meta_buf, page_size) == -1)
+			if( write(fd.fd, meta_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");
 			mp->pid = 1;
-			if( write(fd, meta_buf, page_size) == -1)
+			if( write(fd.fd, meta_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");
 			mp->pid = 2;
-			if( write(fd, meta_buf, page_size) == -1)
+			if( write(fd.fd, meta_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");
 		}
 		{
@@ -97,15 +115,15 @@ namespace mustela {
 			LeafPtr mp(page_size, (LeafPage *)data_buf);
 			mp.mpage()->pid = 3;
 			mp.init_dirty(0);
-			if( write(fd, data_buf, page_size) == -1)
+			if( write(fd.fd, data_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");
-			mp.mpage()->pid = 4;
-			if( write(fd, data_buf, page_size) == -1)
-				throw Exception("file write failed in create_db");
+//			mp.mpage()->pid = 4;
+//			if( write(fd, data_buf, page_size) == -1)
+//				throw Exception("file write failed in create_db");
 		}
-		if( fsync(fd) == -1 )
+		if( fsync(fd.fd) == -1 )
 			throw Exception("fsync failed in create_db");
-		file_size = lseek(fd, 0, SEEK_END);
+		file_size = lseek(fd.fd, 0, SEEK_END);
 		if( file_size == uint64_t(-1))
 			throw Exception("file lseek SEEK_END failed");
 		grow_c_mappings();
@@ -115,7 +133,7 @@ namespace mustela {
 			return;
 		uint64_t fs = read_only ? file_size : (file_size + 1024*1024*1024) * 3 / 2;
 		uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
-		void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd, 0);
+		void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd.fd, 0);
 		if (cm == MAP_FAILED)
 			throw Exception("mmap PROT_READ failed");
 		c_mappings.push_back(Mapping(new_fs / page_size, (char *)cm));
@@ -141,15 +159,15 @@ namespace mustela {
 		if( mappings.empty() ){
 			uint64_t new_fs = grow_to_granularity(file_size, page_size, physical_page_size, additional_granularity);
 			if( new_fs > file_size ){
-				if( lseek(fd, new_fs - 1, SEEK_SET) == -1 )
+				if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
 					throw Exception("file seek failed in writable_page");
-				if( write(fd, "", 1) != 1 )
+				if( write(fd.fd, "", 1) != 1 )
 					throw Exception("file write failed in writable_page");
-				file_size = lseek(fd, 0, SEEK_END);
+				file_size = lseek(fd.fd, 0, SEEK_END);
 				if( new_fs != file_size )
 					throw Exception("file failed to grow in writable_page");
 			}
-			void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+			void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd.fd, 0);
 			if (wm == MAP_FAILED)
 				throw Exception("mmap PROT_READ failed");
 			mappings.push_back(Mapping(new_fs / page_size, (char *)wm));
@@ -162,14 +180,14 @@ namespace mustela {
 			return;
 		uint64_t fs = (file_size + 1024 * page_size) * 5 / 4; // grow faster while file size is small
 		uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
-		if( lseek(fd, new_fs - 1, SEEK_SET) == -1 )
+		if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
 			throw Exception("file seek failed in grow_file");
-		if( write(fd, "", 1) != 1 )
+		if( write(fd.fd, "", 1) != 1 )
 			throw Exception("file write failed in grow_file");
-		file_size = lseek(fd, 0, SEEK_END);
+		file_size = lseek(fd.fd, 0, SEEK_END);
 		if( new_fs != file_size )
 			throw Exception("file failed to grow in grow_file");
-		void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd.fd, 0);
 		if (wm == MAP_FAILED)
 			throw Exception("mmap PROT_READ | PROT_WRITE failed");
 		mappings.push_back(Mapping(new_fs / page_size, (char *)wm));

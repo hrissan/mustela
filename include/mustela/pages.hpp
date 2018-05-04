@@ -24,10 +24,10 @@ namespace mustela {
 		uint64_t page_count; // excess pages in file are all free
 		BucketDesc meta_bucket; // All other bucket descs are stored in meta_bucket together with freelist
 		uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
-		bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
+//		bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
 		
 		Tid effective_tid()const { return std::min(tid, tid2); }
-		bool check(uint32_t system_page_size, uint64_t file_size)const;
+//		bool check(uint32_t system_page_size, uint64_t file_size)const;
 	};
 	struct DataPage {
 		Pid pid; /// for consistency debugging. Never written except in get_free_page

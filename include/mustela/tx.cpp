@@ -174,7 +174,7 @@ namespace mustela {
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 		if( path_el.second == dap.size() ) // After seek("zzz"), when all keys are less than "z"
 			return;
-		my_txn.meta_page.dirty = true;
+		my_txn.meta_page_dirty = true;
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
 		Pid overflow_page, overflow_count;
 		wr_dap.erase(path_el.second, overflow_page, overflow_count);
@@ -212,8 +212,6 @@ namespace mustela {
 		ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
 		path_el.second -= 1;
 	}
-	const std::string TX::bucket_prefix("b");
-
 	TX::TX(DB & my_db):my_db(my_db), c_mappings_end_page(my_db.c_mappings.back().end_page), page_size(my_db.page_size) {
 		my_db.c_mappings.back().ref_count += 1;
 		start_transaction();
@@ -226,6 +224,7 @@ namespace mustela {
 		meta_page = *(my_db.readable_meta_page(newest_page_index));
 		meta_page.tid += 1;
 		meta_page.tid2 = meta_page.tid;
+		meta_page_dirty = false;
 	}
 	
 	TX::~TX(){
@@ -739,7 +738,7 @@ namespace mustela {
 		return true;
 	}*/
 	void TX::commit(){
-		if( my_db.mappings.empty() || !meta_page.dirty )
+		if( my_db.mappings.empty() || !meta_page_dirty )
 			return;
 		{
 			Bucket meta_bucket(*this, &meta_page.meta_bucket);
@@ -753,7 +752,7 @@ namespace mustela {
 			}
 		}
 		free_list.commit_free_pages(*this, meta_page.tid);
-		meta_page.dirty = false;
+		meta_page_dirty = false;
 		// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
 		my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
 		for(size_t i = 0; i != my_db.mappings.size(); ++i){
@@ -792,7 +791,8 @@ namespace mustela {
 			results.push_back(Val(tit.first));
 		Cursor cur(*this, &meta_page.meta_bucket);
 		Val c_key, c_value, c_tail;
-		const Val prefix(bucket_prefix);
+		char ch = bucket_prefix;
+		const Val prefix(&ch, 1);
 		for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
 			if(bucket_descs.count(c_tail.to_string()) == 0)
 				results.push_back(c_tail);
@@ -849,7 +849,7 @@ namespace mustela {
 			size_t p1 = 1;
 			p1 += read_u64_sqlite4(next_record_tid, key.data() + p1);
 			p1 += read_u64_sqlite4(next_record_batch, key.data() + p1);
-			return "f:" + std::to_string(next_record_tid) + ":" + std::to_string(next_record_batch);
+			return "f" + std::to_string(next_record_tid) + ":" + std::to_string(next_record_batch);
 		}
 		std::string result;
 		for(auto && ch : key)
@@ -928,7 +928,7 @@ namespace mustela {
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
 		if( same_key && nooverwrite )
 			return nullptr;
-		my_txn.meta_page.dirty = true;
+		my_txn.meta_page_dirty = true;
 		// TODO - optimize - if page will split and it is not writable yet, we can save make_page_writable
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(main_cursor, 0));
 		if( same_key ){

@@ -66,7 +66,6 @@ namespace mustela {
 			}
 		}
 	};
-	class Bucket;
 	class TX {
 		friend class Cursor;
 		friend class FreeList;
@@ -93,6 +92,7 @@ namespace mustela {
 			tmp_pages.clear();
 		}
 		MetaPage meta_page;
+		bool meta_page_dirty;
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name);
 		FreeList free_list;
@@ -123,7 +123,7 @@ namespace mustela {
 		std::string print_db(Pid pa, size_t height, bool parse_meta);
 	public:
 		const uint32_t page_size; // copy from my_db
-		static const std::string bucket_prefix;
+		static const char bucket_prefix = 'b';
 		static const char freelist_prefix = 'f';
 		explicit TX(DB & my_db);
 		~TX();
@@ -145,6 +145,7 @@ namespace mustela {
 	public:
 		Bucket(TX & my_txn, const Val & name, bool create = true);
 		~Bucket();
+		bool exists()const { return bucket_desc != nullptr; }
 		char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
 		bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
 		bool get(const Val & key, Val & value);

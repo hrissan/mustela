@@ -19,7 +19,6 @@ namespace mustela {
 	class ReaderLock { // Sets reader tid into reader table slot
 	public:
 		ReaderLock();
-		
 		~ReaderLock();
 	};
 }
