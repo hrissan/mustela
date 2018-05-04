@@ -30,7 +30,7 @@ void interactive_test(){
 //			std::cout << "Table: " << tt.to_string() << std::endl;
 
 		mustela::Bucket empty_bucket(txn, mustela::Val());
-		std::string long_key(140, 'A');
+		std::string long_key(95, 'A');
 		empty_bucket.put(mustela::Val("1"), mustela::Val("val1"), false);
 		empty_bucket.put(mustela::Val("2"), mustela::Val("val2"), false);
 		std::string json = empty_bucket.print_db();

@@ -972,6 +972,8 @@ namespace mustela {
 		}
 		bool overflow;
 		size_t required_size = wr_dap.get_item_size(key, value_size, overflow);
+		if( required_size > wr_dap.capacity() )
+			throw Exception("Key size too big in Bucket::put");
 		char * result = nullptr;
 		if( required_size <= wr_dap.free_capacity() )
 			result = wr_dap.insert_at(main_cursor.path.at(0).second, key, value_size, overflow);
