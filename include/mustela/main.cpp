@@ -43,6 +43,13 @@ void interactive_test(){
 			if (!mirror.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
 				std::cout << "BAD mirror insert" << std::endl;
 		}
+		std::map<std::string, std::string> mirror2;
+		for (cur.last(); cur.get(c_key, c_value); cur.prev()) {
+			if (!mirror2.insert(std::make_pair(c_key.to_string(), c_value.to_string())).second)
+				std::cout << "BAD mirror2 insert" << std::endl;
+		}
+		if( mirror != mirror2 )
+			std::cout << "Inconsistent forward/backward iteration" << std::endl;
 	}
 	const int items_counter = 1000;
 	std::default_random_engine e;//{r()};

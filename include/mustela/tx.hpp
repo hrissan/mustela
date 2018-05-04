@@ -30,12 +30,12 @@ namespace mustela {
 		void jump_next();
 		
 		explicit Cursor(TX & my_txn, BucketDesc * bucket_desc);
+		void lower_bound(const Val & key);
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
 		explicit Cursor(Bucket & bucket);
 		~Cursor();
-		void lower_bound(const Val & key);
 		
 		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
 		void first();
@@ -44,8 +44,8 @@ namespace mustela {
 		void del(); // If you can get, you can del. After del, cursor points to the next item
 		void next();
 		void prev();
-		// for( cur.first(); cur.get(key, val) && key.prefix("a"); cur.next() ) {}
-		// for( cur.last(); cur.get(key, val) && key.prefix("a"); cur.prev() ) {}
+		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a")*/; cur.next() ) {}
+		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a")*/; cur.prev() ) {}
 		
 		void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
 			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
