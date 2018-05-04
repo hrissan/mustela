@@ -171,7 +171,7 @@ namespace mustela {
 			}
 			void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd.fd, 0);
 			if (wm == MAP_FAILED)
-				throw Exception("mmap PROT_READ failed");
+				throw Exception("mmap PROT_READ | PROT_WRITE failed");
 			mappings.push_back(Mapping(new_fs / page_size, (char *)wm));
 		}
 		ass( !mappings.empty() && page + count <= mappings.back().end_page, "writable_page out of range");

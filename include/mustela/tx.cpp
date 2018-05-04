@@ -110,6 +110,7 @@ namespace mustela {
 		}
 	}
 	bool Cursor::seek(const Val & key){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		lower_bound(key);
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
@@ -119,6 +120,7 @@ namespace mustela {
 		return same_key;
 	}
 	void Cursor::first(){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		Pid pa = bucket_desc->root_page;
 		size_t height = bucket_desc->height;
 		path.resize(height + 1);
@@ -135,6 +137,7 @@ namespace mustela {
 		}
 	}
 	void Cursor::last(){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		if( bucket_desc->count == 0){
 			path.clear();
 			return;
@@ -157,6 +160,7 @@ namespace mustela {
 		}
 	}
 	bool Cursor::get(Val & key, Val & value){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		if( path.empty() )
 			return false;
 		auto path_el = path.at(0);
@@ -172,6 +176,9 @@ namespace mustela {
 		return true;
 	}
 	void Cursor::del(){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
+		if( my_txn.read_only )
+			throw Exception("Attempt to modify read-only transaction in Cursor::del");
 		if( path.empty() )
 			return;
 		auto & path_el = path.at(0);
@@ -194,6 +201,7 @@ namespace mustela {
 			jump_next();
 	}
 	void Cursor::next(){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		if( path.empty() )
 			return first();
 		auto & path_el = path.at(0);
@@ -204,6 +212,7 @@ namespace mustela {
 			jump_next();
 	}
 	void Cursor::prev(){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		if( path.empty() )
 			return last();
 		auto & path_el = path.at(0);
@@ -217,7 +226,9 @@ namespace mustela {
 		ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
 		path_el.second -= 1;
 	}
-	TX::TX(DB & my_db):my_db(my_db), page_size(my_db.page_size) {
+	TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), read_only(read_only) {
+		if( !read_only && my_db.read_only)
+			throw Exception("Read-write transaction impossible on read-only DB");
 		start_transaction();
 	}
 	void TX::start_transaction(){
@@ -745,35 +756,36 @@ namespace mustela {
 		return true;
 	}*/
 	void TX::commit(){
-		if( my_db.mappings.empty() || !meta_page_dirty )
-			return;
-		{
-			Bucket meta_bucket(*this, &meta_page.meta_bucket);
-			for(auto && tit : bucket_descs){ // First write all dirty table descriptions
-				CLeafPtr dap = readable_leaf(tit.second.root_page);
-				if( dap.page->tid != meta_page.tid ) // Table not dirty
-					continue;
-				std::string key = bucket_prefix + tit.first;
-				Val value(reinterpret_cast<const char *>(&tit.second), sizeof(BucketDesc));
-				ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
+		if( meta_page_dirty ) {
+			{
+				Bucket meta_bucket(*this, &meta_page.meta_bucket);
+				for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
+					CLeafPtr dap = readable_leaf(tit.second.root_page);
+					if (dap.page->tid != meta_page.tid) // Table not dirty
+						continue;
+					std::string key = bucket_prefix + tit.first;
+					Val value(reinterpret_cast<const char *>(&tit.second), sizeof(BucketDesc));
+					ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
+				}
 			}
+			free_list.commit_free_pages(*this, meta_page.tid);
+			meta_page_dirty = false;
+			// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
+			my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
+			for (size_t i = 0; i != my_db.mappings.size(); ++i) {
+				Mapping &ma = my_db.mappings[i];
+				msync(ma.addr, ma.end_page * page_size, MS_SYNC);
+			}
+			// Now modify and sync our meta page
+			MetaPage *wr_meta = my_db.writable_meta_page(meta_page_index);
+			*wr_meta = meta_page;
+			size_t low = meta_page_index * page_size;
+			size_t high = (meta_page_index + 1) * page_size;
+			low = ((low / my_db.physical_page_size)) * my_db.physical_page_size; // find lowest physical page
+			high = ((high + my_db.physical_page_size - 1) / my_db.physical_page_size) *
+				   my_db.physical_page_size; // find highest physical page
+			msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 		}
-		free_list.commit_free_pages(*this, meta_page.tid);
-		meta_page_dirty = false;
-		// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
-		my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
-		for(size_t i = 0; i != my_db.mappings.size(); ++i){
-			Mapping & ma = my_db.mappings[i];
-			msync(ma.addr, ma.end_page * page_size, MS_SYNC);
-		}
-		// Now modify and sync our meta page
-		MetaPage * wr_meta = my_db.writable_meta_page(meta_page_index);
-		*wr_meta = meta_page;
-		size_t low = meta_page_index * page_size;
-		size_t high = (meta_page_index + 1) * page_size;
-		low = ((low / my_db.physical_page_size)) * my_db.physical_page_size; // find lowest physical page
-		high = ((high + my_db.physical_page_size - 1) / my_db.physical_page_size)  * my_db.physical_page_size; // find highest physical page
-		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 		// Now invalidate all cursors and buckets
 		for(auto && c : my_cursors) {
 			c->bucket_desc = nullptr;
@@ -793,7 +805,7 @@ namespace mustela {
 	//    'leaf_pages': 73658L,
 	//    'overflow_pages': 0L,
 	//    'psize': 4096L}
-    std::vector<Val> TX::get_buckets(){
+    std::vector<Val> TX::get_bucket_names(){
 		std::vector<Val> results;
 		for(auto && tit : bucket_descs) // First write all dirty table descriptions
 			results.push_back(Val(tit.first));
@@ -812,6 +824,8 @@ namespace mustela {
 //		return true;
 //	}
 	bool TX::drop_bucket(const Val & name){
+		if( read_only )
+			throw Exception("Attempt to modify read-only transaction");
 		BucketDesc * td = load_bucket_desc(name);
 		if( !td )
 			return false;
@@ -920,6 +934,8 @@ namespace mustela {
 	}
 	Bucket::Bucket(TX & my_txn, const Val & name, bool create):my_txn(my_txn), bucket_desc(my_txn.load_bucket_desc(name)), debug_name(name.to_string()) {
 		if( !bucket_desc && create){
+			if( my_txn.read_only )
+				throw Exception("Attempt to modify read-only transaction");
 			BucketDesc & td = my_txn.bucket_descs[name.to_string()];
 			td = BucketDesc{};
 			td.root_page = my_txn.get_free_page(1);
@@ -933,8 +949,9 @@ namespace mustela {
 		my_txn.my_buckets.erase(this);
 	}
 	char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
-		if(!bucket_desc)
-			return nullptr;
+		if( my_txn.read_only )
+			throw Exception("Attempt to modify read-only transaction");
+		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 		Cursor main_cursor(my_txn, bucket_desc);
 		main_cursor.lower_bound(key);
 		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
@@ -980,8 +997,7 @@ namespace mustela {
 		return dst != nullptr;
 	}
 	bool Bucket::get(const Val & key, Val & value){
-		if(!bucket_desc)
-			return false;
+		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 		Cursor main_cursor(my_txn, bucket_desc);
 		if( !main_cursor.seek(key) )
 			return false;
@@ -989,8 +1005,9 @@ namespace mustela {
 		return main_cursor.get(c_key, value);
 	}
 	bool Bucket::del(const Val & key, bool must_exist){
-		if(!bucket_desc)
-			return false;
+		if( my_txn.read_only )
+			throw Exception("Attempt to modify read-only transaction");
+		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 		Cursor main_cursor(my_txn, bucket_desc);
 		if( !main_cursor.seek(key) )
 			return !must_exist;
@@ -999,14 +1016,14 @@ namespace mustela {
 	}
 	std::string Bucket::get_stats()const{
 		std::string result;
-		if(bucket_desc)
-			result += "{'branch_pages': " + std::to_string(bucket_desc->node_page_count) +
-			",\n\t'depth': " + std::to_string(bucket_desc->height) +
-			",\n\t'entries': " + std::to_string(bucket_desc->count) +
-			",\n\t'leaf_pages': " + std::to_string(bucket_desc->leaf_page_count) +
-			",\n\t'overflow_pages': " + std::to_string(bucket_desc->overflow_page_count) +
-			",\n\t'psize': " + std::to_string(my_txn.page_size) +
-			",\n\t'table': '" + debug_name + "'}";
+		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
+		result += "{'branch_pages': " + std::to_string(bucket_desc->node_page_count) +
+		",\n\t'depth': " + std::to_string(bucket_desc->height) +
+		",\n\t'entries': " + std::to_string(bucket_desc->count) +
+		",\n\t'leaf_pages': " + std::to_string(bucket_desc->leaf_page_count) +
+		",\n\t'overflow_pages': " + std::to_string(bucket_desc->overflow_page_count) +
+		",\n\t'psize': " + std::to_string(my_txn.page_size) +
+		",\n\t'table': '" + debug_name + "'}";
 		return result;
 	}
 }

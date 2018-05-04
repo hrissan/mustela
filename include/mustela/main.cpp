@@ -20,7 +20,7 @@ void interactive_test(){
 		std::cout << "Meta table: " << json << std::endl;
 	}
 	
-	for(auto && tt : txn.get_buckets() )
+	for(auto && tt : txn.get_bucket_names() )
 		std::cout << "Table: " << tt.to_string() << std::endl;
 	
 	{
