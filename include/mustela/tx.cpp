@@ -135,6 +135,10 @@ namespace mustela {
 		}
 	}
 	void Cursor::last(){
+		if( bucket_desc->count == 0){
+			path.clear();
+			return;
+		}
 		Pid pa = bucket_desc->root_page;
 		size_t height = bucket_desc->height;
 		path.resize(height + 1);
@@ -185,9 +189,9 @@ namespace mustela {
 		my_txn.merge_if_needed_leaf(*this, wr_dap);
 		bucket_desc->count -= 1;
 		my_txn.clear_tmp_copies();
-        dap = my_txn.readable_leaf(path_el.first);
-        if( path_el.second == dap.size() )
-            jump_next();
+		dap = my_txn.readable_leaf(path_el.first);
+		if( path_el.second == dap.size() )
+			jump_next();
 	}
 	void Cursor::next(){
 		if( path.empty() )
@@ -808,8 +812,6 @@ namespace mustela {
 //		return true;
 //	}
 	bool TX::drop_bucket(const Val & name){
-		if( name.empty() )
-			return false; // Refuse to delete meta table
 		BucketDesc * td = load_bucket_desc(name);
 		if( !td )
 			return false;
@@ -831,8 +833,8 @@ namespace mustela {
 		return true;
 	}
 	BucketDesc * TX::load_bucket_desc(const Val & name){
-		if(name.empty())
-			return &meta_page.meta_bucket;
+//		if(name.empty())
+//			return nullptr;
 		auto tit = bucket_descs.find(name.to_string());
 		if( tit != bucket_descs.end() )
 			return &tit->second;
@@ -907,6 +909,14 @@ namespace mustela {
 			result += "," + str;
 		}
 		return result + "]}";
+	}
+	std::string TX::print_meta_db(){
+		Bucket meta_bucket(*this, &meta_page.meta_bucket);
+		return meta_bucket.print_db();
+	}
+	std::string TX::get_meta_stats(){
+		Bucket meta_bucket(*this, &meta_page.meta_bucket);
+		return meta_bucket.get_stats();
 	}
 	Bucket::Bucket(TX & my_txn, const Val & name, bool create):my_txn(my_txn), bucket_desc(my_txn.load_bucket_desc(name)), debug_name(name.to_string()) {
 		if( !bucket_desc && create){

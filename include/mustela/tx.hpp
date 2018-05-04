@@ -130,6 +130,9 @@ namespace mustela {
 		std::vector<Val> get_buckets(); // order of returned tables can be different each call. meta table not returned
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
+
+		std::string print_meta_db();
+		std::string get_meta_stats();
 	};
 	class Bucket {
 		friend class Cursor;

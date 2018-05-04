@@ -15,8 +15,8 @@ void interactive_test(){
 	mustela::Val main_bucket_name("main");
 	
 	{
-		mustela::Bucket meta_bucket(txn, mustela::Val());
-		std::string json = meta_bucket.print_db();
+//		mustela::Bucket meta_bucket(txn, mustela::Val());
+		std::string json = txn.print_meta_db();
 		std::cout << "Meta table: " << json << std::endl;
 	}
 	
@@ -28,7 +28,13 @@ void interactive_test(){
 		
 //		for(auto && tt : txn.get_buckets() )
 //			std::cout << "Table: " << tt.to_string() << std::endl;
-		
+
+		mustela::Bucket empty_bucket(txn, mustela::Val());
+		empty_bucket.put(mustela::Val("1"), mustela::Val("val1"), false);
+		empty_bucket.put(mustela::Val("2"), mustela::Val("val2"), false);
+		std::string json = empty_bucket.print_db();
+		std::cout << "Empty table: " << json << std::endl;
+
 		mustela::Bucket evil_bucket(txn, mustela::Val("Evil"));
 		mustela::Bucket hren_bucket(txn, mustela::Val("Hren"));
 	}
@@ -65,11 +71,11 @@ void interactive_test(){
 	//    }
 	std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
-		mustela::Bucket meta_bucket(txn, mustela::Val());
+//		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket(txn, main_bucket_name);
 		//        std::string json = txn.print_db();
 		//        std::cout << json << std::endl;
-		std::cout << meta_bucket.get_stats() << std::endl;
+		std::cout << txn.get_meta_stats() << std::endl;
 		std::cout << main_bucket.get_stats() << std::endl;
 		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
 		std::string input;
@@ -81,7 +87,7 @@ void interactive_test(){
 		if( input == "q")
 			break;
 		if( input == "p"){
-			std::string json = meta_bucket.print_db();
+			std::string json = txn.print_meta_db();
 			std::cout << "Meta table: " << json << std::endl;
 			json = main_bucket.print_db();
 			std::cout << "Main table: " << json << std::endl;

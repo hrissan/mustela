@@ -200,7 +200,7 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
 	}
 }
 void FreeList::commit_free_pages(TX & tx, Tid write_tid){
-	Bucket meta_bucket(tx, Val());
+	Bucket meta_bucket(tx, &tx.meta_page.meta_bucket);
 	uint32_t old_batch = 0;
 	size_t old_record_count = 0;
 	std::vector<MVal> old_space;
