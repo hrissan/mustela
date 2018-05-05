@@ -40,6 +40,14 @@ void interactive_test(){
 			std::cout << "Empty table: " << json << std::endl;
 		}
 		mustela::Bucket evil_bucket(txn, mustela::Val("Evil"));
+		for(int i = 0; i != 100; ++i){
+			std::string key = std::to_string(i/10) + std::to_string(i%10);
+			std::string val = "value" + std::to_string(i);// + std::string(70,'A');
+			if( !evil_bucket.put(mustela::Val(key), mustela::Val(val), true) )
+				std::cout << "BAD put" << std::endl;
+		}
+		std::string json = evil_bucket.print_db();
+		std::cout << "Evil table: " << evil_bucket.get_stats() << std::endl << json << std::endl;
 		mustela::Bucket hren_bucket(txn, mustela::Val("Hren"));
 	}
 	

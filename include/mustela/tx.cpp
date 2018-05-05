@@ -11,6 +11,8 @@
 #include <algorithm>
 
 namespace mustela {
+
+	static const bool BULK_LOADING = true;
 	
 	Cursor::Cursor(TX & my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc){
 		my_txn.my_cursors.insert(this);
@@ -400,22 +402,34 @@ namespace mustela {
 		int insert_direction = 0;
 		PageOffset split_index = find_split_index(wr_dap, &insert_direction, insert_index, insert_key, insert_page, 0, 0);
 		PageOffset split_index_r = insert_direction == 0 ? split_index : split_index + 1;
-		//ass(split_index >= 0 && split_index < wr_dap->item_count, "Could not find split index for node");
-		
+		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
+			bool right_sibling = false; // No right sibling when inserting into root node
+			if( cur.path.size() > height + 1 ){
+				auto & path_pa = cur.path.at(height + 1);
+				CNodePtr wr_parent = readable_node(path_pa.first);
+				right_sibling = path_pa.second + 1 < wr_parent.size();
+			}
+			if( !right_sibling) {
+				split_index_r = split_index = insert_index;
+				insert_direction = 0;
+			}
+		}
 		NodePtr wr_right = writable_node(get_free_page(1));
 		cur.bucket_desc->node_page_count += 1;
 		wr_right.init_dirty(meta_page.tid);
 		wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
-		NodePtr my_copy = push_tmp_copy(wr_dap.page);
 		ValPid split;
 		if( insert_direction != 0)
-			split = my_copy.get_kv(split_index);
+			split = wr_dap.get_kv(split_index); // Was my_copy.get_kv(split_index); - but we do not use split.key after we modify wr_dap
 		Cursor cur2 = insert_pages_to_node(cur, height + 1, insert_direction != 0 ? split.key : insert_key, wr_right.page->pid);
 		for(auto && c : my_cursors)
 			c->on_page_split(height, path_el.first, split_index, split_index_r, cur2);
-		wr_dap.clear();
-		wr_dap.set_value(-1, my_copy.get_value(-1));
-		wr_dap.append_range(my_copy, 0, split_index);
+		if( split_index != wr_dap.size() ){ // optimize out nop
+			NodePtr my_copy = push_tmp_copy(wr_dap.page);
+			wr_dap.clear();
+			wr_dap.set_value(-1, my_copy.get_value(-1));
+			wr_dap.append_range(my_copy, 0, split_index);
+		}
 		if( insert_direction == -1 ) {
 			wr_right.set_value(-1, split.pid);
 			wr_dap.insert_at(insert_index, insert_key, insert_page);
@@ -477,6 +491,18 @@ namespace mustela {
 			split_index = insert_index;
 			insert_direction = 0;
 		}
+		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
+			bool right_sibling = false; // No right sibling when height == 0
+			if( cur.path.size() > 1 ){
+				auto & path_pa = cur.path.at(1);
+				CNodePtr wr_parent = readable_node(path_pa.first);
+				right_sibling = path_pa.second + 1 < wr_parent.size();
+			}
+			if( !right_sibling) {
+				split_index = insert_index;
+				insert_direction = 1;
+			}
+		}
 		LeafPtr wr_right = writable_leaf(get_free_page(1));
 		cur.bucket_desc->leaf_page_count += 1;
 		wr_right.init_dirty(meta_page.tid);
@@ -485,9 +511,11 @@ namespace mustela {
 		Cursor cur2 = insert_pages_to_node(cur, 1, right_key0, wr_right.page->pid);
 		for(auto && c : my_cursors)
 			c->on_page_split(0, path_el.first, split_index, split_index, cur2);
-		LeafPtr my_copy = push_tmp_copy(wr_dap.page);
-		wr_dap.clear();
-		wr_dap.append_range(my_copy, 0, split_index);
+		if( split_index != wr_dap.size() ){ // optimize out nop
+			LeafPtr my_copy = push_tmp_copy(wr_dap.page);
+			wr_dap.clear();
+			wr_dap.append_range(my_copy, 0, split_index);
+		}
 		char * result = nullptr;
 		if( insert_direction == -1 ) {
 			result = wr_dap.insert_at(insert_index, insert_key, insert_val_size, overflow);
@@ -1002,7 +1030,6 @@ namespace mustela {
 			bucket_desc->count += 1;
 		my_txn.clear_tmp_copies();
 		return result;
-//				return my_txn.put(table, key, value_size, nooverwrite);
 	}
 	bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
 		char * dst = put(key, value.size, nooverwrite);
