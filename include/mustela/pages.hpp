@@ -24,10 +24,8 @@ namespace mustela {
 		uint64_t page_count; // excess pages in file are all free
 		BucketDesc meta_bucket; // All other bucket descs are stored in meta_bucket together with freelist
 		uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
-//		bool dirty; // We do not commit transaction if dirty=false. If dirty, set to false then commit to disk
 		
 		Tid effective_tid()const { return std::min(tid, tid2); }
-//		bool check(uint32_t system_page_size, uint64_t file_size)const;
 	};
 	struct DataPage {
 		Pid pid; /// for consistency debugging. Never written except in get_free_page
@@ -174,7 +172,6 @@ namespace mustela {
 		Val get_key(PageOffset item)const{
 			return page->get_item_key(page_size, page->item_offsets, page->item_count, item);
 		}
-		//        Val get_value(PageOffset item)const;
 		ValVal get_kv(PageOffset item, Pid & overflow_page)const;
 		size_t get_item_size(PageOffset item, Pid & overflow_page, Pid & overflow_count)const;
 		size_t get_item_size(PageOffset item)const{
@@ -183,9 +180,6 @@ namespace mustela {
 		PageOffset lower_bound_item(Val key, bool * found = nullptr)const{
 			return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
 		}
-		//        PageOffset upper_bound_item(Val key)const{
-		//            return page->upper_bound_item(page_size, page->item_offsets, page->item_count, key);
-		//        }
 		PageOffset get_item_size(Val key, size_t value_size, bool & overflow)const;
 		PageOffset capacity()const{
 			return page_size - LEAF_HEADER_SIZE;
@@ -211,7 +205,6 @@ namespace mustela {
 		MVal get_key(PageOffset item){
 			return mpage()->get_item_key(page_size, page->item_offsets, page->item_count, item);
 		}
-		//        void set_value(PageOffset item, Pid value);
 		void erase(PageOffset to_remove_item, Pid & overflow_page, Pid & overflow_count){
 			size_t item_size = get_item_size(to_remove_item, overflow_page, overflow_count);
 			mpage()->remove_simple(page_size, true, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item, item_size);

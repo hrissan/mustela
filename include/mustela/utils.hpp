@@ -100,16 +100,16 @@ namespace mustela {
 		bool operator<(const Val & other)const{
 			return compare(other) < 0;
 		}
-        bool has_prefix(const Val & prefix)const {
-            return size >= prefix.size && memcmp(data, prefix.data, prefix.size) == 0;
-        }
-        bool has_prefix(const Val & prefix, Val & tail)const {
-		    if( !has_prefix(prefix) )
-		        return false;
-		    tail = Val(data + prefix.size, size - prefix.size);
-            return true;
-        }
-//		size_t encoded_size()const;
+		bool has_prefix(const Val & prefix)const {
+			return size >= prefix.size && memcmp(data, prefix.data, prefix.size) == 0;
+		}
+		bool has_prefix(const Val & prefix, Val & tail)const {
+			if( !has_prefix(prefix) )
+				return false;
+			tail = Val(data + prefix.size, size - prefix.size);
+			return true;
+		}
+		//		size_t encoded_size()const;
 	};
 	
 	typedef uint64_t Tid;
@@ -118,9 +118,8 @@ namespace mustela {
 	
 	constexpr uint32_t OUR_VERSION = 1;
 	
-	//constexpr uint64_t MAX_MAPPING_SIZE = 1ULL << 34; // 16GB for now
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form
-	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
+//	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
 	constexpr int NODE_PID_SIZE = 4; // 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pyges
 	// fixed pid size allows simple logic when replacing page in node index
 	struct ValPid {

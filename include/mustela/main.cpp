@@ -28,17 +28,17 @@ void interactive_test(){
 		
 //		for(auto && tt : txn.get_buckets() )
 //			std::cout << "Table: " << tt.to_string() << std::endl;
-
-		mustela::Bucket empty_bucket(txn, mustela::Val());
-		std::string long_key(95, 'A');
-		empty_bucket.put(mustela::Val("1"), mustela::Val("val1"), false);
-		empty_bucket.put(mustela::Val("2"), mustela::Val("val2"), false);
-		std::string json = empty_bucket.print_db();
-		std::cout << "Empty table: " << json << std::endl;
-		empty_bucket.put(mustela::Val(long_key), mustela::Val("val2"), false);
-		json = empty_bucket.print_db();
-		std::cout << "Empty table: " << json << std::endl;
-
+		if( !txn.drop_bucket(mustela::Val()) ) {
+			mustela::Bucket empty_bucket(txn, mustela::Val());
+			std::string long_key(95, 'A');
+			empty_bucket.put(mustela::Val("1"), mustela::Val("val1"), false);
+			empty_bucket.put(mustela::Val("2"), mustela::Val("val2"), false);
+			std::string json = empty_bucket.print_db();
+			std::cout << "Empty table: " << json << std::endl;
+			empty_bucket.put(mustela::Val(long_key), mustela::Val("vallong"), false);
+			json = empty_bucket.print_db();
+			std::cout << "Empty table: " << json << std::endl;
+		}
 		mustela::Bucket evil_bucket(txn, mustela::Val("Evil"));
 		mustela::Bucket hren_bucket(txn, mustela::Val("Hren"));
 	}

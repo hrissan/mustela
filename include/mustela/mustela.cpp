@@ -19,17 +19,6 @@ namespace mustela {
 	static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint64_t c){
 		return grow_to_granularity(grow_to_granularity(grow_to_granularity(value, a), b), c);
 	}
-/*	static void initial_meta_page(MetaPage * mp, Pid pid){
-		mp->tid = mp->tid2 = 0;
-		mp->pid = pid;
-		mp->magic = META_MAGIC;
-		mp->version = OUR_VERSION;
-		mp->page_size = page_size;
-		mp->page_count = 4;
-		mp->meta_bucket.leaf_page_count = 1;
-		mp->meta_bucket.root_page = 3;
-//		mp->dirty = false;
-	}*/
 	DB::FD::~FD(){
 		close(fd); fd = -1;
 	}
@@ -119,9 +108,6 @@ namespace mustela {
 			mp.init_dirty(0);
 			if( write(fd.fd, data_buf, page_size) == -1)
 				throw Exception("file write failed in create_db");
-//			mp.mpage()->pid = 4;
-//			if( write(fd, data_buf, page_size) == -1)
-//				throw Exception("file write failed in create_db");
 		}
 		if( fsync(fd.fd) == -1 )
 			throw Exception("fsync failed in create_db");

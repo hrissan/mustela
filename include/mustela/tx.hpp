@@ -124,6 +124,7 @@ namespace mustela {
 	public:
 		const uint32_t page_size; // copy from my_db
 		const bool read_only;
+		
 		static const char bucket_prefix = 'b';
 		static const char freelist_prefix = 'f';
 		explicit TX(DB & my_db, bool read_only = false);

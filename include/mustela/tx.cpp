@@ -826,16 +826,25 @@ namespace mustela {
 	bool TX::drop_bucket(const Val & name){
 		if( read_only )
 			throw Exception("Attempt to modify read-only transaction");
-		BucketDesc * td = load_bucket_desc(name);
-		if( !td )
+		BucketDesc * bucket_desc = load_bucket_desc(name);
+		if( !bucket_desc )
 			return false;
+		{
+			Cursor cursor(*this, bucket_desc);
+			cursor.first();
+			while(bucket_desc->count != 0){
+				cursor.del();
+			}
+			ass(bucket_desc->leaf_page_count == 1 && bucket_desc->node_page_count == 0 && bucket_desc->overflow_page_count == 0 && bucket_desc->height == 0, "Bucket in wrong state after deleting all keys");
+			mark_free_in_future_page(bucket_desc->root_page, 1);
+		}
 		for(auto && c : my_cursors) // All cursor to that table become set to end
-			if( c->bucket_desc == td ) {
+			if( c->bucket_desc == bucket_desc ) {
 				c->bucket_desc = nullptr;
 				c->path.clear();
 			}
 		for(auto && b : my_buckets)
-			if( b->bucket_desc == td ) {
+			if( b->bucket_desc == bucket_desc ) {
 				b->bucket_desc = nullptr;
 				b->debug_name = std::string();
 			}
@@ -843,12 +852,10 @@ namespace mustela {
 		std::string key = bucket_prefix + name.to_string();
 		Bucket meta_bucket(*this, &meta_page.meta_bucket);
 		ass(meta_bucket.del(Val(key), true), "Error while dropping table");
-		bucket_descs.erase(key);
+		bucket_descs.erase(name.to_string());
 		return true;
 	}
 	BucketDesc * TX::load_bucket_desc(const Val & name){
-//		if(name.empty())
-//			return nullptr;
 		auto tit = bucket_descs.find(name.to_string());
 		if( tit != bucket_descs.end() )
 			return &tit->second;
@@ -939,9 +946,14 @@ namespace mustela {
 			BucketDesc & td = my_txn.bucket_descs[name.to_string()];
 			td = BucketDesc{};
 			td.root_page = my_txn.get_free_page(1);
+			LeafPtr wr_root = my_txn.writable_leaf(td.root_page);
+			wr_root.init_dirty(my_txn.meta_page.tid);
 			td.leaf_page_count = 1;
 			bucket_desc = &td;
-			// We will put it in DB on commit
+			std::string key = TX::bucket_prefix + name.to_string();
+			Val value(reinterpret_cast<const char *>(bucket_desc), sizeof(BucketDesc));
+			Bucket meta_bucket(my_txn, &my_txn.meta_page.meta_bucket);
+			ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
 		}
 		my_txn.my_buckets.insert(this);
 	}
