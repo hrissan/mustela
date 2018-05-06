@@ -201,6 +201,11 @@ namespace mustela {
 		dap = my_txn.readable_leaf(path_el.first);
 		if( path_el.second == dap.size() )
 			jump_next();
+		if( bucket_desc->height != 0 ){
+			CNodePtr rap = my_txn.readable_node(bucket_desc->root_page);
+			if( rap.size() == 0)
+				std::cout << "Aha" << std::endl;
+		}
 	}
 	void Cursor::next(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -396,7 +401,7 @@ namespace mustela {
 	Cursor TX::force_split_node(Cursor & cur, size_t height, Val insert_key, Pid insert_page){
 		auto path_el = cur.path.at(height);
 		NodePtr wr_dap = writable_node(path_el.first);
-		ass(wr_dap.size() >= 3, "Node being split contains < 3 items");
+		ass(wr_dap.size() >= 2, "Node being split contains < 2 items");
 		// Find split index so that either of split pages will fit new value and disbalance is minimal
 		PageOffset insert_index = path_el.second + 1;
 		int insert_direction = 0;
@@ -410,8 +415,8 @@ namespace mustela {
 				right_sibling = path_pa.second + 1 < wr_parent.size();
 			}
 			if( !right_sibling) {
-				split_index_r = split_index = insert_index;
-				insert_direction = 0;
+				split_index_r = split_index = insert_index - 1; // Insert at inset_index would lead to empty right node
+				insert_direction = 1;
 			}
 		}
 		NodePtr wr_right = writable_node(get_free_page(1));
@@ -447,6 +452,8 @@ namespace mustela {
 			cur2.path.at(height) = std::make_pair(wr_right.page->pid, insert_index - split_index_r);
 			return cur2;
 		}
+		if( wr_dap.size() == 0 || wr_right.size() == 0)
+			std::cout << "Aha" << std::endl;
 		wr_right.set_value(-1, insert_page);
 		cur2.path.at(height) = std::make_pair(wr_right.page->pid, -1);
 		return cur2;
@@ -586,6 +593,7 @@ namespace mustela {
 				use_left_sib = false;
 		}
 		if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
+			std::cout << "Aha" << std::endl;
 			//            std::cout << "Node with 0 items and cannot merge :)" << std::endl;
 			/*            if( left_sib.page && right_sib.page){ // Select larger one
 			 if( left_sib.page->tid == meta_page.tid && right_sib.page->tid == meta_page.tid ){
@@ -992,6 +1000,8 @@ namespace mustela {
 		if( my_txn.read_only )
 			throw Exception("Attempt to modify read-only transaction");
 		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
+		if(key.size > CNodePtr::max_key_size(my_txn.page_size))
+			throw Exception("Key size too big in Bucket::put");
 		Cursor main_cursor(my_txn, bucket_desc);
 		main_cursor.lower_bound(key);
 		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
@@ -1012,8 +1022,6 @@ namespace mustela {
 		}
 		bool overflow;
 		size_t required_size = wr_dap.get_item_size(key, value_size, overflow);
-		if( required_size > wr_dap.capacity() )
-			throw Exception("Key size too big in Bucket::put");
 		char * result = nullptr;
 		if( required_size <= wr_dap.free_capacity() )
 			result = wr_dap.insert_at(main_cursor.path.at(0).second, key, value_size, overflow);

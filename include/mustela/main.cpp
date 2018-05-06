@@ -23,11 +23,7 @@ void interactive_test(){
 	for(auto && tt : txn.get_bucket_names() )
 		std::cout << "Table: " << tt.to_string() << std::endl;
 	
-	{
-//		mustela::Bucket main_bucket(txn, main_bucket_name);
-		
-//		for(auto && tt : txn.get_buckets() )
-//			std::cout << "Table: " << tt.to_string() << std::endl;
+/*	{
 		if( !txn.drop_bucket(mustela::Val()) ) {
 			mustela::Bucket empty_bucket(txn, mustela::Val());
 			std::string long_key(95, 'A');
@@ -49,7 +45,7 @@ void interactive_test(){
 		std::string json = evil_bucket.print_db();
 		std::cout << "Evil table: " << evil_bucket.get_stats() << std::endl << json << std::endl;
 		mustela::Bucket hren_bucket(txn, mustela::Val("Hren"));
-	}
+	}*/
 	
 	std::map<std::string, std::string> mirror;
 	
@@ -75,7 +71,7 @@ void interactive_test(){
 		if( mirror != mirror2 )
 			std::cout << "Inconsistent forward/backward iteration " << mirror.size() << " " << mirror2.size() << std::endl;
 	}
-	const int items_counter = 1000;
+	const int items_counter = 100;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){
@@ -111,26 +107,26 @@ void interactive_test(){
 		bool back = input.find("b") != std::string::npos;
 		std::cout << "add=" << int(add) << " ran=" << int(ran) << " back=" << int(back) << std::endl;
 		if( input == "t"){
-			int j = dist(e);
+/*			int j = dist(e);
 			std::string key = std::to_string(j);
 			std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
 			if( !main_bucket.put(mustela::Val(key), mustela::Val(val), true) )
 				std::cout << "BAD put" << std::endl;
 			mirror[key] = val;
-			txn.commit();
+			txn.commit();*/
 			continue;
 		}
 		for(int i = 0; i != items_counter; ++i){
 			int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
 			if( new_range )
 				j += items_counter;
-			std::string key = std::to_string(j);
+			std::string key = std::to_string(j) + std::string(40, 'A');
 			std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
 			mustela::Val got;
-			if( (i == 4 && j == 584) || (i == 5 && j == 402) || (i == 549 && j == 70) || (i == 550 && j == 295) ){
+			if( (!add && i == 11 && j == 88) || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)){
 				got.size = 0;
-				//                    std::string json = txn.print_db(main_table);
-				//                    std::cout << json << std::endl;
+				std::string json = main_bucket.print_db();
+				std::cout << "Main table: " << json << std::endl;
 			}
 			bool in_db = main_bucket.get(mustela::Val(key), got) && got.to_string() == val;
 			auto mit = mirror.find(key);

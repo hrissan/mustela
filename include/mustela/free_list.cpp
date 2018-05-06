@@ -36,6 +36,8 @@ void FreeList::remove_from_size_index(Pid page, Pid count){
 }
 
 void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index){
+	if( count == 255 )
+		std::cout << "FreeList::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
 	auto it = cache.lower_bound(page);
 	ass(it == cache.end() || it->first != page, "adding existing page to cache");
 	if(it != cache.end() && it->first == page + count){
@@ -165,19 +167,22 @@ void FreeList::fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, co
 		Pid count = pa.second;
 		while( count > 0 ){
 			Pid r_count = std::min<Pid>(count, 255);
+			if( r_count == 255 )
+				std::cout << "Aha!" << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
-			pack_uint_be(space[space_count].data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
-			space[space_count].data[space_pos] = r_count; space_pos += 1;
-			ass( space_pos <= space[space_count].size, "Overshoot of space_pos while writing free list");
-			if( space_pos == space[space_count].size){
+			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
+			space.at(space_count).data[space_pos] = r_count; space_pos += 1;
+			ass( space_pos <= space.at(space_count).size, "Overshoot of space_pos while writing free list");
+			if( space_pos == space.at(space_count).size){
 				space_pos = 0;
 				space_count += 1;
 			}
 			count -= r_count;
+			pid += r_count;
 		}
 	}
 	for(;space_count < space.size(); space_count += 1){
-		memset(space[space_count].data + space_pos, 0, space[space_count].size - space_pos);
+		memset(space.at(space_count).data + space_pos, 0, space.at(space_count).size - space_pos);
 		space_pos = 0;
 	}
 }

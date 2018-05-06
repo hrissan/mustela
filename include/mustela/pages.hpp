@@ -88,9 +88,9 @@ namespace mustela {
 		PageOffset capacity()const{
 			return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
 		}
-		PageOffset max_key()const{
+		static PageOffset max_key_size(uint32_t page_size){
 			constexpr int KEY_COUNT = 2; // min keys per page
-			PageOffset space = capacity()/KEY_COUNT - NODE_PID_SIZE;
+			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/KEY_COUNT - NODE_PID_SIZE;
 			space -= get_compact_size_sqlite4(space);
 			return space;
 		}
