@@ -34,9 +34,14 @@ namespace mustela {
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
+		Cursor(const Cursor & other);
 		explicit Cursor(Bucket & bucket);
 		~Cursor();
-		
+		bool operator==(const Cursor & other)const{
+			return &my_txn == &other.my_txn && bucket_desc == other.bucket_desc && path == other.path;
+		}
+		bool operator!=(const Cursor & other)const{ return !(*this == other); }
+
 		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
 		void first();
 		void last();
@@ -48,7 +53,7 @@ namespace mustela {
 		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a")*/; cur.prev() ) {}
 		
 		void on_page_split(size_t height, Pid pa, PageOffset split_index, PageOffset split_index_r, const Cursor & cur2){
-			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > split_index ){
+			if( !path.empty() && path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= split_index ){
 				for(size_t i = height + 1; i != bucket_desc->height + 1; ++i)
 					path.at(i) = cur2.path.at(i);
 				path.at(height).first = cur2.path.at(height).first;
@@ -56,12 +61,12 @@ namespace mustela {
 			}
 		}
 		void on_insert(size_t height, Pid pa, PageOffset insert_index){
-			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= insert_index ){
+			if( !path.empty() && path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= insert_index ){
 				path.at(height).second += 1;
 			}
 		}
 		void on_erase(size_t height, Pid pa, PageOffset erase_index){
-			if( path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > erase_index ){
+			if( !path.empty() && path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second > erase_index ){
 				path.at(height).second -= 1;
 			}
 		}
@@ -105,10 +110,10 @@ namespace mustela {
 		
 		Cursor insert_pages_to_node(Cursor & cur, size_t height, Val key, Pid new_pid);
 		Cursor force_split_node(Cursor & cur, size_t height, Val insert_key, Pid insert_page);
-		char * force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size);
+		char * force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size, size_t existing_size);
 		void merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap);
 		void merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap);
-		void prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap);
+//		void prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap);
 		
 		CLeafPtr readable_leaf(Pid pa);
 		CNodePtr readable_node(Pid pa);

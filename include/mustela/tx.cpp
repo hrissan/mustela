@@ -23,9 +23,11 @@ namespace mustela {
 	Cursor::~Cursor(){
 		my_txn.my_cursors.erase(this);
 	}
-	Cursor::Cursor(Cursor && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc){
+	Cursor::Cursor(Cursor && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(std::move(other.path)){
 		my_txn.my_cursors.insert(this);
-		path = std::move(other.path);
+	}
+	Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(other.path){
+		my_txn.my_cursors.insert(this);
 	}
 	void Cursor::jump_prev(){
 		auto path_el = path.at(0);
@@ -297,7 +299,6 @@ namespace mustela {
 		return pa;
 	}
 	DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
-		//const bool is_leaf = (height == cur.path.size() - 1);
 		Pid old_page = cur.path.at(height).first;
 		const DataPage * dap = my_db.readable_page(old_page);
 		if( dap->tid == meta_page.tid ){ // Reached already writable page
@@ -307,7 +308,7 @@ namespace mustela {
 		mark_free_in_future_page(old_page, 1);
 		Pid new_page = get_free_page(1);
 		for(auto && c : my_cursors)
-			if( c->path.at(height).first == old_page )
+			if( !c->path.empty() && c->path.at(height).first == old_page )
 				c->path.at(height).first = new_page;
 		DataPage * wr_dap = my_db.writable_page(new_page, 1);
 		memcpy(wr_dap, dap, page_size);
@@ -333,11 +334,8 @@ namespace mustela {
 			cur.bucket_desc->height += 1;
 			for(auto && c : my_cursors)
 				c->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
-			//                ass(c->path.at[0].first == new_pid || c->path.at[0].first == previous_root, "Increasing height, but stray cursor found");
-			//                bool was_left = c->path.at[0].first == previous_root;
 			Cursor cur2(*this, cur.bucket_desc);
-			cur2.path = cur.path;//.resize(meta_page.main_height, std::make_pair(-1, -1));
-			//            cur2.path[meta_page.main_height - 1] = std::make_pair(new_pid, 0);
+			cur2.path = cur.path;
 			cur2.path.at(cur.bucket_desc->height) = std::make_pair(cur.bucket_desc->root_page, 0);
 			cur2.path.at(height - 1) = std::make_pair(new_pid, 0);
 			return cur2;
@@ -354,8 +352,8 @@ namespace mustela {
 		for(auto && c : my_cursors)
 			c->on_insert(height, path_el.first, path_el.second + 1);
 		Cursor cur2(*this, cur.bucket_desc);
-		cur2.path = cur.path;//.insert(cur2.path.end(), cur.path.begin(), cur.path.begin() + height + 1);
-		cur2.path.at(height).second += 1;// = std::make_pair(new_pid, 0);
+		cur2.path = cur.path;
+		cur2.path.at(height).second += 1;
 		cur2.path.at(height - 1) = std::make_pair(new_pid, 0);
 		return cur2;
 	}
@@ -440,7 +438,6 @@ namespace mustela {
 			wr_dap.insert_at(insert_index, insert_key, insert_page);
 			for(auto && c : my_cursors)
 				c->on_insert(height, path_el.first, insert_index);
-			//            cur2.path.assign(cur.path.begin(), cur.path.begin() + height + 1);
 			cur2.path.at(height) = std::make_pair(path_el.first, insert_index);
 			return cur2;
 		}
@@ -457,25 +454,25 @@ namespace mustela {
 		wr_right.set_value(-1, insert_page);
 		cur2.path.at(height) = std::make_pair(wr_right.page->pid, -1);
 		return cur2;
-		//        insert_pages_to_node(cur, height - 1, insert_key, wr_right.page->pid);
 	}
-	char * TX::force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size){
+	char * TX::force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size, size_t existing_size){
 		auto path_el = cur.path.at(0);
 		LeafPtr wr_dap = writable_leaf(path_el.first);
 		bool overflow;
-		size_t required_size = wr_dap.get_item_size(insert_key, insert_val_size, overflow);
+		const size_t required_size = wr_dap.get_item_size(insert_key, insert_val_size, overflow);
 		// Find split index so that either of split pages will fit new value and disbalance is minimal
-		PageOffset insert_index = path_el.second;
+		const PageOffset insert_index = path_el.second;
+		const PageOffset insert_index_r = insert_index + (existing_size ? 1 : 0);
 		PageOffset best_split_index = -1;
 		int insert_direction = 0;
 		int best_disbalance = 0;
 		size_t left_sigma_size = 0;
 		for(PageOffset i = 0; i != wr_dap.size() + 1; ++i){ // We can split at the end too
 			size_t right_sigma_size = wr_dap.data_size() - left_sigma_size;
-			bool enough_left = left_sigma_size + required_size <= wr_dap.capacity();
-			bool enough_right = right_sigma_size + required_size <= wr_dap.capacity();
-			if( i >= insert_index && enough_left ){ // should insert only to the left}
-				int disbalance = std::abs(int(right_sigma_size) - int(left_sigma_size + required_size));
+			bool enough_left = left_sigma_size + required_size <= wr_dap.capacity() + existing_size;
+			bool enough_right = right_sigma_size + required_size <= wr_dap.capacity() + existing_size;
+			if( i >= insert_index_r && enough_left ){ // should insert only to the left}
+				int disbalance = std::abs(int(right_sigma_size + existing_size) - int(left_sigma_size + required_size));
 				if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
 					best_split_index = i;
 					best_disbalance = disbalance;
@@ -483,7 +480,7 @@ namespace mustela {
 				}
 			}
 			if( i <= insert_index && enough_right ){
-				int disbalance = std::abs(int(right_sigma_size + required_size) - int(left_sigma_size));
+				int disbalance = std::abs(int(right_sigma_size + required_size) - int(left_sigma_size + existing_size));
 				if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
 					best_split_index = i;
 					best_disbalance = disbalance;
@@ -494,11 +491,13 @@ namespace mustela {
 				left_sigma_size += wr_dap.get_item_size(i);
 		}
 		PageOffset split_index = best_split_index;
+		PageOffset split_index_r = split_index;
 		if( split_index == PageOffset(-1) ){ // Perform 3 - split
 			split_index = insert_index;
+			split_index_r = insert_index_r;
 			insert_direction = 0;
 		}
-		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
+/*		if( BULK_LOADING && insert_index_r == wr_dap.size() ){ // Bulk loading?
 			bool right_sibling = false; // No right sibling when height == 0
 			if( cur.path.size() > 1 ){
 				auto & path_pa = cur.path.at(1);
@@ -506,38 +505,62 @@ namespace mustela {
 				right_sibling = path_pa.second + 1 < wr_parent.size();
 			}
 			if( !right_sibling) {
-				split_index = insert_index;
+				split_index_r = split_index = insert_index;
 				insert_direction = 1;
 			}
-		}
+		}*/
 		LeafPtr wr_right = writable_leaf(get_free_page(1));
 		cur.bucket_desc->leaf_page_count += 1;
 		wr_right.init_dirty(meta_page.tid);
-		wr_right.append_range(wr_dap, split_index, wr_dap.size());
-		Val right_key0 = (insert_direction == 1 && insert_index == split_index) ? insert_key : wr_right.get_key(0);
+		wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
+		Val right_key0 = (insert_direction == 1 && insert_index == split_index && existing_size == 0) ? insert_key : wr_right.get_key(0);
 		Cursor cur2 = insert_pages_to_node(cur, 1, right_key0, wr_right.page->pid);
 		for(auto && c : my_cursors)
-			c->on_page_split(0, path_el.first, split_index, split_index, cur2);
+			c->on_page_split(0, path_el.first, split_index_r, split_index_r, cur2);
+		LeafPtr wr_result;
+		PageOffset wr_item = 0;
+		if( insert_direction == 0 ){
+			LeafPtr wr_middle = writable_leaf(get_free_page(1));
+			cur.bucket_desc->leaf_page_count += 1;
+			wr_middle.init_dirty(meta_page.tid);
+			wr_middle.append_range(wr_dap, split_index, split_index_r);
+			Cursor cur3 = insert_pages_to_node(cur, 1, insert_key, wr_middle.page->pid);
+			for(auto && c : my_cursors)
+				c->on_page_split(0, path_el.first, split_index, split_index, cur3);
+			wr_result = wr_middle;
+			wr_item = 0;
+		}
 		if( split_index != wr_dap.size() ){ // optimize out nop
 			LeafPtr my_copy = push_tmp_copy(wr_dap.page);
 			wr_dap.clear();
 			wr_dap.append_range(my_copy, 0, split_index);
 		}
-		char * result = nullptr;
 		if( insert_direction == -1 ) {
-			result = wr_dap.insert_at(insert_index, insert_key, insert_val_size, overflow);
-			for(auto && c : my_cursors)
-				c->on_insert(0, path_el.first, insert_index);
+			wr_result = wr_dap;
+			wr_item = insert_index;
+//			result = wr_dap.insert_at(insert_index, insert_key, insert_val_size, overflow);
+//			for(auto && c : my_cursors)
+//				c->on_insert(0, path_el.first, insert_index);
 		}else if( insert_direction == 1 ){
-			result = wr_right.insert_at(insert_index - split_index, insert_key, insert_val_size, overflow);
+			wr_result = wr_right;
+			wr_item = insert_index - split_index;
+//			result = wr_right.insert_at(insert_index - split_index, insert_key, insert_val_size, overflow);
+//			for(auto && c : my_cursors)
+//				c->on_insert(0, wr_right.page->pid, insert_index - split_index);
+		}
+		char * result = nullptr;
+		if( existing_size ){
+			Pid overflow_page, overflow_count;
+			wr_result.erase(wr_item, overflow_page, overflow_count);
+			if( overflow_page ){
+				cur.bucket_desc->overflow_page_count -= overflow_count;
+				mark_free_in_future_page(overflow_page, overflow_count);
+			}
+			result = wr_result.insert_at(wr_item, insert_key, insert_val_size, overflow);
+		}else{
+			result = wr_result.insert_at(wr_item, insert_key, insert_val_size, overflow);
 			for(auto && c : my_cursors)
-				c->on_insert(0, wr_right.page->pid, insert_index - split_index);
-		}else {
-			LeafPtr wr_middle = writable_leaf(get_free_page(1));
-			cur.bucket_desc->leaf_page_count += 1;
-			wr_middle.init_dirty(meta_page.tid);
-			result = wr_middle.insert_at(0, insert_key, insert_val_size, overflow);
-			insert_pages_to_node(cur, 1, insert_key, wr_middle.page->pid);
+				c->on_insert(0, wr_result.page->pid, wr_item);
 		}
 		return result;
 	}
@@ -555,10 +578,9 @@ namespace mustela {
 				c->path.pop_back();
 			return;
 		}
-		// TODO - redistribute value between siblings instead of outright merging
 		auto & path_pa = cur.path.at(height + 1);
 		NodePtr wr_parent = writable_node(path_pa.first);
-		//ass(wr_parent.size() > 0, "Found parent node with 0 items");
+		ass(wr_parent.size() > 0, "Found parent node with 0 items");
 		CNodePtr left_sib;
 		bool use_left_sib = false;
 		PageOffset left_data_size = 0;
@@ -594,74 +616,73 @@ namespace mustela {
 		}
 		if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
 			std::cout << "Aha" << std::endl;
-			//            std::cout << "Node with 0 items and cannot merge :)" << std::endl;
-			/*            if( left_sib.page && right_sib.page){ // Select larger one
-			 if( left_sib.page->tid == meta_page.tid && right_sib.page->tid == meta_page.tid ){
-			 if( left_sib.data_size() > right_sib.data_size() ) // both writable and left > right
-			 use_left_sib = true;
-			 else
-			 use_right_sib = true;
-			 }else
-			 if( left_sib.page->tid == meta_page.tid ) // left writable
-			 use_left_sib = true;
-			 else
-			 use_right_sib = true;
-			 }else if( left_sib.page )
-			 use_left_sib = true;
-			 else if( right_sib.page )
-			 use_right_sib = true;
-			 ass(use_left_sib || use_right_sib, "Node is empty and cannot borrow from siblings");
-			 if( use_left_sib ){
-			 NodePtr wr_left;
-			 if( left_sib.page->tid == meta_page.tid ) // already writable
-			 wr_left = writable_node(left_sib.page->pid);
-			 else{ // Not writable yet
-			 Cursor left_cur = cur;
-			 left_cur.path[height - 1].second -= 1;
-			 left_cur.truncate(height);
-			 wr_left = NodePtr(page_size, (NodePage *)make_pages_writable(left_cur, left_cur.path.size() - 1)); // TODO - check correctness
-			 }
-			 Pid spec_val = wr_dap.get_value(-1);
-			 int insert_direction = 0;
-			 PageOffset split_index = find_split_index(wr_left, &insert_direction, wr_left.size(), my_kv.key, spec_val, 0, 0);
-			 if( split_index == 0 )
-			 split_index = 1;
-			 ass(insert_direction != 0 && split_index < wr_left.size(), "Split index to the right");
-			 auto split_kv = wr_left.get_kv(split_index);
-			 wr_dap.append_range(wr_left, split_index + 1, wr_left.size());
-			 wr_dap.append(my_kv.key, spec_val);
-			 wr_dap.set_value(-1, split_kv.pid);
-			 wr_parent.erase(path_pa.second);
-			 insert_pages_to_node(cur, height - 1, split_kv.key, wr_dap.page->pid);
-			 wr_left.erase(split_index, wr_left.size()); // will invalidate split_kv pointed into wr_left
-			 }
-			 if( use_right_sib ){
-			 NodePtr wr_right;
-			 if( right_sib.page->tid == meta_page.tid ) // already writable
-			 wr_right = writable_node(right_sib.page->pid);
-			 else{ // Not writable yet
-			 Cursor right_cur = cur;
-			 right_cur.path[height - 1].second += 1;
-			 right_cur.truncate(height);
-			 wr_right = NodePtr(page_size, (NodePage *)make_pages_writable(right_cur, right_cur.path.size() - 1)); // TODO - check correctness
-			 }
-			 Pid spec_val = wr_right.get_value(-1);
-			 int insert_direction = 0;
-			 PageOffset split_index = find_split_index(wr_right, &insert_direction, 0, right_kv.key, spec_val, 0, 0);
-			 if( split_index == wr_right.size() - 1 ) // TODO check
-			 split_index -= 1;
-			 ass(insert_direction != 0 && split_index > 0, "Split index to the right");
-			 ValPid split_kv = wr_right.get_kv(split_index);
-			 wr_dap.append(right_kv.key, spec_val);
-			 wr_dap.append_range(wr_right, 0, split_index);
-			 wr_right.set_value(-1, split_kv.pid);
-			 wr_parent.erase(path_pa.second + 1);
-			 cur.path[height - 1].second += 1;
-			 insert_pages_to_node(cur, height - 1, split_kv.key, wr_right.page->pid);
-			 wr_right.erase(0, split_index + 1);
-			 }
-			 merge_if_needed_node(cur, height - 1, wr_parent);
-			 return;*/
+			if( left_sib.page && right_sib.page){ // Select larger one
+				if( left_sib.page->tid == meta_page.tid && right_sib.page->tid == meta_page.tid ){
+					if( left_sib.data_size() > right_sib.data_size() ) // both writable and left > right
+						use_left_sib = true;
+					else
+						use_right_sib = true;
+				}else
+					if( left_sib.page->tid == meta_page.tid ) // left writable
+						use_left_sib = true;
+					else
+						use_right_sib = true;
+			}else if( left_sib.page )
+				use_left_sib = true;
+			else if( right_sib.page )
+				use_right_sib = true;
+			ass(use_left_sib || use_right_sib, "Node is empty and cannot borrow from siblings");
+			if( use_left_sib ){
+				NodePtr wr_left;
+				if( left_sib.page->tid == meta_page.tid ) // already writable
+					wr_left = writable_node(left_sib.page->pid);
+				else{ // Not writable yet
+					Cursor left_cur = cur;
+					left_cur.path[height - 1].second -= 1;
+					left_cur.truncate(height);
+					wr_left = NodePtr(page_size, (NodePage *)make_pages_writable(left_cur, left_cur.path.size() - 1)); // TODO - check correctness
+				}
+				Pid spec_val = wr_dap.get_value(-1);
+				int insert_direction = 0;
+				PageOffset split_index = find_split_index(wr_left, &insert_direction, wr_left.size(), my_kv.key, spec_val, 0, 0);
+				if( split_index == 0 ) // TODO - ass?
+					split_index = 1;
+				ass(insert_direction != 0 && split_index < wr_left.size(), "Split index to the right");
+				auto split_kv = wr_left.get_kv(split_index);
+				wr_dap.append_range(wr_left, split_index + 1, wr_left.size());
+				wr_dap.append(my_kv.key, spec_val);
+				wr_dap.set_value(-1, split_kv.pid);
+				wr_parent.erase(path_pa.second);
+				insert_pages_to_node(cur, height - 1, split_kv.key, wr_dap.page->pid);
+				wr_left.erase(split_index, wr_left.size()); // will invalidate split_kv pointed into wr_left
+			}
+			if( use_right_sib ){
+				NodePtr wr_right;
+				if( right_sib.page->tid == meta_page.tid ) // already writable
+					wr_right = writable_node(right_sib.page->pid);
+				else{ // Not writable yet
+					Cursor right_cur = cur;
+					right_cur.path[height - 1].second += 1;
+					right_cur.truncate(height);
+					wr_right = NodePtr(page_size, (NodePage *)make_pages_writable(right_cur, right_cur.path.size() - 1)); // TODO - check correctness
+				}
+				Pid spec_val = wr_right.get_value(-1);
+				int insert_direction = 0;
+				PageOffset split_index = find_split_index(wr_right, &insert_direction, 0, right_kv.key, spec_val, 0, 0);
+				if( split_index == wr_right.size() - 1 ) // TODO ass?
+					split_index -= 1;
+				ass(insert_direction != 0 && split_index > 0, "Split index to the right");
+				ValPid split_kv = wr_right.get_kv(split_index);
+				wr_dap.append(right_kv.key, spec_val);
+				wr_dap.append_range(wr_right, 0, split_index);
+				wr_right.set_value(-1, split_kv.pid);
+				wr_parent.erase(path_pa.second + 1);
+				cur.path[height - 1].second += 1;
+				insert_pages_to_node(cur, height - 1, split_kv.key, wr_right.page->pid);
+				wr_right.erase(0, split_index + 1);
+			}
+			merge_if_needed_node(cur, height - 1, wr_parent);
+			return;
 		}
 		if( use_left_sib ){
 			Pid spec_val = wr_dap.get_value(-1);
@@ -684,44 +705,13 @@ namespace mustela {
 		}
 		merge_if_needed_node(cur, height + 1, wr_parent);
 	}
-	void TX::prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap){
-		mark_free_in_future_page(wr_dap.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
-		cur.bucket_desc->node_page_count -= 1;
-		//        auto & path_el = cur.path.at(height);
-		auto & path_pa = cur.path.at(height + 1);
-		NodePtr wr_parent = writable_node(path_pa.first);
-		if( wr_parent.size() == 0){
-			prune_empty_node(cur, height + 1, wr_parent);
-			return;
-		}
-		if( path_pa.second == PageOffset(-1) ){
-			ValPid zero_val = wr_parent.get_kv(0);
-			wr_parent.erase(0);
-			wr_parent.set_value(-1, zero_val.pid);
-		}else{
-			wr_parent.erase(path_pa.second);
-		}
-		merge_if_needed_node(cur, height + 1, wr_parent);
-	}
 	void TX::merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap){
 		if( wr_dap.data_size() >= wr_dap.capacity()/2 )
 			return;
 		if(cur.path.size() <= 1) // root is leaf, cannot merge anyway
 			return;
-		// TODO - redistribute value between siblings instead of outright merging
 		auto & path_pa = cur.path.at(1);
 		NodePtr wr_parent = writable_node(path_pa.first);
-		int c = 0;
-		if( wr_dap.size() == 0)
-			c = 1;
-		if( wr_dap.size() == 0 && wr_parent.size() == 0 ){ // Prune empty leaf + nodes
-			mark_free_in_future_page(wr_dap.page->pid, 1);
-			cur.bucket_desc->leaf_page_count -= 1;
-			prune_empty_node(cur, 1, wr_parent);
-			return;
-		}
-		//ass(wr_parent.size() > 0, "Found parent node with 0 items");
-		//PageOffset required_size = wr_dap->items_size + wr_dap->item_count * sizeof(PageOffset);
 		CLeafPtr left_sib;
 		CLeafPtr right_sib;
 		if( path_pa.second != PageOffset(-1)){
@@ -763,34 +753,6 @@ namespace mustela {
 		if( left_sib.page || right_sib.page )
 			merge_if_needed_node(cur, 1, wr_parent);
 	}
-/*	bool TX::get_next(BucketDesc * table, Val & key, Val & value){
-		Val key1 = key, key2 = key;
-		Val value1, value2;
-		bool r2 = get_next_old(table, key2, value2);
-//		Bucket bucket(*this, table);
-		Cursor main_cursor(*this, table);
-		main_cursor.seek(key1);
-		bool r1 = main_cursor.get(key1, value1);
-		ass( r1 == r2 && key1 == key2 && value1 == value2, "get_next wrong" );
-		key = key1;
-		value = value1;
-		return r1;
-	}
-	bool TX::get_next_old(BucketDesc * table, Val & key, Val & value){
-		Cursor main_cursor(*this, table);
-		main_cursor.lower_bound(key);
-		CLeafPtr dap = readable_leaf(main_cursor.path.at(0).first);
-		PageOffset item = main_cursor.path.at(0).second;
-		if( item == dap.size() )
-			return false;
-		Pid overflow_page;
-		auto kv = dap.get_kv(item, overflow_page);
-		key = kv.key;
-		if( overflow_page )
-			kv.value.data = readable_overflow(overflow_page);
-		value = kv.value;
-		return true;
-	}*/
 	void TX::commit(){
 		if( meta_page_dirty ) {
 			{
@@ -1012,21 +974,27 @@ namespace mustela {
 		my_txn.meta_page_dirty = true;
 		// TODO - optimize - if page will split and it is not writable yet, we can save make_page_writable
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(main_cursor, 0));
-		if( same_key ){
-			Pid overflow_page, overflow_count;
-			wr_dap.erase(main_cursor.path.at(0).second, overflow_page, overflow_count);
-			if( overflow_page ){
-				bucket_desc->overflow_page_count -= overflow_count;
-				my_txn.mark_free_in_future_page(overflow_page, overflow_count);
-			}
-		}
+		const size_t existing_size = same_key ? wr_dap.get_item_size(item) : 0;
 		bool overflow;
 		size_t required_size = wr_dap.get_item_size(key, value_size, overflow);
 		char * result = nullptr;
-		if( required_size <= wr_dap.free_capacity() )
-			result = wr_dap.insert_at(main_cursor.path.at(0).second, key, value_size, overflow);
-		else
-			result = my_txn.force_split_leaf(main_cursor, key, value_size);
+		if( required_size <= wr_dap.free_capacity() + existing_size ) {
+			if( same_key ){
+				Pid overflow_page, overflow_count;
+				wr_dap.erase(item, overflow_page, overflow_count);
+				if( overflow_page ){
+					bucket_desc->overflow_page_count -= overflow_count;
+					my_txn.mark_free_in_future_page(overflow_page, overflow_count);
+				}
+				result = wr_dap.insert_at(item, key, value_size, overflow);
+			}else{
+				result = wr_dap.insert_at(item, key, value_size, overflow);
+				for(auto && c : my_txn.my_cursors)
+					c->on_insert(0, main_cursor.path.at(0).first, item);
+			}
+		}else{
+			result = my_txn.force_split_leaf(main_cursor, key, value_size, existing_size);
+		}
 		if( overflow ){
 			Pid overflow_count = (value_size + my_txn.page_size - 1)/my_txn.page_size;
 			Pid opa = my_txn.get_free_page(overflow_count);
