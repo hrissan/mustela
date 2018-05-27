@@ -147,6 +147,9 @@ namespace mustela {
 		void append(Val key, Pid value){
 			insert_at(page->item_count, key, value);
 		}
+		void append(ValPid kv){
+			insert_at(page->item_count, kv.key, kv.pid);
+		}
 		void insert_range(PageOffset insert_index, const CNodePtr & other, PageOffset begin, PageOffset end){
 			ass(begin <= end, "Invalid range at insert_range");
 			// TODO - compact at start if needed midway, move all page offsets at once
@@ -220,6 +223,9 @@ namespace mustela {
 		}
 		void append(Val key, Val value){
 			insert_at(page->item_count, key, value);
+		}
+		void append(ValVal kv){
+			insert_at(page->item_count, kv.key, kv.value);
 		}
 		void insert_range(PageOffset insert_index, const CLeafPtr & other, PageOffset begin, PageOffset end){
 			ass(begin <= end, "Invalid range at insert_range");

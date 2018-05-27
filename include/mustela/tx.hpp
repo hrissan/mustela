@@ -70,6 +70,13 @@ namespace mustela {
 				path.at(height).second -= 1;
 			}
 		}
+		void on_split(size_t height, Pid pa, Pid new_pa, PageOffset split_index){
+			if( !path.empty() && path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= split_index ){
+				path.at(height).first = new_pa;
+				path.at(height).second -= split_index;
+				path.at(height + 1).second += 1;
+			}
+		}
 	};
 	class TX {
 		friend class Cursor;
@@ -115,6 +122,10 @@ namespace mustela {
 		void merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap);
 //		void prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap);
 		
+		void new_increase_height(Cursor & cur);
+		void new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2 = ValPid());
+		char * new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow);
+
 		CLeafPtr readable_leaf(Pid pa);
 		CNodePtr readable_node(Pid pa);
 		const char * readable_overflow(Pid pa);
@@ -157,6 +168,7 @@ namespace mustela {
 		~Bucket();
 		bool is_valid()const { return bucket_desc != nullptr; }
 		char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
+		char * new_put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
 		bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
 		bool get(const Val & key, Val & value);
 		bool del(const Val & key, bool must_exist);

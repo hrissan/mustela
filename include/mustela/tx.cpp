@@ -455,6 +455,221 @@ namespace mustela {
 		cur2.path.at(height) = std::make_pair(wr_right.page->pid, -1);
 		return cur2;
 	}
+	void TX::new_increase_height(Cursor & cur){
+		NodePtr wr_root = writable_node(get_free_page(1));
+		cur.bucket_desc->node_page_count += 1;
+		wr_root.init_dirty(meta_page.tid);
+		Pid previous_root = cur.bucket_desc->root_page;
+		wr_root.set_value(-1, previous_root);
+//		wr_root.append(key, new_pid);
+		cur.bucket_desc->root_page = wr_root.page->pid;
+		cur.bucket_desc->height += 1;
+		for(auto && c : my_cursors)
+			c->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+	}
+	static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageOffset pos, PageOffset insert_pos, size_t required_size1, size_t required_size2){
+		if(pos == insert_pos)
+			return required_size1;
+		if(required_size2 != 0){
+			if(pos == insert_pos + 1)
+				return required_size2;
+			if(pos > insert_pos + 1)
+				pos -= 2;
+		}else{
+			if(pos > insert_pos)
+				pos -= 1;
+		}
+		return wr_dap.get_item_size(pos);
+	}
+	static ValPid get_kv_with_insert(const NodePtr & wr_dap, PageOffset pos, PageOffset insert_pos, ValPid insert_kv1, ValPid insert_kv2){
+		if(pos == insert_pos)
+			return insert_kv1;
+		if(insert_kv2.key.data){
+			if(pos == insert_pos + 1)
+				return insert_kv2;
+			if(pos > insert_pos + 1)
+				pos -= 2;
+		}else{
+			if(pos > insert_pos)
+				pos -= 1;
+		}
+		return wr_dap.get_kv(pos);
+	}
+	void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2){
+		auto path_el = cur.path.at(height);
+		NodePtr wr_dap = writable_node(path_el.first);
+		size_t required_size1 = wr_dap.get_item_size(insert_kv1.key, insert_kv1.pid);
+		size_t required_size2 = insert_kv2.key.data ? wr_dap.get_item_size(insert_kv2.key, insert_kv2.pid) : 0;
+		if( wr_dap.free_capacity() >= required_size1 + required_size2 ){
+			wr_dap.insert_at(path_el.second, insert_kv1.key, insert_kv1.pid);
+			if(insert_kv2.key.data)
+				wr_dap.insert_at(path_el.second + 1, insert_kv2.key, insert_kv2.pid);
+			return;
+		}
+		ass(wr_dap.size() >= 2, "Cannot split node with <2 keys");
+		if(cur.bucket_desc->height == height)
+			new_increase_height(cur);
+		path_el = cur.path.at(height); // Could change in increase height
+		auto path_pa = cur.path.at(height + 1);
+		const size_t size_with_insert = wr_dap.size() + 1 + (insert_kv2.key.data ? 1 : 0);
+		const PageOffset insert_index = path_el.second;
+		// We must leave at least 1 key to the left and to the right
+		size_t left_size = get_item_size_with_insert(wr_dap, 0, insert_index, required_size1, required_size2);
+		size_t right_size = get_item_size_with_insert(wr_dap, size_with_insert - 1, insert_index, required_size1, required_size2);
+		PageOffset left_split = 1;
+		PageOffset right_split = size_with_insert - 1;
+		size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
+		size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
+		while(left_split + 1 != right_split){
+			if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
+				left_split += 1;
+				left_size += left_add;
+				left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
+				continue;
+			}
+			if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
+				right_split -= 1;
+				right_size += left_add;
+				right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
+				continue;
+			}
+			ass(false, "Failed to find node split");
+		}
+		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
+			bool right_sibling = false; // No right sibling when inserting into root node
+			if( cur.path.size() > height + 1 ){
+				auto & path_pa = cur.path.at(height + 1);
+				CNodePtr wr_parent = readable_node(path_pa.first);
+				right_sibling = PageOffset(path_pa.second + 1) < wr_parent.size();
+			}
+			if( !right_sibling) {
+				right_split = size_with_insert - 1; // Insert at inset_index would lead to empty right node
+				left_split = right_split - 1;
+			}
+		}
+		NodePtr wr_right = writable_node(get_free_page(1));
+		cur.bucket_desc->node_page_count += 1;
+		wr_right.init_dirty(meta_page.tid);
+		for(PageOffset i = right_split; i != size_with_insert; ++i)
+			wr_right.append(get_kv_with_insert(wr_dap, i, insert_index, insert_kv1, insert_kv2));
+		for(auto && c : my_cursors){
+			c->on_insert(height + 1, path_pa.first, path_pa.second + 1);
+			c->on_split(height, path_el.first, wr_right.page->pid, right_split);
+		}
+		NodePtr my_copy = push_tmp_copy(wr_dap.page);
+		{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
+			wr_dap.clear();
+			for(PageOffset i = 0; i != left_split; ++i)
+				wr_dap.append(get_kv_with_insert(my_copy, i, insert_index, insert_kv1, insert_kv2));
+			wr_dap.set_value(-1, my_copy.get_value(-1));
+		}
+		ValPid split_kv = get_kv_with_insert(my_copy, left_split, insert_index, insert_kv1, insert_kv2);
+		wr_right.set_value(-1, split_kv.pid);
+		cur.path.at(height + 1).second = path_pa.second + 1; // original item
+		new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right.page->pid));
+	}
+	static size_t get_item_size_with_insert(const LeafPtr & wr_dap, PageOffset pos, PageOffset insert_pos, size_t required_size){
+		if(pos == insert_pos)
+			return required_size;
+		if(pos > insert_pos)
+			pos -= 1;
+		return wr_dap.get_item_size(pos);
+	}
+	static ValVal get_kv_with_insert(const LeafPtr & wr_dap, PageOffset pos, PageOffset insert_pos){
+		ass(pos != insert_pos, "Insert2Leaf does not have data for replace item");
+		if(pos > insert_pos)
+			pos -= 1;
+		Pid op;
+		return wr_dap.get_kv(pos, op);
+	}
+	char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow){
+		auto path_el = cur.path.at(0);
+		LeafPtr wr_dap = writable_leaf(path_el.first);
+		const size_t required_size = wr_dap.get_item_size(insert_key, insert_value_size, *overflow);
+		if( required_size <= wr_dap.free_capacity() ) {
+			return wr_dap.insert_at(path_el.second, insert_key, insert_value_size, *overflow);
+		}
+		if(cur.bucket_desc->height == 0)
+			new_increase_height(cur);
+		path_el = cur.path.at(0); // Could change in increase height
+		auto path_pa = cur.path.at(1);
+		size_t left_size = 0;
+		size_t right_size = 0;
+		const size_t size_with_insert = wr_dap.size() + 1;
+		const PageOffset insert_index = path_el.second;
+		PageOffset left_split = 0;
+		PageOffset right_split = size_with_insert;
+		size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size);
+		size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
+		while(left_split != right_split){
+			if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
+				left_split += 1;
+				left_size += left_add;
+				left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size);
+				continue;
+			}
+			if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
+				right_split -= 1;
+				right_size += left_add;
+				right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
+				continue;
+			}
+			ass(left_split + 1 == right_split, "3-split is wrong");
+		}
+		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
+			bool right_sibling = false; // No right sibling when height == 0
+			if( cur.path.size() > 1 ){
+				auto & path_pa = cur.path.at(1);
+				CNodePtr wr_parent = readable_node(path_pa.first);
+				right_sibling = PageOffset(path_pa.second + 1) < wr_parent.size();
+			}
+			if( !right_sibling)
+				right_split = left_split = size_with_insert - 1;
+		}
+		LeafPtr wr_right = writable_leaf(get_free_page(1));
+		cur.bucket_desc->leaf_page_count += 1;
+		wr_right.init_dirty(meta_page.tid);
+		char * result = nullptr;
+		for(PageOffset i = right_split; i != size_with_insert; ++i)
+			if( i == insert_index)
+				result = wr_right.insert_at(wr_right.size(), insert_key, insert_value_size, *overflow);
+			else
+				wr_right.append(get_kv_with_insert(wr_dap, i, insert_index));
+		for(auto && c : my_cursors){
+			c->on_insert(1, path_pa.first, path_pa.second + 1);
+			c->on_split(0, path_el.first, wr_right.page->pid, right_split);
+		}
+		LeafPtr wr_middle;
+		if(left_split + 1 == right_split){
+			wr_middle = writable_leaf(get_free_page(1));
+			cur.bucket_desc->leaf_page_count += 1;
+			wr_middle.init_dirty(meta_page.tid);
+			if( left_split == insert_index)
+				result = wr_middle.insert_at(wr_middle.size(), insert_key, insert_value_size, *overflow);
+			else
+				wr_middle.append(get_kv_with_insert(wr_dap, left_split, insert_index));
+			for(auto && c : my_cursors){
+				c->on_insert(1, path_pa.first, path_pa.second + 1);
+				c->on_split(0, path_el.first, wr_middle.page->pid, left_split);
+			}
+		}
+		{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
+			LeafPtr my_copy = push_tmp_copy(wr_dap.page);
+			wr_dap.clear();
+			for(PageOffset i = 0; i != left_split; ++i)
+				if( i == insert_index)
+					result = wr_dap.insert_at(wr_dap.size(), insert_key, insert_value_size, *overflow);
+				else
+					wr_dap.append(get_kv_with_insert(my_copy, i, insert_index));
+		}
+		cur.path.at(1).second = path_pa.second + 1; // original item
+		if(left_split + 1 == right_split){
+			new_insert2node(cur, 1, ValPid(wr_middle.get_key(0), wr_middle.page->pid), ValPid(wr_right.get_key(0), wr_right.page->pid));
+		}else{
+			new_insert2node(cur, 1, ValPid(wr_right.get_key(0), wr_right.page->pid));
+		}
+		return result;
+	}
 	char * TX::force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size, size_t existing_size){
 		auto path_el = cur.path.at(0);
 		LeafPtr wr_dap = writable_leaf(path_el.first);
@@ -958,6 +1173,49 @@ namespace mustela {
 	Bucket::~Bucket(){
 		my_txn.my_buckets.erase(this);
 	}
+	char * Bucket::new_put(const Val & key, size_t value_size, bool nooverwrite){
+		if( my_txn.read_only )
+			throw Exception("Attempt to modify read-only transaction");
+		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
+		if(key.size > CNodePtr::max_key_size(my_txn.page_size))
+			throw Exception("Key size too big in Bucket::put");
+		Cursor main_cursor(my_txn, bucket_desc);
+		main_cursor.lower_bound(key);
+		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
+		PageOffset item = main_cursor.path.at(0).second;
+		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
+		if( same_key && nooverwrite )
+			return nullptr;
+		my_txn.meta_page_dirty = true;
+		// TODO - optimize - if page will split and it is not writable yet, we can save make_page_writable
+		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(main_cursor, 0));
+		if( same_key ){
+			Pid overflow_page, overflow_count;
+			wr_dap.erase(item, overflow_page, overflow_count);
+			if( overflow_page ){
+				bucket_desc->overflow_page_count -= overflow_count;
+				my_txn.mark_free_in_future_page(overflow_page, overflow_count);
+			}
+		}else{
+			for(auto && c : my_txn.my_cursors)
+				c->on_insert(0, main_cursor.path.at(0).first, item);
+			ass(main_cursor.path.at(0).second == item + 1, "Main cursor was unaffectet by on_insert");
+			main_cursor.path.at(0).second = item;
+		}
+		bool overflow;
+		char * result = my_txn.new_insert2leaf(main_cursor, key, value_size, &overflow);
+		if( overflow ){
+			Pid overflow_count = (value_size + my_txn.page_size - 1)/my_txn.page_size;
+			Pid opa = my_txn.get_free_page(overflow_count);
+			bucket_desc->overflow_page_count += overflow_count;
+			pack_uint_be(result, NODE_PID_SIZE, opa);
+			result = my_txn.writable_overflow(opa, overflow_count);
+		}
+		if( !same_key )
+			bucket_desc->count += 1;
+		my_txn.clear_tmp_copies();
+		return result;
+	}
 	char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		if( my_txn.read_only )
 			throw Exception("Attempt to modify read-only transaction");
@@ -1008,7 +1266,7 @@ namespace mustela {
 		return result;
 	}
 	bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
-		char * dst = put(key, value.size, nooverwrite);
+		char * dst = new_put(key, value.size, nooverwrite);
 		if( dst )
 			memcpy(dst, value.data, value.size);
 		return dst != nullptr;
