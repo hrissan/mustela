@@ -133,8 +133,8 @@ void interactive_test(){
 			int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
 			if( new_range )
 				j += items_counter;
-			std::string key = std::to_string(j) + std::string(40, 'A');
-			std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
+			std::string key = std::to_string(j) + std::string(4, 'A');
+			std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
 			mustela::Val got;
 //			if( (!add && i == 11 && j == 88) || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)){
 				got.size = 0;

@@ -27,10 +27,11 @@ namespace mustela {
 				path[height++].second = 0; // set to first leaf kv
 		}
 		void jump_prev();
-		void jump_next();
 		
 		explicit Cursor(TX & my_txn, BucketDesc * bucket_desc);
 		void lower_bound(const Val & key);
+		void fix_cursor_after_last_item();
+		void set_at_direction(size_t height, Pid pa, int dir);
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
@@ -60,9 +61,9 @@ namespace mustela {
 				path.at(height).second -= split_index_r;
 			}
 		}
-		void on_insert(size_t height, Pid pa, PageOffset insert_index){
+		void on_insert(size_t height, Pid pa, PageOffset insert_index, PageOffset insert_count = 1){
 			if( !path.empty() && path.at(height).first == pa && path.at(height).second != PageOffset(-1) && path.at(height).second >= insert_index ){
-				path.at(height).second += 1;
+				path.at(height).second += insert_count;
 			}
 		}
 		void on_erase(size_t height, Pid pa, PageOffset erase_index){
@@ -75,6 +76,12 @@ namespace mustela {
 				path.at(height).first = new_pa;
 				path.at(height).second -= split_index;
 				path.at(height + 1).second += 1;
+			}
+		}
+		void on_merge(size_t height, Pid pa, Pid new_pa, PageOffset new_index){
+			if( !path.empty() && path.at(height).first == pa){
+				path.at(height).first = new_pa;
+				path.at(height).second += new_index;
 			}
 		}
 	};
@@ -117,11 +124,13 @@ namespace mustela {
 		
 		Cursor insert_pages_to_node(Cursor & cur, size_t height, Val key, Pid new_pid);
 		Cursor force_split_node(Cursor & cur, size_t height, Val insert_key, Pid insert_page);
-		char * force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size, size_t existing_size);
 		void merge_if_needed_leaf(Cursor & cur, LeafPtr wr_dap);
 		void merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap);
 //		void prune_empty_node(Cursor & cur, size_t height, NodePtr wr_dap);
 		
+		void new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap);
+		void new_merge_leaf(Cursor & cur, LeafPtr wr_dap);
+
 		void new_increase_height(Cursor & cur);
 		void new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2 = ValPid());
 		char * new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow);
@@ -168,7 +177,6 @@ namespace mustela {
 		~Bucket();
 		bool is_valid()const { return bucket_desc != nullptr; }
 		char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
-		char * new_put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
 		bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed
 		bool get(const Val & key, Val & value);
 		bool del(const Val & key, bool must_exist);

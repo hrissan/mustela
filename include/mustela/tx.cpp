@@ -29,72 +29,6 @@ namespace mustela {
 	Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(other.path){
 		my_txn.my_cursors.insert(this);
 	}
-	void Cursor::jump_prev(){
-		auto path_el = path.at(0);
-//		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second == 0, "Cursor jump from leaf element != 0 at Cursor::jump_prev");
-		size_t height = 1;
-		Pid pa = 0;
-		while(true){
-			if( height == path.size() ){
-				path.clear();
-				return;
-			}
-			CNodePtr nap = my_txn.readable_node(path.at(height).first);
-			if( path.at(height).second != PageOffset(-1) ){
-				path.at(height).second -= 1;
-				pa = nap.get_value(path.at(height).second);
-				height -= 1;
-				break;
-			}
-			height += 1;
-		}
-		while(true){
-			if( height == 0 ){
-				CLeafPtr dap = my_txn.readable_leaf(pa);
-				ass(dap.size() > 0, "Empty leaf page in Cursor::last");
-				path.at(height) = std::make_pair(pa, dap.size() - 1);
-				break;
-			}
-			CNodePtr nap = my_txn.readable_node(pa);
-			PageOffset nitem = nap.size() - 1;
-			path.at(height) = std::make_pair(pa, nitem);
-			pa = nap.get_value(nitem);
-			height -= 1;
-		}
-	}
-	void Cursor::jump_next(){
-		auto path_el = path.at(0);
-		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second == dap.size(), "Cursor jump from exisiting leaf element at Cursor::jump_next");
-		size_t height = 1;
-		Pid pa = 0;
-		while(true){
-			if( height == path.size() ){
-				path.clear();
-				return;
-			}
-			CNodePtr nap = my_txn.readable_node(path.at(height).first);
-			if( PageOffset(path.at(height).second + 1) < nap.size() ){
-				path.at(height).second += 1;
-				pa = nap.get_value(path.at(height).second);
-				height -= 1;
-				break;
-			}
-			height += 1;
-		}
-		while(true){
-			if( height == 0 ){
-				path.at(height) = std::make_pair(pa, 0);
-				break;
-			}
-			CNodePtr nap = my_txn.readable_node(pa);
-			PageOffset nitem = -1;
-			path.at(height) = std::make_pair(pa, nitem);
-			pa = nap.get_value(nitem);
-			height -= 1;
-		}
-	}
 	void Cursor::lower_bound(const Val & key){
 		Pid pa = bucket_desc->root_page;
 		size_t height = bucket_desc->height;
@@ -113,6 +47,66 @@ namespace mustela {
 			height -= 1;
 		}
 	}
+	void Cursor::fix_cursor_after_last_item(){
+		auto path_el = path.at(0);
+		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
+		if(path_el.second < dap.size())
+			return;
+		ass(path_el.second == dap.size(), "Cursor corrupted at Cursor::fix_cursor_after_last_item");
+		size_t height = 1;
+		Pid pa = 0;
+		while(true){
+			if( height == path.size() ){
+				path.clear();
+				return;
+			}
+			CNodePtr nap = my_txn.readable_node(path.at(height).first);
+			if( PageOffset(path.at(height).second + 1) < nap.size() ){
+				path.at(height).second += 1;
+				pa = nap.get_value(path.at(height).second);
+				height -= 1;
+				break;
+			}
+			height += 1;
+		}
+		set_at_direction(height, pa, -1);
+	}
+	void Cursor::set_at_direction(size_t height, Pid pa, int dir){
+		while(true){
+			if( height == 0 ){
+				CLeafPtr dap = my_txn.readable_leaf(pa);
+				ass(dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
+				path.at(height) = std::make_pair(pa, dir > 1 ? dap.size() - 1 : 0);
+				break;
+			}
+			CNodePtr nap = my_txn.readable_node(pa);
+			PageOffset nitem = dir > 1 ? nap.size() - 1 : -1;
+			path.at(height) = std::make_pair(pa, nitem);
+			pa = nap.get_value(nitem);
+			height -= 1;
+		}
+	}
+	void Cursor::jump_prev(){
+		auto path_el = path.at(0);
+		ass(path_el.second == 0, "Cursor jump from leaf element != 0 at Cursor::jump_prev");
+		size_t height = 1;
+		Pid pa = 0;
+		while(true){
+			if( height == path.size() ){
+				path.clear();
+				return;
+			}
+			CNodePtr nap = my_txn.readable_node(path.at(height).first);
+			if( path.at(height).second != PageOffset(-1) ){
+				path.at(height).second -= 1;
+				pa = nap.get_value(path.at(height).second);
+				height -= 1;
+				break;
+			}
+			height += 1;
+		}
+		set_at_direction(height, pa, -1);
+	}
 	bool Cursor::seek(const Val & key){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		lower_bound(key);
@@ -120,25 +114,17 @@ namespace mustela {
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 		bool same_key = path_el.second != dap.size() && Val(dap.get_key(path_el.second)) == key;
 		if( path_el.second == dap.size() )
-			jump_next();
+			fix_cursor_after_last_item();
 		return same_key;
 	}
 	void Cursor::first(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		Pid pa = bucket_desc->root_page;
-		size_t height = bucket_desc->height;
-		path.resize(height + 1);
-		while(true){
-			if( height == 0 ){
-				path.at(height) = std::make_pair(pa, 0);
-				break;
-			}
-			CNodePtr nap = my_txn.readable_node(pa);
-			PageOffset nitem = -1;
-			path.at(height) = std::make_pair(pa, nitem);
-			pa = nap.get_value(nitem);
-			height -= 1;
+		if( bucket_desc->count == 0){
+			path.clear();
+			return;
 		}
+		path.resize(bucket_desc->height + 1);
+		set_at_direction(bucket_desc->height, bucket_desc->root_page, -1);
 	}
 	void Cursor::last(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -146,22 +132,8 @@ namespace mustela {
 			path.clear();
 			return;
 		}
-		Pid pa = bucket_desc->root_page;
-		size_t height = bucket_desc->height;
-		path.resize(height + 1);
-		while(true){
-			if( height == 0 ){
-				CLeafPtr dap = my_txn.readable_leaf(pa);
-				ass(dap.size() > 0, "Empty leaf page in Cursor::last");
-				path.at(height) = std::make_pair(pa, dap.size() - 1);
-				break;
-			}
-			CNodePtr nap = my_txn.readable_node(pa);
-			PageOffset nitem = nap.size() - 1;
-			path.at(height) = std::make_pair(pa, nitem);
-			pa = nap.get_value(nitem);
-			height -= 1;
-		}
+		path.resize(bucket_desc->height + 1);
+		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 	}
 	bool Cursor::get(Val & key, Val & value){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -185,10 +157,9 @@ namespace mustela {
 			throw Exception("Attempt to modify read-only transaction in Cursor::del");
 		if( path.empty() )
 			return;
-		auto & path_el = path.at(0);
+		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		if( path_el.second == dap.size() ) // After seek("zzz"), when all keys are less than "z"
-			return;
+		ass(path_el.second == dap.size(), "After seek or jump_next we should point to valid leaf item");
 		my_txn.meta_page_dirty = true;
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
 		Pid overflow_page, overflow_count;
@@ -197,9 +168,13 @@ namespace mustela {
 			bucket_desc->overflow_page_count -= overflow_count;
 			my_txn.mark_free_in_future_page(overflow_page, overflow_count);
 		}
-		my_txn.merge_if_needed_leaf(*this, wr_dap);
+		for(auto && c : my_txn.my_cursors)
+			c->on_erase(0, path_el.first, path_el.second);
+		my_txn.new_merge_leaf(*this, wr_dap);
 		bucket_desc->count -= 1;
-		my_txn.clear_tmp_copies();
+		for(auto && c : my_txn.my_cursors)
+			c->fix_cursor_after_last_item();
+/*		path_el = path.at(0);
 		dap = my_txn.readable_leaf(path_el.first);
 		if( path_el.second == dap.size() )
 			jump_next();
@@ -207,7 +182,7 @@ namespace mustela {
 			CNodePtr rap = my_txn.readable_node(bucket_desc->root_page);
 			if( rap.size() == 0)
 				std::cout << "Aha" << std::endl;
-		}
+		}*/
 	}
 	void Cursor::next(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -218,7 +193,7 @@ namespace mustela {
 		ass(path_el.second < dap.size(), "Cursor points beyond last leaf element");
 		path_el.second += 1;
 		if( path_el.second == dap.size() )
-			jump_next();
+			fix_cursor_after_last_item();
 	}
 	void Cursor::prev(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -227,8 +202,6 @@ namespace mustela {
 		auto & path_el = path.at(0);
 		if( path_el.second == 0 ) {
 			jump_prev();
-//			if (path.empty()) // jump_prev from begin clears cursor
-//				return;
 			return;
 		}
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
@@ -556,17 +529,18 @@ namespace mustela {
 			c->on_insert(height + 1, path_pa.first, path_pa.second + 1);
 			c->on_split(height, path_el.first, wr_right.page->pid, right_split);
 		}
-		NodePtr my_copy = push_tmp_copy(wr_dap.page);
+		ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
+		wr_right.set_value(-1, split_kv.pid);
+		cur.path.at(height + 1).second = path_pa.second + 1; // original item
+		new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right.page->pid));
+		// split_kv will not be valid after code below
 		{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
+			NodePtr my_copy = push_tmp_copy(wr_dap.page);
 			wr_dap.clear();
 			for(PageOffset i = 0; i != left_split; ++i)
 				wr_dap.append(get_kv_with_insert(my_copy, i, insert_index, insert_kv1, insert_kv2));
 			wr_dap.set_value(-1, my_copy.get_value(-1));
 		}
-		ValPid split_kv = get_kv_with_insert(my_copy, left_split, insert_index, insert_kv1, insert_kv2);
-		wr_right.set_value(-1, split_kv.pid);
-		cur.path.at(height + 1).second = path_pa.second + 1; // original item
-		new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right.page->pid));
 	}
 	static size_t get_item_size_with_insert(const LeafPtr & wr_dap, PageOffset pos, PageOffset insert_pos, size_t required_size){
 		if(pos == insert_pos)
@@ -615,6 +589,7 @@ namespace mustela {
 				continue;
 			}
 			ass(left_split + 1 == right_split, "3-split is wrong");
+			break;
 		}
 		if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 			bool right_sibling = false; // No right sibling when height == 0
@@ -668,116 +643,143 @@ namespace mustela {
 		}else{
 			new_insert2node(cur, 1, ValPid(wr_right.get_key(0), wr_right.page->pid));
 		}
+		clear_tmp_copies();
 		return result;
 	}
-	char * TX::force_split_leaf(Cursor & cur, Val insert_key, size_t insert_val_size, size_t existing_size){
+	void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
+		if( wr_dap.data_size() >= wr_dap.capacity()/2 )
+			return;
+		if(height == cur.bucket_desc->height){ // merging root
+			if( wr_dap.size() != 0) // wait until only key at -1 offset remains, make it new root
+				return;
+			mark_free_in_future_page(cur.bucket_desc->root_page, 1);
+			cur.bucket_desc->node_page_count -= 1;
+			cur.bucket_desc->root_page = wr_dap.get_value(-1);
+			cur.bucket_desc->height -= 1;
+			for(auto && c : my_cursors)
+				c->path.pop_back();
+			return;
+		}
+		auto path_el = cur.path.at(height);
+		auto path_pa = cur.path.at(height + 1);
+		NodePtr wr_parent = writable_node(path_pa.first);
+		ass(wr_parent.size() > 0, "Found parent node with 0 items");
+		CNodePtr left_sib;
+		CNodePtr right_sib;
+		if( path_pa.second != PageOffset(-1)){
+			Pid left_pid = wr_parent.get_value(path_pa.second - 1);
+			left_sib = readable_node(left_pid);
+			if( wr_dap.free_capacity() < left_sib.data_size() )
+				left_sib = CNodePtr(); // forget about left!
+		}
+		if( PageOffset(path_pa.second + 1) < wr_parent.size()){
+			Pid right_pid = wr_parent.get_value(path_pa.second + 1);
+			right_sib = readable_node(right_pid);
+			if( wr_dap.free_capacity() < right_sib.data_size() )
+				right_sib = CNodePtr(); // forget about right!
+		}
+		if( left_sib.page && right_sib.page && wr_dap.free_capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
+			if( left_sib.data_size() < right_sib.data_size() ) // <= will also work
+				right_sib = CNodePtr();
+			else
+				left_sib = CNodePtr();
+		}
+		if( wr_dap.size() == 0){
+			ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
+			//            std::cout << "We could optimize by unlinking our leaf" << std::endl;
+		}
+		if( left_sib.page && right_sib.page )
+			std::cout << "3-way merge" << std::endl;
+		if( left_sib.page ){
+			wr_dap.insert_range(0, left_sib, 0, left_sib.size());
+			mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
+			cur.bucket_desc->node_page_count -= 1;
+			wr_parent.erase(path_pa.second);
+			wr_parent.set_value(path_pa.second - 1, path_el.first);
+			for(auto && c : my_cursors){
+				c->on_erase(height + 1, path_pa.first, path_pa.second - 1);
+				c->on_insert(height, path_el.first, 0, left_sib.size());
+				c->on_merge(height, left_sib.page->pid, path_el.first, 0);
+			}
+			path_el = cur.path.at(0); // path_pa was modified by code above
+			path_pa = cur.path.at(1); // path_pa was modified by code above
+		}
+		if( right_sib.page ){
+			for(auto && c : my_cursors){
+				c->on_erase(height + 1, path_pa.first, path_pa.second);
+				c->on_insert(height, path_el.first, 0, left_sib.size());
+				c->on_merge(height, right_sib.page->pid, path_el.first, wr_dap.size());
+			}
+			wr_dap.append_range(right_sib, 0, right_sib.size());
+			mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
+			cur.bucket_desc->node_page_count -= 1;
+			wr_parent.erase(path_pa.second + 1);
+		}
+		if( left_sib.page || right_sib.page )
+			new_merge_node(cur, height + 1, wr_parent);
+	}
+	void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
+		if( wr_dap.data_size() >= wr_dap.capacity()/2 )
+			return;
+		if(cur.bucket_desc->height == 0) // root is leaf, cannot merge anyway
+			return;
 		auto path_el = cur.path.at(0);
-		LeafPtr wr_dap = writable_leaf(path_el.first);
-		bool overflow;
-		const size_t required_size = wr_dap.get_item_size(insert_key, insert_val_size, overflow);
-		// Find split index so that either of split pages will fit new value and disbalance is minimal
-		const PageOffset insert_index = path_el.second;
-		const PageOffset insert_index_r = insert_index + (existing_size ? 1 : 0);
-		PageOffset best_split_index = -1;
-		int insert_direction = 0;
-		int best_disbalance = 0;
-		size_t left_sigma_size = 0;
-		for(PageOffset i = 0; i != wr_dap.size() + 1; ++i){ // We can split at the end too
-			size_t right_sigma_size = wr_dap.data_size() - left_sigma_size;
-			bool enough_left = left_sigma_size + required_size <= wr_dap.capacity() + existing_size;
-			bool enough_right = right_sigma_size + required_size <= wr_dap.capacity() + existing_size;
-			if( i >= insert_index_r && enough_left ){ // should insert only to the left}
-				int disbalance = std::abs(int(right_sigma_size + existing_size) - int(left_sigma_size + required_size));
-				if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
-					best_split_index = i;
-					best_disbalance = disbalance;
-					insert_direction = -1;
-				}
+		auto path_pa = cur.path.at(1);
+		NodePtr wr_parent = writable_node(path_pa.first);
+		CLeafPtr left_sib;
+		CLeafPtr right_sib;
+		if( path_pa.second != PageOffset(-1)){
+			Pid left_pid = wr_parent.get_value(path_pa.second - 1);
+			left_sib = readable_leaf(left_pid);
+			if( wr_dap.free_capacity() < left_sib.data_size() )
+				left_sib = CLeafPtr(); // forget about left!
+		}
+		if( PageOffset(path_pa.second + 1) < wr_parent.size()){
+			Pid right_pid = wr_parent.get_value(path_pa.second + 1);
+			right_sib = readable_leaf(right_pid);
+			if( wr_dap.free_capacity() < right_sib.data_size() )
+				right_sib = CLeafPtr(); // forget about right!
+		}
+		if( left_sib.page && right_sib.page && wr_dap.free_capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
+			if( left_sib.data_size() < right_sib.data_size() ) // <= will also work
+				right_sib = CLeafPtr();
+			else
+				left_sib = CLeafPtr();
+		}
+		if( wr_dap.size() == 0){
+			ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
+			//            std::cout << "We could optimize by unlinking our leaf" << std::endl;
+		}
+		if( left_sib.page && right_sib.page )
+			std::cout << "3-way merge" << std::endl;
+		if( left_sib.page ){
+			wr_dap.insert_range(0, left_sib, 0, left_sib.size());
+			mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
+			cur.bucket_desc->leaf_page_count -= 1;
+			wr_parent.erase(path_pa.second);
+			wr_parent.set_value(path_pa.second - 1, path_el.first);
+			for(auto && c : my_cursors){
+				c->on_erase(1, path_pa.first, path_pa.second - 1);
+				c->on_insert(0, path_el.first, 0, left_sib.size());
+				c->on_merge(0, left_sib.page->pid, path_el.first, 0);
 			}
-			if( i <= insert_index && enough_right ){
-				int disbalance = std::abs(int(right_sigma_size + required_size) - int(left_sigma_size + existing_size));
-				if( best_split_index == PageOffset(-1) || disbalance < best_disbalance ){
-					best_split_index = i;
-					best_disbalance = disbalance;
-					insert_direction = 1;
-				}
+			path_el = cur.path.at(0); // path_pa was modified by code above
+			path_pa = cur.path.at(1); // path_pa was modified by code above
+		}
+		if( right_sib.page ){
+			for(auto && c : my_cursors){
+				c->on_erase(1, path_pa.first, path_pa.second);
+				c->on_insert(0, path_el.first, 0, left_sib.size());
+				c->on_merge(0, right_sib.page->pid, path_el.first, wr_dap.size());
 			}
-			if( i != wr_dap.size()) // last iteration has no element
-				left_sigma_size += wr_dap.get_item_size(i);
+			wr_dap.append_range(right_sib, 0, right_sib.size());
+			mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
+			cur.bucket_desc->leaf_page_count -= 1;
+			wr_parent.erase(path_pa.second + 1);
 		}
-		PageOffset split_index = best_split_index;
-		PageOffset split_index_r = split_index;
-		if( split_index == PageOffset(-1) ){ // Perform 3 - split
-			split_index = insert_index;
-			split_index_r = insert_index_r;
-			insert_direction = 0;
-		}
-/*		if( BULK_LOADING && insert_index_r == wr_dap.size() ){ // Bulk loading?
-			bool right_sibling = false; // No right sibling when height == 0
-			if( cur.path.size() > 1 ){
-				auto & path_pa = cur.path.at(1);
-				CNodePtr wr_parent = readable_node(path_pa.first);
-				right_sibling = path_pa.second + 1 < wr_parent.size();
-			}
-			if( !right_sibling) {
-				split_index_r = split_index = insert_index;
-				insert_direction = 1;
-			}
-		}*/
-		LeafPtr wr_right = writable_leaf(get_free_page(1));
-		cur.bucket_desc->leaf_page_count += 1;
-		wr_right.init_dirty(meta_page.tid);
-		wr_right.append_range(wr_dap, split_index_r, wr_dap.size());
-		Val right_key0 = (insert_direction == 1 && insert_index == split_index && existing_size == 0) ? insert_key : wr_right.get_key(0);
-		Cursor cur2 = insert_pages_to_node(cur, 1, right_key0, wr_right.page->pid);
-		for(auto && c : my_cursors)
-			c->on_page_split(0, path_el.first, split_index_r, split_index_r, cur2);
-		LeafPtr wr_result;
-		PageOffset wr_item = 0;
-		if( insert_direction == 0 ){
-			LeafPtr wr_middle = writable_leaf(get_free_page(1));
-			cur.bucket_desc->leaf_page_count += 1;
-			wr_middle.init_dirty(meta_page.tid);
-			wr_middle.append_range(wr_dap, split_index, split_index_r);
-			Cursor cur3 = insert_pages_to_node(cur, 1, insert_key, wr_middle.page->pid);
-			for(auto && c : my_cursors)
-				c->on_page_split(0, path_el.first, split_index, split_index, cur3);
-			wr_result = wr_middle;
-			wr_item = 0;
-		}
-		if( split_index != wr_dap.size() ){ // optimize out nop
-			LeafPtr my_copy = push_tmp_copy(wr_dap.page);
-			wr_dap.clear();
-			wr_dap.append_range(my_copy, 0, split_index);
-		}
-		if( insert_direction == -1 ) {
-			wr_result = wr_dap;
-			wr_item = insert_index;
-//			result = wr_dap.insert_at(insert_index, insert_key, insert_val_size, overflow);
-//			for(auto && c : my_cursors)
-//				c->on_insert(0, path_el.first, insert_index);
-		}else if( insert_direction == 1 ){
-			wr_result = wr_right;
-			wr_item = insert_index - split_index;
-//			result = wr_right.insert_at(insert_index - split_index, insert_key, insert_val_size, overflow);
-//			for(auto && c : my_cursors)
-//				c->on_insert(0, wr_right.page->pid, insert_index - split_index);
-		}
-		char * result = nullptr;
-		if( existing_size ){
-			Pid overflow_page, overflow_count;
-			wr_result.erase(wr_item, overflow_page, overflow_count);
-			if( overflow_page ){
-				cur.bucket_desc->overflow_page_count -= overflow_count;
-				mark_free_in_future_page(overflow_page, overflow_count);
-			}
-			result = wr_result.insert_at(wr_item, insert_key, insert_val_size, overflow);
-		}else{
-			result = wr_result.insert_at(wr_item, insert_key, insert_val_size, overflow);
-			for(auto && c : my_cursors)
-				c->on_insert(0, wr_result.page->pid, wr_item);
-		}
-		return result;
+		if( left_sib.page || right_sib.page )
+			new_merge_node(cur, 1, wr_parent);
+		clear_tmp_copies();
 	}
 	void TX::merge_if_needed_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		if( wr_dap.data_size() >= wr_dap.capacity()/2 )
@@ -1173,7 +1175,7 @@ namespace mustela {
 	Bucket::~Bucket(){
 		my_txn.my_buckets.erase(this);
 	}
-	char * Bucket::new_put(const Val & key, size_t value_size, bool nooverwrite){
+	char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		if( my_txn.read_only )
 			throw Exception("Attempt to modify read-only transaction");
 		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
@@ -1181,8 +1183,9 @@ namespace mustela {
 			throw Exception("Key size too big in Bucket::put");
 		Cursor main_cursor(my_txn, bucket_desc);
 		main_cursor.lower_bound(key);
-		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
-		PageOffset item = main_cursor.path.at(0).second;
+		auto path_el = main_cursor.path.at(0);
+		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
+		PageOffset item = path_el.second;
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
 		if( same_key && nooverwrite )
 			return nullptr;
@@ -1198,8 +1201,8 @@ namespace mustela {
 			}
 		}else{
 			for(auto && c : my_txn.my_cursors)
-				c->on_insert(0, main_cursor.path.at(0).first, item);
-			ass(main_cursor.path.at(0).second == item + 1, "Main cursor was unaffectet by on_insert");
+				c->on_insert(0, path_el.first, item);
+			ass(path_el.second == item + 1, "Main cursor was unaffectet by on_insert");
 			main_cursor.path.at(0).second = item;
 		}
 		bool overflow;
@@ -1213,60 +1216,10 @@ namespace mustela {
 		}
 		if( !same_key )
 			bucket_desc->count += 1;
-		my_txn.clear_tmp_copies();
-		return result;
-	}
-	char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
-		if( my_txn.read_only )
-			throw Exception("Attempt to modify read-only transaction");
-		ass(bucket_desc, "Bucket not valid (using after tx commit?)");
-		if(key.size > CNodePtr::max_key_size(my_txn.page_size))
-			throw Exception("Key size too big in Bucket::put");
-		Cursor main_cursor(my_txn, bucket_desc);
-		main_cursor.lower_bound(key);
-		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
-		PageOffset item = main_cursor.path.at(0).second;
-		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
-		if( same_key && nooverwrite )
-			return nullptr;
-		my_txn.meta_page_dirty = true;
-		// TODO - optimize - if page will split and it is not writable yet, we can save make_page_writable
-		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(main_cursor, 0));
-		const size_t existing_size = same_key ? wr_dap.get_item_size(item) : 0;
-		bool overflow;
-		size_t required_size = wr_dap.get_item_size(key, value_size, overflow);
-		char * result = nullptr;
-		if( required_size <= wr_dap.free_capacity() + existing_size ) {
-			if( same_key ){
-				Pid overflow_page, overflow_count;
-				wr_dap.erase(item, overflow_page, overflow_count);
-				if( overflow_page ){
-					bucket_desc->overflow_page_count -= overflow_count;
-					my_txn.mark_free_in_future_page(overflow_page, overflow_count);
-				}
-				result = wr_dap.insert_at(item, key, value_size, overflow);
-			}else{
-				result = wr_dap.insert_at(item, key, value_size, overflow);
-				for(auto && c : my_txn.my_cursors)
-					c->on_insert(0, main_cursor.path.at(0).first, item);
-			}
-		}else{
-			result = my_txn.force_split_leaf(main_cursor, key, value_size, existing_size);
-		}
-		if( overflow ){
-			Pid overflow_count = (value_size + my_txn.page_size - 1)/my_txn.page_size;
-			Pid opa = my_txn.get_free_page(overflow_count);
-			bucket_desc->overflow_page_count += overflow_count;
-			pack_uint_be(result, NODE_PID_SIZE, opa);
-			result = my_txn.writable_overflow(opa, overflow_count);
-		}
-		if( !same_key )
-			bucket_desc->count += 1;
-		my_txn.clear_tmp_copies();
 		return result;
 	}
 	bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
-		char * dst = new_put(key, value.size, nooverwrite);
+		char * dst = put(key, value.size, nooverwrite);
 		if( dst )
 			memcpy(dst, value.data, value.size);
 		return dst != nullptr;
