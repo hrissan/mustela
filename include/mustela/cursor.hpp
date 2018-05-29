@@ -45,9 +45,9 @@ namespace mustela {
 				path.at(height).second += insert_count;
 			}
 		}
-		void on_erase(BucketDesc * desc, size_t height, Pid pa, PageIndex erase_index){
+		void on_erase(BucketDesc * desc, size_t height, Pid pa, PageIndex erase_index, PageIndex erase_count = 1){
 			if( bucket_desc == desc && path.at(height).first == pa && path.at(height).second > erase_index ){
-				path.at(height).second -= 1;
+				path.at(height).second -= erase_count;
 			}
 		}
 		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
@@ -61,6 +61,20 @@ namespace mustela {
 			if( bucket_desc == desc && path.at(height).first == pa){
 				path.at(height).first = new_pa;
 				path.at(height).second += new_index;
+			}
+		}
+		void on_rotate_right(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
+			if( bucket_desc == desc && path.at(height).first == pa && path.at(height).second >= split_index ){
+				path.at(height).first = new_pa;
+				path.at(height).second -= split_index + 1;
+				path.at(height + 1).second += 1;
+			}
+		}
+		void on_rotate_left(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
+			if( bucket_desc == desc && path.at(height).first == pa && path.at(height).second < split_index ){
+				path.at(height).first = new_pa;
+				path.at(height).second += split_index;
+				path.at(height + 1).second -= 1;
 			}
 		}
 	};
