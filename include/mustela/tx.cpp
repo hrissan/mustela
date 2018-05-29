@@ -76,11 +76,11 @@ namespace mustela {
 			if( height == 0 ){
 				CLeafPtr dap = my_txn.readable_leaf(pa);
 				ass(dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
-				path.at(height) = std::make_pair(pa, dir > 1 ? dap.size() - 1 : 0);
+				path.at(height) = std::make_pair(pa, dir > 0 ? dap.size() - 1 : 0);
 				break;
 			}
 			CNodePtr nap = my_txn.readable_node(pa);
-			PageOffset nitem = dir > 1 ? nap.size() - 1 : -1;
+			PageOffset nitem = dir > 0 ? nap.size() - 1 : -1;
 			path.at(height) = std::make_pair(pa, nitem);
 			pa = nap.get_value(nitem);
 			height -= 1;
@@ -105,7 +105,7 @@ namespace mustela {
 			}
 			height += 1;
 		}
-		set_at_direction(height, pa, -1);
+		set_at_direction(height, pa, 1);
 	}
 	bool Cursor::seek(const Val & key){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -159,7 +159,7 @@ namespace mustela {
 			return;
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second == dap.size(), "After seek or jump_next we should point to valid leaf item");
+		ass(path_el.second < dap.size(), "After seek or jump_next we should point to valid leaf item");
 		my_txn.meta_page_dirty = true;
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
 		Pid overflow_page, overflow_count;
@@ -1183,9 +1183,8 @@ namespace mustela {
 			throw Exception("Key size too big in Bucket::put");
 		Cursor main_cursor(my_txn, bucket_desc);
 		main_cursor.lower_bound(key);
-		auto path_el = main_cursor.path.at(0);
-		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		PageOffset item = path_el.second;
+		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
+		PageOffset item = main_cursor.path.at(0).second;
 		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
 		if( same_key && nooverwrite )
 			return nullptr;
@@ -1201,8 +1200,8 @@ namespace mustela {
 			}
 		}else{
 			for(auto && c : my_txn.my_cursors)
-				c->on_insert(0, path_el.first, item);
-			ass(path_el.second == item + 1, "Main cursor was unaffectet by on_insert");
+				c->on_insert(0, main_cursor.path.at(0).first, item);
+			ass(main_cursor.path.at(0).second == item + 1, "Main cursor was unaffectet by on_insert");
 			main_cursor.path.at(0).second = item;
 		}
 		bool overflow;
