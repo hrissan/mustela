@@ -80,14 +80,14 @@ void interactive_test(){
 			mustela::Val c_key, c_value;
 			for (cur.first(); cur.get(c_key, c_value); cur.next()) {
 				if (!mirror.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
-					std::cout << "BAD mirror insert" << std::endl;
+					std::cout << "BAD mirror insert " << c_key.to_string() << std::endl;
 				else
 					std::cout << c_key.to_string() << std::endl;
 			}
 			std::map<std::string, Mirror> mirror2;
 			for (cur.last(); cur.get(c_key, c_value); cur.prev()) {
 				if (!mirror2.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
-					std::cout << "BAD mirror2 insert" << std::endl;
+					std::cout << "BAD mirror2 insert " << c_key.to_string() << std::endl;
 				else
 					std::cout << c_key.to_string() << std::endl;
 			}

@@ -8,7 +8,7 @@ namespace mustela {
 //		return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && meta_bucket.root_page < page_count;
 //	}
 	
-	MVal DataPage::get_item_key(uint32_t page_size, const PageOffset * item_offsets, PageOffset item_count, PageOffset item){
+	MVal DataPage::get_item_key(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item){
 		ass(item < item_count, "get_item_key item too large");
 		char * raw_this = (char *)this;
 		PageOffset item_offset = item_offsets[item];
@@ -17,12 +17,12 @@ namespace mustela {
 		ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
 		return MVal(raw_this + item_offset + keysizesize, keysize);
 	}
-	PageOffset DataPage::lower_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageOffset item_count, Val key, bool * found)const{
-		PageOffset first = 0;
-		PageOffset count = item_count;
+	PageIndex DataPage::lower_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const{
+		PageIndex first = 0;
+		PageIndex count = item_count;
 		while (count > 0) {
-			PageOffset step = count / 2;
-			PageOffset it = first + step;
+			PageIndex step = count / 2;
+			PageIndex it = first + step;
 			Val itkey = get_item_key(page_size, item_offsets, item_count, it);
 			if (itkey < key) {
 				first = it + 1;
@@ -39,12 +39,12 @@ namespace mustela {
 		}
 		return first;
 	}
-	PageOffset DataPage::upper_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageOffset item_count, Val key)const{
-		PageOffset first = 0;
-		PageOffset count = item_count;
+	PageIndex DataPage::upper_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key)const{
+		PageIndex first = 0;
+		PageIndex count = item_count;
 		while (count > 0) {
-			PageOffset step = count / 2;
-			PageOffset it = first + step;
+			PageIndex step = count / 2;
+			PageIndex it = first + step;
 			Val itkey = get_item_key(page_size, item_offsets, item_count, it);
 			if (!(key < itkey)) {
 				first = it + 1;
@@ -56,23 +56,23 @@ namespace mustela {
 		
 	}
 	
-	void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset to_remove_item, size_t item_size){
+	void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex to_remove_item, size_t item_size){
 		char * raw_this = (char *)this;
 		//        auto rem_size = get_item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
 		auto kv_size = item_size - sizeof(PageOffset);
 		memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
 		if( item_offsets[to_remove_item] == free_end_offset )
 			free_end_offset += kv_size; // Luck, removed item is after free middle space
-		for(PageOffset pos = to_remove_item; pos != item_count - 1; ++pos)
+		for(PageIndex pos = to_remove_item; pos != item_count - 1; ++pos)
 			item_offsets[pos] = item_offsets[pos+1];
 		items_size -= item_size;
 		item_count -= 1;
 		item_offsets[item_count] = 0; // clear unused part
 	}
-	MVal DataPage::insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageOffset & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageOffset insert_index, Val key, size_t item_size){
+	MVal DataPage::insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex insert_index, Val key, size_t item_size){
 		char * raw_this = (char *)this;
 		auto kv_size = item_size - sizeof(PageOffset);
-		for(PageOffset pos = item_count; pos-- > insert_index;)
+		for(PageIndex pos = item_count; pos-- > insert_index;)
 			item_offsets[pos + 1] = item_offsets[pos];
 		auto insert_offset = free_end_offset - kv_size;
 		item_offsets[insert_index] = insert_offset;
@@ -107,8 +107,8 @@ namespace mustela {
 			return item_size;
 		throw std::runtime_error("Item does not fit in node");
 	}
-	size_t CNodePtr::get_item_size(PageOffset item)const{
-		ass(item < page->item_count, "item_size item too large");
+	size_t CNodePtr::get_item_size(PageIndex item)const{
+		ass(item >= 0 && item < page->item_count, "item_size item too large");
 		const char * raw_page = (const char *)page;
 		PageOffset item_offset = page->item_offsets[item];
 		uint64_t keysize;
@@ -116,9 +116,9 @@ namespace mustela {
 		return sizeof(PageOffset) + keysizesize + keysize + NODE_PID_SIZE;
 	}
 	
-	Pid CNodePtr::get_value(PageOffset item)const{
+	Pid CNodePtr::get_value(PageIndex item)const{
 		Pid value;
-		if( item == PageOffset(-1) ){
+		if( item == -1 ){
 			const char * raw_page = (const char *)page;
 			unpack_uint_be(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
 			return value;
@@ -127,14 +127,14 @@ namespace mustela {
 		unpack_uint_be(result.end(), NODE_PID_SIZE, value);
 		return value;
 	}
-	ValPid CNodePtr::get_kv(PageOffset item)const{
+	ValPid CNodePtr::get_kv(PageIndex item)const{
 		ValPid result(get_key(item), 0);
 		unpack_uint_be(result.key.end(), NODE_PID_SIZE, result.pid);
 		return result;
 	}
 	
-	void NodePtr::set_value(PageOffset item, Pid value){
-		if( item == PageOffset(-1) ){
+	void NodePtr::set_value(PageIndex item, Pid value){
+		if( item == -1 ){
 			char * raw_page = (char *)mpage();
 			pack_uint_be(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
 			return;
@@ -159,8 +159,8 @@ namespace mustela {
 		clear();
 		append_range(my_copy, 0, my_copy.size());
 	}
-	char * LeafPtr::insert_at(PageOffset insert_index, Val key, size_t value_size, bool & overflow){
-		ass(insert_index <= mpage()->item_count, "Cannot insert at this index");
+	char * LeafPtr::insert_at(PageIndex insert_index, Val key, size_t value_size, bool & overflow){
+		ass(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index");
 		size_t item_size = get_item_size(key, value_size, overflow);
 		compact(item_size);
 		ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
@@ -175,8 +175,8 @@ namespace mustela {
 			return overflow = false, kvs_size + value_size;
 		return overflow = true, kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
 	}
-	size_t CLeafPtr::get_item_size(PageOffset item, Pid & overflow_page, Pid & overflow_count)const{
-		ass(item < page->item_count, "item_size item too large");
+	size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overflow_count)const{
+		ass(item >= 0 && item < page->item_count, "item_size item too large");
 		const char * raw_page = (const char *)page;
 		PageOffset item_offset = page->item_offsets[item];
 		uint64_t keysize;
@@ -190,7 +190,7 @@ namespace mustela {
 		overflow_count = (valuesize + page_size - 1)/page_size;
 		return kvs_size + NODE_PID_SIZE;
 	}
-	ValVal CLeafPtr::get_kv(PageOffset item, Pid & overflow_page)const{
+	ValVal CLeafPtr::get_kv(PageIndex item, Pid & overflow_page)const{
 		ValVal result;
 		result.key = get_key(item);
 		uint64_t valuesize;
@@ -216,7 +216,7 @@ namespace mustela {
 			std::string key = "key" + std::to_string(rand() % 100);
 			Pid val = rand() % 100000;
 			bool same_key;
-			PageOffset existing_item = pa.lower_bound_item(Val(key), &same_key);
+			PageIndex existing_item = pa.lower_bound_item(Val(key), &same_key);
 			bool remove_existing = rand() % 2;
 			if( same_key ){
 				if( !remove_existing )
@@ -251,7 +251,7 @@ namespace mustela {
 			std::string key = "key" + std::to_string(rand() % 100);
 			std::string val = "value" + std::to_string(rand() % 100000);
 			bool same_key;
-			PageOffset existing_item = pa.lower_bound_item(Val(key), &same_key);
+			PageIndex existing_item = pa.lower_bound_item(Val(key), &same_key);
 			bool remove_existing = rand() % 2;
 			if( same_key ){
 				if( !remove_existing )
