@@ -5,7 +5,7 @@
 using namespace mustela;
 
 static const bool BULK_LOADING = true;
-	
+
 
 TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), read_only(read_only) {
 	if( !read_only && my_db.read_only)
@@ -15,7 +15,7 @@ TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), rea
 void TX::start_transaction(){
 	c_mappings_end_page = my_db.c_mappings.back().end_page;
 	my_db.c_mappings.back().ref_count += 1;
-
+	
 	meta_page_index = my_db.oldest_meta_page_index(); // Overwrite oldest page
 	auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
 	oldest_reader_tid = oldest_meta_page->tid; // TODO ask from reader-writer lock
@@ -100,7 +100,7 @@ void TX::new_increase_height(Cursor & cur){
 	wr_root.init_dirty(meta_page.tid);
 	Pid previous_root = cur.bucket_desc->root_page;
 	wr_root.set_value(-1, previous_root);
-//		wr_root.append(key, new_pid);
+	//		wr_root.append(key, new_pid);
 	cur.bucket_desc->root_page = wr_root.page->pid;
 	cur.bucket_desc->height += 1;
 	for(auto && c : my_cursors)
@@ -136,34 +136,34 @@ static ValPid get_kv_with_insert(const NodePtr & wr_dap, PageIndex pos, PageInde
 	return wr_dap.get_kv(pos);
 }
 static void find_best_node_split(PageIndex & left_split, PageIndex & right_split, const NodePtr & wr_dap, PageIndex insert_index, size_t required_size1, size_t required_size2){
-    const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
-    size_t left_size = get_item_size_with_insert(wr_dap, 0, insert_index, required_size1, required_size2);
-    size_t right_size = get_item_size_with_insert(wr_dap, size_with_insert - 1, insert_index, required_size1, required_size2);
-    left_split = 1;
-    right_split = size_with_insert - 1;
-    size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
-    size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
-    while(left_split + 1 != right_split){
-        if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
-            left_split += 1;
-            left_size += left_add;
-            left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
-            continue;
-        }
-        if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
-            right_split -= 1;
-            right_size += left_add;
-            right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
-            continue;
-        }
-        ass(false, "Failed to find node split");
-    }
+	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
+	size_t left_size = get_item_size_with_insert(wr_dap, 0, insert_index, required_size1, required_size2);
+	size_t right_size = get_item_size_with_insert(wr_dap, size_with_insert - 1, insert_index, required_size1, required_size2);
+	left_split = 1;
+	right_split = size_with_insert - 1;
+	size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
+	size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
+	while(left_split + 1 != right_split){
+		if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
+			left_split += 1;
+			left_size += left_add;
+			left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
+			continue;
+		}
+		if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
+			right_split -= 1;
+			right_size += left_add;
+			right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
+			continue;
+		}
+		ass(false, "Failed to find node split");
+	}
 }
 void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2){
 	auto path_el = cur.path.at(height);
 	NodePtr wr_dap = writable_node(path_el.first);
 	const size_t required_size1 = wr_dap.get_item_size(insert_kv1.key, insert_kv1.pid);
-    const size_t required_size2 = insert_kv2.key.data ? wr_dap.get_item_size(insert_kv2.key, insert_kv2.pid) : 0;
+	const size_t required_size2 = insert_kv2.key.data ? wr_dap.get_item_size(insert_kv2.key, insert_kv2.pid) : 0;
 	if( wr_dap.free_capacity() >= required_size1 + required_size2 ){
 		wr_dap.insert_at(path_el.second, insert_kv1.key, insert_kv1.pid);
 		if(insert_kv2.key.data)
@@ -176,9 +176,9 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	path_el = cur.path.at(height); // Could change in increase height
 	auto path_pa = cur.path.at(height + 1);
 	const PageIndex insert_index = path_el.second;
-    const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
+	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
 	PageIndex left_split = 0, right_split = 0;
-    find_best_node_split(left_split, right_split, wr_dap, insert_index, required_size1, required_size2);
+	find_best_node_split(left_split, right_split, wr_dap, insert_index, required_size1, required_size2);
 	// We must leave at least 1 key to the left and to the right
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 		bool right_sibling = false; // No right sibling when inserting into root node
@@ -338,8 +338,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	NodePtr wr_parent = writable_node(path_pa.first);
 	ass(wr_parent.size() > 0, "Found parent node with 0 items");
 	ValPid my_kv;
-//	size_t required_size_for_my_kv = 0;
-
+	//	size_t required_size_for_my_kv = 0;
+	
 	CNodePtr left_sib;
 	bool use_left_sib = false;
 	size_t left_data_size = 0;
@@ -349,7 +349,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	ValPid right_kv;
 	if( path_pa.second != -1){
 		my_kv = wr_parent.get_kv(path_pa.second);
-//		required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
+		//		required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
 		ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
 		Pid left_pid = wr_parent.get_value(path_pa.second - 1);
 		left_sib = readable_node(left_pid);
@@ -374,52 +374,52 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		std::cout << "Borrowing key from sibling" << std::endl;
 		ass(left_sib.page || right_sib.page, "Cannot borrow - no siblings for node with 0 items" );
 		if(left_sib.page && right_sib.page){
-		    if(left_sib.data_size() < right_sib.data_size())
-		        right_sib = CNodePtr();
-		    else
-		        left_sib = CNodePtr();
+			if(left_sib.data_size() < right_sib.data_size())
+				right_sib = CNodePtr();
+			else
+				left_sib = CNodePtr();
 			// TODO idea - zero one that does not fit in parent after rotation
 		}
 		if(left_sib.page){
-		    Cursor cur2(cur);
-		    cur2.path.at(height + 1).second -= 1;
-		    cur2.path.at(height) = std::make_pair(left_sib.page->pid, 0);
-            NodePtr wr_left(page_size, (NodePage *)make_pages_writable(cur2, height));
+			Cursor cur2(cur); // This cursor will be invalid below height
+			cur2.path.at(height + 1).second -= 1;
+			cur2.path.at(height) = std::make_pair(left_sib.page->pid, -1);
+			NodePtr wr_left(page_size, (NodePage *)make_pages_writable(cur2, height));
 
-            const size_t required_size1 = wr_dap.get_item_size(my_kv.key, my_kv.pid);
-            PageIndex left_split = 0, right_split = 0;
-            find_best_node_split(left_split, right_split, wr_left, wr_left.size(), required_size1, 0);
-            for(auto && c : my_cursors){
-                c->on_insert(cur.bucket_desc, height, path_el.first, -1, wr_left.size() - right_split + 1);
-                c->on_rotate_right(cur.bucket_desc, height, wr_left.page->pid, path_el.first, left_split);
-            }
-            wr_dap.insert_at(0, my_kv.key, my_kv.pid); // on_insert
-            wr_dap.insert_range(0, wr_left, right_split, wr_left.size()); // on_insert
-            auto split_kv = wr_left.get_kv(left_split);
-            wr_dap.set_value(-1, split_kv.pid);
-            wr_parent.erase(path_pa.second);
-            wr_left.erase(left_split, wr_left.size()); // split_kv is only valid here because no reorg during erase
-            new_insert2node(cur, height + 1, split_kv); // TODO - put a bit up
+			const size_t required_size1 = wr_dap.get_item_size(my_kv.key, my_kv.pid);
+			PageIndex left_split = 0, right_split = 0;
+			find_best_node_split(left_split, right_split, wr_left, wr_left.size(), required_size1, 0);
+			for(auto && c : my_cursors){
+				c->on_insert(cur.bucket_desc, height, path_el.first, -1, wr_left.size() - right_split + 1);
+				c->on_rotate_right(cur.bucket_desc, height, wr_left.page->pid, path_el.first, left_split);
+			}
+			wr_dap.insert_at(0, my_kv.key, wr_dap.get_value(-1)); // on_insert
+			wr_dap.insert_range(0, wr_left, right_split, wr_left.size()); // on_insert
+			auto split_kv = wr_left.get_kv(left_split);
+			wr_dap.set_value(-1, split_kv.pid);
+			wr_parent.erase(path_pa.second);
+			new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_dap.page->pid)); // split_kv is only valid here
+			wr_left.erase(left_split, wr_left.size());
 		}else{
-			Cursor cur2(cur);
+			Cursor cur2(cur); // This cursor will be invalid below height
 			cur2.path.at(height + 1).second += 1;
-			cur2.path.at(height) = std::make_pair(right_sib.page->pid, 0);
+			cur2.path.at(height) = std::make_pair(right_sib.page->pid, right_sib.size() - 1);
 			NodePtr wr_right(page_size, (NodePage *)make_pages_writable(cur2, height));
-
+			
 			const size_t required_size1 = wr_dap.get_item_size(right_kv.key, right_kv.pid);
 			PageIndex left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_right, 0, required_size1, 0);
 			for(auto && c : my_cursors){
-				c->on_rotate_left(cur.bucket_desc, height, wr_right.page->pid, path_el.first, left_split);
+				c->on_rotate_left(cur.bucket_desc, height, wr_right.page->pid, path_el.first, left_split - 1);
 				c->on_erase(cur.bucket_desc, height, wr_right.page->pid, -1, left_split);
 			}
-			wr_dap.insert_at(0, right_kv.key, right_kv.pid);
-			wr_dap.insert_range(1, wr_right, 0, left_split);
-			auto split_kv = wr_right.get_kv(left_split);
+			wr_dap.insert_at(0, right_kv.key, wr_right.get_value(-1));
+			wr_dap.insert_range(1, wr_right, 0, left_split - 1);
+			auto split_kv = wr_right.get_kv(left_split - 1);
 			wr_right.set_value(-1, split_kv.pid);
 			wr_parent.erase(path_pa.second + 1);
-			wr_right.erase(0, right_split); // split_kv is only valid here because no reorg during erase
-			new_insert2node(cur2, height + 1, split_kv); // TODO - put a bit up
+			new_insert2node(cur2, height + 1, ValPid(split_kv.key, wr_right.page->pid)); // split_kv is only valid here 
+			wr_right.erase(0, right_split - 1);
 		}
 		return;
 	}
@@ -547,7 +547,7 @@ void TX::commit(){
 		size_t high = (meta_page_index + 1) * page_size;
 		low = ((low / my_db.physical_page_size)) * my_db.physical_page_size; // find lowest physical page
 		high = ((high + my_db.physical_page_size - 1) / my_db.physical_page_size) *
-			   my_db.physical_page_size; // find highest physical page
+		my_db.physical_page_size; // find highest physical page
 		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 	}
 	// Now invalidate all cursors and buckets
@@ -668,8 +668,8 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 			if( overflow_page )
 				kv.value.data = readable_overflow(overflow_page);
 			//                std::cout << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
-			std::cout << trim_key(kv.key.to_string(), parse_meta) << ", ";
-			result += "\"" + trim_key(kv.key.to_string(), parse_meta) + "\""; //  + ":" + value.to_string() +
+			std::cout << trim_key(kv.key.to_string(), parse_meta) << "(" << kv.value.size << "), ";
+			result += "\"" + trim_key(kv.key.to_string(), parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +
 		}
 		std::cout << "]" << std::endl;
 		return result + "]}";

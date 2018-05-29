@@ -73,7 +73,7 @@ namespace mustela {
 		void on_rotate_left(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
 			if( bucket_desc == desc && path.at(height).first == pa && path.at(height).second < split_index ){
 				path.at(height).first = new_pa;
-				path.at(height).second += split_index;
+				path.at(height).second += 1;
 				path.at(height + 1).second -= 1;
 			}
 		}

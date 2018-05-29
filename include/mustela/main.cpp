@@ -67,7 +67,7 @@ void interactive_test(){
 	//    for(int i = 0; i != items_counter * 4; ++i){
 	//        int j = dist(e);
 	//    }
-	std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
+	std::vector<std::string> cmds;//{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket(txn, main_bucket_name);
@@ -81,15 +81,15 @@ void interactive_test(){
 			for (cur.first(); cur.get(c_key, c_value); cur.next()) {
 				if (!mirror.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
 					std::cout << "BAD mirror insert " << c_key.to_string() << std::endl;
-				else
-					std::cout << c_key.to_string() << std::endl;
+//				else
+//					std::cout << c_key.to_string() << std::endl;
 			}
 			std::map<std::string, Mirror> mirror2;
 			for (cur.last(); cur.get(c_key, c_value); cur.prev()) {
 				if (!mirror2.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
 					std::cout << "BAD mirror2 insert " << c_key.to_string() << std::endl;
-				else
-					std::cout << c_key.to_string() << std::endl;
+//				else
+//					std::cout << c_key.to_string() << std::endl;
 			}
 			if( mirror != mirror2 )
 				std::cout << "Inconsistent forward/backward iteration " << mirror.size() << " " << mirror2.size() << std::endl;
@@ -98,10 +98,11 @@ void interactive_test(){
 		//        std::cout << json << std::endl;
 		std::cout << txn.get_meta_stats() << std::endl;
 		std::cout << main_bucket.get_stats() << std::endl;
-		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards\n";
+		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards" << std::endl;
 		std::string input;
 		if( !cmds.empty()){
 			input = cmds.at(0);
+			std::cout << input << std::endl;
 			cmds.erase(cmds.begin());
 		}else
 			getline(std::cin, input);
@@ -133,10 +134,11 @@ void interactive_test(){
 			int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
 			if( new_range )
 				j += items_counter;
-			std::string key = std::to_string(j) + std::string(4, 'A');
-			std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
+		  	std::string key = std::string(6 - std::to_string(j).length(), '0') + std::to_string(j);
+			//std::string key = std::to_string(j) + std::string(4, 'A');
+			std::string val = "value" + std::to_string(j);// + std::string(j % 128, '*');
 			mustela::Val got;
-			if( (!add && i == 3 && j == 93)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
+			if( (!add && i == 82 && j == 82)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
 				got.size = 0;
 				std::string json = main_bucket.print_db();
 				std::cout << "Main table: " << json << std::endl;
@@ -157,6 +159,11 @@ void interactive_test(){
 				if( !main_bucket.del(mustela::Val(key), false) )
 					std::cout << "BAD del" << std::endl;
 				mirror.erase(key);
+			}
+			if( (!add && i == 82 && j == 82)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
+				got.size = 0;
+				std::string json = main_bucket.print_db();
+				std::cout << "Main table: " << json << std::endl;
 			}
 		for(auto && ma : mirror){
 			mustela::Val value, c_key, c_value;
