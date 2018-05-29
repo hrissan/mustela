@@ -151,7 +151,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 		new_increase_height(cur);
 	path_el = cur.path.at(height); // Could change in increase height
 	auto path_pa = cur.path.at(height + 1);
-	const size_t size_with_insert = wr_dap.size() + 1 + (insert_kv2.key.data ? 1 : 0);
+	const PageIndex size_with_insert = wr_dap.size() + 1 + (insert_kv2.key.data ? 1 : 0);
 	const PageIndex insert_index = path_el.second;
 	// We must leave at least 1 key to the left and to the right
 	size_t left_size = get_item_size_with_insert(wr_dap, 0, insert_index, required_size1, required_size2);
@@ -236,7 +236,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	auto path_pa = cur.path.at(1);
 	size_t left_size = 0;
 	size_t right_size = 0;
-	const size_t size_with_insert = wr_dap.size() + 1;
+	const PageIndex size_with_insert = wr_dap.size() + 1;
 	const PageIndex insert_index = path_el.second;
 	PageIndex left_split = 0;
 	PageIndex right_split = size_with_insert;
@@ -333,7 +333,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	NodePtr wr_parent = writable_node(path_pa.first);
 	ass(wr_parent.size() > 0, "Found parent node with 0 items");
 	ValPid my_kv;
-	size_t required_size_for_my_kv = 0;
+//	size_t required_size_for_my_kv = 0;
 
 	CNodePtr left_sib;
 	bool use_left_sib = false;
@@ -344,7 +344,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	ValPid right_kv;
 	if( path_pa.second != -1){
 		my_kv = wr_parent.get_kv(path_pa.second);
-		required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
+//		required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
 		ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
 		Pid left_pid = wr_parent.get_value(path_pa.second - 1);
 		left_sib = readable_node(left_pid);
