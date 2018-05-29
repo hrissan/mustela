@@ -1,13 +1,4 @@
 #include "mustela.hpp"
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include <iostream>
-#include <algorithm>
 
 using namespace mustela;
 
@@ -61,7 +52,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		}
 	}else{
 		for(auto && c : my_txn.my_cursors)
-			c->on_insert(0, path_el.first, path_el.second);
+			c->on_insert(bucket_desc, 0, path_el.first, path_el.second);
 		ass(main_cursor.path.at(0).second == path_el.second + 1, "Main cursor was unaffectet by on_insert");
 		main_cursor.path.at(0).second = path_el.second;
 	}

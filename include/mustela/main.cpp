@@ -136,11 +136,11 @@ void interactive_test(){
 			std::string key = std::to_string(j) + std::string(4, 'A');
 			std::string val = "value" + std::to_string(j) + std::string(j % 512, '*');
 			mustela::Val got;
-//			if( (!add && i == 11 && j == 88) || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)){
+			if( (!add && i == 3 && j == 93)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
 				got.size = 0;
 				std::string json = main_bucket.print_db();
 				std::cout << "Main table: " << json << std::endl;
-//			}
+			}
 			bool in_db = main_bucket.get(mustela::Val(key), got) && got.to_string() == val;
 			auto mit = mirror.find(key);
 			bool in_mirror = mit != mirror.end() && mit->second.value == val;

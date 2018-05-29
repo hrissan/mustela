@@ -1,13 +1,4 @@
 #include "mustela.hpp"
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include <iostream>
-#include <algorithm>
 
 using namespace mustela;
 	
@@ -129,11 +120,10 @@ bool Cursor::del(){
 		throw Exception("Attempt to modify read-only transaction in Cursor::del");
 	if( !fix_cursor_after_last_item() )
 		return false;
-	auto path_el = path.at(0);
-	CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-	ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
 	my_txn.meta_page_dirty = true;
 	LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
+	auto path_el = path.at(0);
+	ass( path_el.second < wr_dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
 	Pid overflow_page, overflow_count;
 	wr_dap.erase(path_el.second, overflow_page, overflow_count);
 	if( overflow_page ) {
@@ -141,7 +131,7 @@ bool Cursor::del(){
 		my_txn.mark_free_in_future_page(overflow_page, overflow_count);
 	}
 	for(auto && c : my_txn.my_cursors)
-		c->on_erase(0, path_el.first, path_el.second);
+		c->on_erase(bucket_desc, 0, path_el.first, path_el.second);
 	my_txn.new_merge_leaf(*this, wr_dap);
 	bucket_desc->count -= 1;
 	return true;

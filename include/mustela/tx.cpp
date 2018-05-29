@@ -1,13 +1,6 @@
 #include "mustela.hpp"
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <errno.h>
 #include <iostream>
-#include <algorithm>
+#include <sys/mman.h>
 
 using namespace mustela;
 
@@ -87,7 +80,7 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	mark_free_in_future_page(old_page, 1);
 	Pid new_page = get_free_page(1);
 	for(auto && c : my_cursors)
-		if( !c->path.empty() && c->path.at(height).first == old_page )
+		if( c->bucket_desc == cur.bucket_desc && c->path.at(height).first == old_page )
 			c->path.at(height).first = new_page;
 	DataPage * wr_dap = my_db.writable_page(new_page, 1);
 	memcpy(wr_dap, dap, page_size);
@@ -111,7 +104,8 @@ void TX::new_increase_height(Cursor & cur){
 	cur.bucket_desc->root_page = wr_root.page->pid;
 	cur.bucket_desc->height += 1;
 	for(auto && c : my_cursors)
-		c->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+		if(c->bucket_desc == cur.bucket_desc)
+			c->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
 }
 static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size1, size_t required_size2){
 	if(pos == insert_pos)
@@ -199,8 +193,8 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	for(PageIndex i = right_split; i != size_with_insert; ++i)
 		wr_right.append(get_kv_with_insert(wr_dap, i, insert_index, insert_kv1, insert_kv2));
 	for(auto && c : my_cursors){
-		c->on_insert(height + 1, path_pa.first, path_pa.second + 1);
-		c->on_split(height, path_el.first, wr_right.page->pid, right_split);
+		c->on_insert(cur.bucket_desc, height + 1, path_pa.first, path_pa.second + 1);
+		c->on_split(cur.bucket_desc, height, path_el.first, wr_right.page->pid, right_split);
 	}
 	ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
 	wr_right.set_value(-1, split_kv.pid);
@@ -257,7 +251,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 		}
 		if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
 			right_split -= 1;
-			right_size += left_add;
+			right_size += right_add;
 			right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
 			continue;
 		}
@@ -284,8 +278,8 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 		else
 			wr_right.append(get_kv_with_insert(wr_dap, i, insert_index));
 	for(auto && c : my_cursors){
-		c->on_insert(1, path_pa.first, path_pa.second + 1);
-		c->on_split(0, path_el.first, wr_right.page->pid, right_split);
+		c->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
+		c->on_split(cur.bucket_desc, 0, path_el.first, wr_right.page->pid, right_split);
 	}
 	LeafPtr wr_middle;
 	if(left_split + 1 == right_split){
@@ -297,8 +291,8 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 		else
 			wr_middle.append(get_kv_with_insert(wr_dap, left_split, insert_index));
 		for(auto && c : my_cursors){
-			c->on_insert(1, path_pa.first, path_pa.second + 1);
-			c->on_split(0, path_el.first, wr_middle.page->pid, left_split);
+			c->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
+			c->on_split(cur.bucket_desc, 0, path_el.first, wr_middle.page->pid, left_split);
 		}
 	}
 	{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
@@ -330,7 +324,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		cur.bucket_desc->root_page = wr_dap.get_value(-1);
 		cur.bucket_desc->height -= 1;
 		for(auto && c : my_cursors)
-			c->path.pop_back();
+			if( c->bucket_desc == cur.bucket_desc)
+				c->path.pop_back();
 		return;
 	}
 	auto path_el = cur.path.at(height);
@@ -386,17 +381,17 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
 		for(auto && c : my_cursors){
-			c->on_erase(height + 1, path_pa.first, path_pa.second - 1);
-			c->on_insert(height, path_el.first, -1, left_sib.size() + 1);
-			c->on_merge(height, left_sib.page->pid, path_el.first, 0);
+			c->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second - 1);
+			c->on_insert(cur.bucket_desc, height, path_el.first, -1, left_sib.size() + 1);
+			c->on_merge(cur.bucket_desc, height, left_sib.page->pid, path_el.first, 0);
 		}
 		path_el = cur.path.at(0); // path_pa was modified by code above
 		path_pa = cur.path.at(1); // path_pa was modified by code above
 	}
 	if( use_right_sib ){
 		for(auto && c : my_cursors){
-			c->on_erase(height + 1, path_pa.first, path_pa.second);
-			c->on_merge(height, right_sib.page->pid, path_el.first, wr_dap.size() + 1);
+			c->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second);
+			c->on_merge(cur.bucket_desc, height, right_sib.page->pid, path_el.first, wr_dap.size() + 1);
 		}
 		Pid spec_val = right_sib.get_value(-1);
 		wr_dap.append(right_kv.key, spec_val);
@@ -449,17 +444,17 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, path_el.first);
 		for(auto && c : my_cursors){
-			c->on_erase(1, path_pa.first, path_pa.second - 1);
-			c->on_insert(0, path_el.first, 0, left_sib.size());
-			c->on_merge(0, left_sib.page->pid, path_el.first, 0);
+			c->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second - 1);
+			c->on_insert(cur.bucket_desc, 0, path_el.first, 0, left_sib.size());
+			c->on_merge(cur.bucket_desc, 0, left_sib.page->pid, path_el.first, 0);
 		}
 		path_el = cur.path.at(0); // path_pa was modified by code above
 		path_pa = cur.path.at(1); // path_pa was modified by code above
 	}
 	if( right_sib.page ){
 		for(auto && c : my_cursors){
-			c->on_erase(1, path_pa.first, path_pa.second);
-			c->on_merge(0, right_sib.page->pid, path_el.first, wr_dap.size());
+			c->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second);
+			c->on_merge(cur.bucket_desc, 0, right_sib.page->pid, path_el.first, wr_dap.size());
 		}
 		wr_dap.append_range(right_sib, 0, right_sib.size());
 		mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
