@@ -366,8 +366,17 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			use_left_sib = false;
 	}
 	if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
-		std::cout << "Aha" << std::endl;
-		ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
+		std::cout << "Borrowing key from sibling" << std::endl;
+		ass(left_sib.page || right_sib.page, "Cannot borrow - no siblings for node with 0 items" );
+		if(left_sib.page && right_sib.page){
+			// TODO zero one that does not fit in parent after rotation
+		}
+		if(left_sib.page){
+		
+		}else{
+		
+		}
+		return;
 	}
 	if( use_left_sib && use_right_sib )
 		std::cout << "3-way merge" << std::endl;
