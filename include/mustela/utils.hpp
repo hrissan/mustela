@@ -115,7 +115,8 @@ namespace mustela {
 	typedef uint64_t Tid;
 	typedef uint64_t Pid;
 	typedef uint16_t PageOffset;
-	
+	typedef int16_t PageIndex;
+
 	constexpr uint32_t OUR_VERSION = 1;
 	
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form

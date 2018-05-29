@@ -640,38 +640,54 @@ namespace mustela {
 		auto path_pa = cur.path.at(height + 1);
 		NodePtr wr_parent = writable_node(path_pa.first);
 		ass(wr_parent.size() > 0, "Found parent node with 0 items");
+		ValPid my_kv;
+		size_t required_size_for_my_kv = 0;
+
 		CNodePtr left_sib;
+		bool use_left_sib = false;
+		PageOffset left_data_size = 0;
 		CNodePtr right_sib;
+		bool use_right_sib = false;
+		PageOffset right_data_size = 0;
+		ValPid right_kv;
 		if( path_pa.second != PageOffset(-1)){
+			my_kv = wr_parent.get_kv(path_pa.second);
+			required_size_for_my_kv = wr_parent.get_item_size(my_kv.key, my_kv.pid);
+			ass(my_kv.pid == wr_dap.page->pid, "merge_if_needed_node my pid in parent does not match");
 			Pid left_pid = wr_parent.get_value(path_pa.second - 1);
 			left_sib = readable_node(left_pid);
-			if( wr_dap.free_capacity() < left_sib.data_size() )
-				left_sib = CNodePtr(); // forget about left!
+			left_data_size = left_sib.data_size();
+			left_data_size += left_sib.get_item_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
+			use_left_sib = left_data_size <= wr_dap.free_capacity();
 		}
-		if( PageOffset(path_pa.second + 1) < wr_parent.size()){
-			Pid right_pid = wr_parent.get_value(path_pa.second + 1);
-			right_sib = readable_node(right_pid);
-			if( wr_dap.free_capacity() < right_sib.data_size() )
-				right_sib = CNodePtr(); // forget about right!
+		if(PageOffset(path_pa.second + 1) < wr_parent.size()){
+			right_kv = wr_parent.get_kv(path_pa.second + 1);
+			right_sib = readable_node(right_kv.pid);
+			right_data_size = right_sib.data_size();
+			right_data_size += right_sib.get_item_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
+			use_right_sib = right_data_size <= wr_dap.free_capacity();
 		}
-		if( left_sib.page && right_sib.page && wr_dap.free_capacity() < left_sib.data_size() + right_sib.data_size() ){ // If cannot merge both, select smallest
-			if( left_sib.data_size() < right_sib.data_size() ) // <= will also work
-				right_sib = CNodePtr();
+		if( use_left_sib && use_right_sib && wr_dap.free_capacity() < left_data_size + right_data_size ){ // If cannot merge both, select smallest
+			if( left_data_size < right_data_size ) // <= will also work
+				use_right_sib = false;
 			else
-				left_sib = CNodePtr();
+				use_left_sib = false;
 		}
-		if( wr_dap.size() == 0){
+		if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
+			std::cout << "Aha" << std::endl;
 			ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
-			//            std::cout << "We could optimize by unlinking our leaf" << std::endl;
 		}
-		if( left_sib.page && right_sib.page )
+		if( use_left_sib && use_right_sib )
 			std::cout << "3-way merge" << std::endl;
-		if( left_sib.page ){
+		if( use_left_sib ){
+			Pid spec_val = wr_dap.get_value(-1);
+			wr_dap.insert_at(0, my_kv.key, spec_val);
+			wr_dap.set_value(-1, left_sib.get_value(-1));
 			wr_dap.insert_range(0, left_sib, 0, left_sib.size());
 			mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
 			cur.bucket_desc->node_page_count -= 1;
 			wr_parent.erase(path_pa.second);
-			wr_parent.set_value(path_pa.second - 1, path_el.first);
+			wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
 			for(auto && c : my_cursors){
 				c->on_erase(height + 1, path_pa.first, path_pa.second - 1);
 				c->on_insert(height, path_el.first, 0, left_sib.size());
@@ -679,6 +695,14 @@ namespace mustela {
 			}
 			path_el = cur.path.at(0); // path_pa was modified by code above
 			path_pa = cur.path.at(1); // path_pa was modified by code above
+		}
+		if( use_right_sib ){
+			Pid spec_val = right_sib.get_value(-1);
+			wr_dap.append(right_kv.key, spec_val);
+			wr_dap.append_range(right_sib, 0, right_sib.size());
+			mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
+			cur.bucket_desc->node_page_count -= 1;
+			wr_parent.erase(path_pa.second + 1);
 		}
 		if( right_sib.page ){
 			for(auto && c : my_cursors){
