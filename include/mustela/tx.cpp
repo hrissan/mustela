@@ -16,9 +16,13 @@ namespace mustela {
 	
 	Cursor::Cursor(TX & my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc){
 		my_txn.my_cursors.insert(this);
+		path.resize(bucket_desc->height + 1);
+		end();
 	}
 	Cursor::Cursor(Bucket & bucket):my_txn(bucket.my_txn), bucket_desc(bucket.bucket_desc){
 		my_txn.my_cursors.insert(this);
+		path.resize(bucket_desc->height + 1);
+		end();
 	}
 	Cursor::~Cursor(){
 		my_txn.my_cursors.erase(this);
@@ -29,16 +33,24 @@ namespace mustela {
 	Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(other.path){
 		my_txn.my_cursors.insert(this);
 	}
-	void Cursor::lower_bound(const Val & key){
+	bool Cursor::operator==(const Cursor & other)const{
+		Cursor a(*this);
+		Cursor b(other);
+		a.fix_cursor_after_last_item(); // fixes are lazy
+		b.fix_cursor_after_last_item(); // fixes are lazy
+		return &my_txn == &other.my_txn && bucket_desc == other.bucket_desc && a.path == b.path;
+	}
+	bool Cursor::seek(const Val & key){
+		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		Pid pa = bucket_desc->root_page;
 		size_t height = bucket_desc->height;
-		path.resize(height + 1);
 		while(true){
 			if( height == 0 ){
 				CLeafPtr dap = my_txn.readable_leaf(pa);
-				PageOffset item = dap.lower_bound_item(key);
+				bool found;
+				PageOffset item = dap.lower_bound_item(key, &found);
 				path.at(height) = std::make_pair(pa, item);
-				break;
+				return found;
 			}
 			CNodePtr nap = my_txn.readable_node(pa);
 			PageOffset nitem = nap.upper_bound_item(key) - 1;
@@ -47,19 +59,17 @@ namespace mustela {
 			height -= 1;
 		}
 	}
-	void Cursor::fix_cursor_after_last_item(){
+	bool Cursor::fix_cursor_after_last_item(){
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 		if(path_el.second < dap.size())
-			return;
+			return true;
 		ass(path_el.second == dap.size(), "Cursor corrupted at Cursor::fix_cursor_after_last_item");
 		size_t height = 1;
 		Pid pa = 0;
 		while(true){
-			if( height == path.size() ){
-				path.clear();
-				return;
-			}
+			if( height == path.size() )
+				return false;
 			CNodePtr nap = my_txn.readable_node(path.at(height).first);
 			if( PageOffset(path.at(height).second + 1) < nap.size() ){
 				path.at(height).second += 1;
@@ -70,13 +80,14 @@ namespace mustela {
 			height += 1;
 		}
 		set_at_direction(height, pa, -1);
+		return true;
 	}
 	void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 		while(true){
 			if( height == 0 ){
 				CLeafPtr dap = my_txn.readable_leaf(pa);
-				ass(dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
-				path.at(height) = std::make_pair(pa, dir > 0 ? dap.size() - 1 : 0);
+				ass(bucket_desc->count == 0 || dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
+				path.at(height) = std::make_pair(pa, dir > 0 ? dap.size() : 0);
 				break;
 			}
 			CNodePtr nap = my_txn.readable_node(pa);
@@ -86,63 +97,25 @@ namespace mustela {
 			height -= 1;
 		}
 	}
-	void Cursor::jump_prev(){
-		auto path_el = path.at(0);
-		ass(path_el.second == 0, "Cursor jump from leaf element != 0 at Cursor::jump_prev");
-		size_t height = 1;
-		Pid pa = 0;
-		while(true){
-			if( height == path.size() ){
-				path.clear();
-				return;
-			}
-			CNodePtr nap = my_txn.readable_node(path.at(height).first);
-			if( path.at(height).second != PageOffset(-1) ){
-				path.at(height).second -= 1;
-				pa = nap.get_value(path.at(height).second);
-				height -= 1;
-				break;
-			}
-			height += 1;
-		}
-		set_at_direction(height, pa, 1);
-	}
-	bool Cursor::seek(const Val & key){
+	void Cursor::end(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		lower_bound(key);
-		auto path_el = path.at(0);
-		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		bool same_key = path_el.second != dap.size() && Val(dap.get_key(path_el.second)) == key;
-		if( path_el.second == dap.size() )
-			fix_cursor_after_last_item();
-		return same_key;
+		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 	}
 	void Cursor::first(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		if( bucket_desc->count == 0){
-			path.clear();
-			return;
-		}
-		path.resize(bucket_desc->height + 1);
 		set_at_direction(bucket_desc->height, bucket_desc->root_page, -1);
 	}
 	void Cursor::last(){
-		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		if( bucket_desc->count == 0){
-			path.clear();
-			return;
-		}
-		path.resize(bucket_desc->height + 1);
-		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
+		end();
+		prev();
 	}
 	bool Cursor::get(Val & key, Val & value){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		if( path.empty() )
+		if( !fix_cursor_after_last_item() )
 			return false;
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		if( path_el.second == dap.size() ) // After seek("zzz"), when all keys are less than "z"
-			return false;
+		ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::get" );
 		Pid overflow_page;
 		auto kv = dap.get_kv(path_el.second, overflow_page);
 		if( overflow_page )
@@ -151,15 +124,15 @@ namespace mustela {
 		value = kv.value;
 		return true;
 	}
-	void Cursor::del(){
+	bool Cursor::del(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 		if( my_txn.read_only )
 			throw Exception("Attempt to modify read-only transaction in Cursor::del");
-		if( path.empty() )
-			return;
+		if( !fix_cursor_after_last_item() )
+			return false;
 		auto path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second < dap.size(), "After seek or jump_next we should point to valid leaf item");
+		ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
 		my_txn.meta_page_dirty = true;
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(*this, 0));
 		Pid overflow_page, overflow_count;
@@ -172,41 +145,44 @@ namespace mustela {
 			c->on_erase(0, path_el.first, path_el.second);
 		my_txn.new_merge_leaf(*this, wr_dap);
 		bucket_desc->count -= 1;
-		for(auto && c : my_txn.my_cursors)
-			c->fix_cursor_after_last_item();
-/*		path_el = path.at(0);
-		dap = my_txn.readable_leaf(path_el.first);
-		if( path_el.second == dap.size() )
-			jump_next();
-		if( bucket_desc->height != 0 ){
-			CNodePtr rap = my_txn.readable_node(bucket_desc->root_page);
-			if( rap.size() == 0)
-				std::cout << "Aha" << std::endl;
-		}*/
+		return true;
 	}
 	void Cursor::next(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		if( path.empty() )
+		if( !fix_cursor_after_last_item() )
 			return first();
 		auto & path_el = path.at(0);
 		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second < dap.size(), "Cursor points beyond last leaf element");
+		ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::next" );
 		path_el.second += 1;
-		if( path_el.second == dap.size() )
-			fix_cursor_after_last_item();
 	}
 	void Cursor::prev(){
 		ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-		if( path.empty() )
-			return last();
-		auto & path_el = path.at(0);
-		if( path_el.second == 0 ) {
-			jump_prev();
+		if( path.at(0).second > 0 ) {
+//			CLeafPtr dap = my_txn.readable_leaf(path_el.first);
+//			ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
+			path.at(0).second -= 1;
 			return;
 		}
-		CLeafPtr dap = my_txn.readable_leaf(path_el.first);
-		ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
-		path_el.second -= 1;
+		size_t height = 1;
+		Pid pa = 0;
+		while(true){
+			if( height == path.size() ){
+				last();
+				return;
+			}
+			CNodePtr nap = my_txn.readable_node(path.at(height).first);
+			if( path.at(height).second != PageOffset(-1) ){
+				path.at(height).second -= 1;
+				pa = nap.get_value(path.at(height).second);
+				height -= 1;
+				break;
+			}
+			height += 1;
+		}
+		set_at_direction(height, pa, 1);
+		ass(path.at(0).second > 0, "Invalid cursor after set_at_direction in Cursor::prev");
+		path.at(0).second -= 1;
 	}
 	TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), read_only(read_only) {
 		if( !read_only && my_db.read_only)
@@ -1182,10 +1158,10 @@ namespace mustela {
 		if(key.size > CNodePtr::max_key_size(my_txn.page_size))
 			throw Exception("Key size too big in Bucket::put");
 		Cursor main_cursor(my_txn, bucket_desc);
-		main_cursor.lower_bound(key);
-		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
-		PageOffset item = main_cursor.path.at(0).second;
-		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
+		bool same_key = main_cursor.seek(key);
+//		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
+		auto path_el = main_cursor.path.at(0);
+//		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
 		if( same_key && nooverwrite )
 			return nullptr;
 		my_txn.meta_page_dirty = true;
@@ -1193,16 +1169,16 @@ namespace mustela {
 		LeafPtr wr_dap(my_txn.page_size, (LeafPage *)my_txn.make_pages_writable(main_cursor, 0));
 		if( same_key ){
 			Pid overflow_page, overflow_count;
-			wr_dap.erase(item, overflow_page, overflow_count);
+			wr_dap.erase(path_el.second, overflow_page, overflow_count);
 			if( overflow_page ){
 				bucket_desc->overflow_page_count -= overflow_count;
 				my_txn.mark_free_in_future_page(overflow_page, overflow_count);
 			}
 		}else{
 			for(auto && c : my_txn.my_cursors)
-				c->on_insert(0, main_cursor.path.at(0).first, item);
-			ass(main_cursor.path.at(0).second == item + 1, "Main cursor was unaffectet by on_insert");
-			main_cursor.path.at(0).second = item;
+				c->on_insert(0, path_el.first, path_el.second);
+			ass(main_cursor.path.at(0).second == path_el.second + 1, "Main cursor was unaffectet by on_insert");
+			main_cursor.path.at(0).second = path_el.second;
 		}
 		bool overflow;
 		char * result = my_txn.new_insert2leaf(main_cursor, key, value_size, &overflow);

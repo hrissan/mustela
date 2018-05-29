@@ -34,7 +34,7 @@ namespace mustela {
 		if( found ){
 			if( first == item_count)
 				*found = false;
-			else
+			else // TODO - we can save get_item_key here 50% of time
 				*found = Val(get_item_key(page_size, item_offsets, item_count, first)) == key;
 		}
 		return first;

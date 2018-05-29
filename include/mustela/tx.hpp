@@ -26,28 +26,25 @@ namespace mustela {
 			if(height == path.size() - 1)
 				path[height++].second = 0; // set to first leaf kv
 		}
-		void jump_prev();
 		
 		explicit Cursor(TX & my_txn, BucketDesc * bucket_desc);
-		void lower_bound(const Val & key);
-		void fix_cursor_after_last_item();
+		bool fix_cursor_after_last_item(); // true if points to item
 		void set_at_direction(size_t height, Pid pa, int dir);
+		void end();
 	public:
 		Cursor(Cursor && other);
 		Cursor & operator=(Cursor && other)=delete;
 		Cursor(const Cursor & other);
 		explicit Cursor(Bucket & bucket);
 		~Cursor();
-		bool operator==(const Cursor & other)const{
-			return &my_txn == &other.my_txn && bucket_desc == other.bucket_desc && path == other.path;
-		}
+		bool operator==(const Cursor & other)const;
 		bool operator!=(const Cursor & other)const{ return !(*this == other); }
 
 		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
 		void first();
 		void last();
 		bool get(Val & key, Val & value);
-		void del(); // If you can get, you can del. After del, cursor points to the next item
+		bool del(); // If you can get, you can del. After del, cursor points to the next item
 		void next();
 		void prev();
 		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a")*/; cur.next() ) {}
