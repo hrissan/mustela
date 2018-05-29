@@ -67,7 +67,7 @@ void interactive_test(){
 	//    for(int i = 0; i != items_counter * 4; ++i){
 	//        int j = dist(e);
 	//    }
-	std::vector<std::string> cmds;//{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
+	std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket(txn, main_bucket_name);

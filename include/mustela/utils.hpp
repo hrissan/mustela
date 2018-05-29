@@ -121,7 +121,8 @@ namespace mustela {
 	
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form
 //	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
-	constexpr int NODE_PID_SIZE = 4; // 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pyges
+	constexpr int NODE_PID_SIZE = 5; // 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pages
+	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE
 	// fixed pid size allows simple logic when replacing page in node index
 	struct ValPid {
 		Val key;
