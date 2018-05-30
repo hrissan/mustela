@@ -5,7 +5,8 @@
 #include <cstring>
 
 namespace mustela {
-	
+
+	// TODO - use LE by default
 	template<class T>
 	void unpack_uint_be(const unsigned char * buf, unsigned si, T & val){
 		T result = 0;
@@ -54,6 +55,12 @@ namespace mustela {
 	unsigned char get_compact_size_sqlite4(uint64_t val);
 	unsigned char read_u64_sqlite4(uint64_t & val, const void * ptr);
 	unsigned char write_u64_sqlite4(uint64_t val, void * ptr);
+
+	uint32_t crc32c(uint32_t crc, const unsigned char *buf, size_t len);
+	inline uint32_t crc32c(uint32_t crc, const char *buf, size_t len){
+		return crc32c(crc, reinterpret_cast<const unsigned char *>(buf), len);
+	}
+
 	class Exception {
 	public:
 		explicit Exception(const std::string & what)

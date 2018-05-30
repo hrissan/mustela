@@ -8,7 +8,8 @@
 #include "pages.hpp"
 
 namespace mustela {
-	
+
+	// TODO - get rid of std::map and use simpler tree impl
 	class TX;
 	class FreeList {
 		std::map<Pid, Pid> free_pages;
@@ -27,6 +28,7 @@ namespace mustela {
 		Tid next_record_tid;
 		uint64_t next_record_batch;
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
+		// TODO - records_to_delete are unnecessary - they form single range for deletion
 		
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
 		void grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);

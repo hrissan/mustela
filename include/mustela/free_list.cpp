@@ -5,6 +5,9 @@ using namespace mustela;
 
 constexpr size_t RECORD_SIZE = NODE_PID_SIZE + 1;
 // Use store fixed-size records of NODE_PID_SIZE page + 1-byte count
+
+// TODO - use variable-encoding for count, leave free worst-case free bytes at the end of page
+
 static size_t get_records_count(Pid count){
 	return ((count + 254) / 255);
 }
@@ -85,8 +88,8 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid pa = *(siit->second.begin());
 			remove_from_cache(pa, contigous_count, free_pages, free_pages_record_count, true);
 			back_from_future_pages.insert(pa);
-			if(pa < 3)
-				std::cout << "Achtung!" << std::endl;
+			ass(pa > 3, "Meta somehow got into freelist"); // TODO - constant
+			// TODO - check tid of the page?
 			return pa;
 		}
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page

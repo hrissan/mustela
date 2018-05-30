@@ -24,9 +24,12 @@ namespace mustela {
 		uint64_t page_count; // excess pages in file are all free
 		BucketDesc meta_bucket; // All other bucket descs are stored in meta_bucket together with freelist
 		uint64_t tid2; // protect against write shredding (if tid does not match tid2, use lowest of two as an effective tid)
+        // TODO - use crc32 to detect meta corruption
 		
 		Tid effective_tid()const { return std::min(tid, tid2); }
 	};
+	// TODO - detect hot copy made with "cp" utility
+	// TODO - get rid of pid in all pages (unneccessary?)
 	struct DataPage {
 		Pid pid; /// for consistency debugging. Never written except in get_free_page
 		Tid tid; /// transaction which did write the page
