@@ -88,7 +88,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid pa = *(siit->second.begin());
 			remove_from_cache(pa, contigous_count, free_pages, free_pages_record_count, true);
 			back_from_future_pages.insert(pa);
-			ass(pa > 3, "Meta somehow got into freelist"); // TODO - constant
+			ass(pa >= 3, "Meta somehow got into freelist"); // TODO - constant
 			// TODO - check tid of the page?
 			return pa;
 		}
