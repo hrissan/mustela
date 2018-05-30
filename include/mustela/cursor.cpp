@@ -1,4 +1,5 @@
 #include "mustela.hpp"
+#include <iostream>
 
 using namespace mustela;
 	
@@ -57,7 +58,7 @@ bool Cursor::operator==(const Cursor & other)const{
 //		Cursor b(other);
 //		a.fix_cursor_after_last_item(); // fixes are lazy
 //		b.fix_cursor_after_last_item(); // fixes are lazy
-	return &my_txn == &other.my_txn && bucket_desc == other.bucket_desc && path == other.path;
+	return my_txn == other.my_txn && bucket_desc == other.bucket_desc && path == other.path;
 }
 bool Cursor::seek(const Val & key){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
