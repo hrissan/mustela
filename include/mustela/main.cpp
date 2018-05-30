@@ -2,10 +2,10 @@
 // http://ysangkok.github.io/js-clrs-btree/btree.html
 
 #include <iostream>
-#include <stdlib.h>
 #include <map>
 #include <random>
 #include "mustela.hpp"
+#include "testing.hpp"
 
 struct Mirror {
 	std::string value;
@@ -188,6 +188,10 @@ void interactive_test(){
 }
 
 int main(int argc, char * argv[]){
+	if (argc == 3 && std::string(argv[1]) == "--test") {
+		run_test_driver(argv[2]);
+		return 0;
+	}
 	
 	mustela::FreeList::test();
 	mustela::test_data_pages();

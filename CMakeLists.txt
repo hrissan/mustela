@@ -24,7 +24,11 @@ set(SOURCE_FILES
         include/mustela/tx.cpp
         include/mustela/tx.hpp
         include/mustela/utils.cpp
-        include/mustela/utils.hpp)
+        include/mustela/utils.hpp
+        include/mustela/testing.hpp
+        include/mustela/testing.cpp
+        include/mustela/blake2b.h
+        include/mustela/blake2b.c)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 

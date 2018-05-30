@@ -1,5 +1,10 @@
 bin/*
 
+venv/
+.hypothesis/
+.pytest_cache/
+__pycache__/
+
 build/Visual Studio/Debug
 build/Visual Studio/Release
 build/Visual Studio/x64
