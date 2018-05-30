@@ -1,4 +1,5 @@
 #include "mustela.hpp"
+#include <algorithm>
 #include <iostream>
 #include <sys/mman.h>
 
@@ -580,6 +581,7 @@ std::vector<Val> TX::get_bucket_names(){
 	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
 		if(bucket_descs.count(c_tail.to_string()) == 0)
 			results.push_back(c_tail);
+	std::sort(results.begin(), results.end());
 	return results;
 }
 //	bool TX::create_table(const Val & table){

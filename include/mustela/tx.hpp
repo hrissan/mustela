@@ -73,7 +73,7 @@ namespace mustela {
 		static const char freelist_prefix = 'f';
 		explicit TX(DB & my_db, bool read_only = false);
 		~TX();
-		std::vector<Val> get_bucket_names(); // order of returned buckets can be different each call. meta bucket not returned
+		std::vector<Val> get_bucket_names(); // sorted
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 
