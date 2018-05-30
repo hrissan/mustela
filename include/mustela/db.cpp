@@ -22,7 +22,7 @@ static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint
 DB::FD::~FD(){
 	close(fd); fd = -1;
 }
-DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(128), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(4096), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
 	if( fd.fd == -1)
 		throw Exception("file open failed");
 	file_size = lseek(fd.fd, 0, SEEK_END);
@@ -62,6 +62,10 @@ DB::~DB(){
 	for(auto && ma : c_mappings)
 		ass(ma.ref_count == 0, "Some TX still exist while in DB::~DB");
 }
+size_t DB::max_key_size()const{
+    return CNodePtr::max_key_size(page_size);
+}
+
 size_t DB::last_meta_page_index()const{
 	size_t result = 0;
 	if( readable_meta_page(1)->effective_tid() > readable_meta_page(result)->effective_tid() )

@@ -170,13 +170,13 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 			wr_dap.insert_at(path_el.second + 1, insert_kv2.key, insert_kv2.pid);
 		return;
 	}
-	ass(wr_dap.size() >= 2, "Cannot split node with <2 keys");
+	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
+	ass(size_with_insert >= 3, "Cannot split node with <3 keys");
 	if(cur.bucket_desc->height == height)
 		new_increase_height(cur);
 	path_el = cur.path.at(height); // Could change in increase height
 	auto path_pa = cur.path.at(height + 1);
 	const PageIndex insert_index = path_el.second;
-	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
 	PageIndex left_split = 0, right_split = 0;
 	find_best_node_split(left_split, right_split, wr_dap, insert_index, required_size1, required_size2);
 	// We must leave at least 1 key to the left and to the right

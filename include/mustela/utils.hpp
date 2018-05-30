@@ -78,6 +78,8 @@ namespace mustela {
 		{}
 		explicit Val(const char * data, size_t size):data(data), size(size)
 		{}
+		explicit Val(const unsigned char * data, size_t size):data(reinterpret_cast<const char *>(data)), size(size)
+		{}
 		explicit Val(const char * data):data(data), size(strlen(data))
 		{}
 		explicit Val(const std::string & str):data(str.data()), size(str.size())

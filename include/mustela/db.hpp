@@ -52,6 +52,7 @@ namespace mustela {
 		void create_db();
 	public:
 		explicit DB(const std::string & file_path, bool read_only = false); // If file does not exist,
+		size_t max_key_size()const;
 		~DB();
 	};
 }

@@ -108,7 +108,7 @@ bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // fals
 		memcpy(dst, value.data, value.size);
 	return dst != nullptr;
 }
-bool Bucket::get(const Val & key, Val & value){
+bool Bucket::get(const Val & key, Val & value)const{
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	Cursor main_cursor(my_txn, bucket_desc);
 	if( !main_cursor.seek(key) )
