@@ -13,14 +13,19 @@ namespace mustela {
 		friend class TX;
 		friend class Cursor;
 		friend class FreeList;
-		TX & my_txn;
+		TX * my_txn;
 		BucketDesc * bucket_desc;
 		std::string debug_name;
+		void unlink();
 
-		Bucket(TX & my_txn, BucketDesc * bucket_desc);
+		Bucket(TX * my_txn, BucketDesc * bucket_desc);
 	public:
 		Bucket(TX & my_txn, const Val & name, bool create = true);
 		~Bucket();
+		Bucket(Bucket && other);
+		Bucket(const Bucket & other);
+		Bucket & operator=(Bucket && other);
+		Bucket & operator=(const Bucket & other);
 		bool is_valid()const { return bucket_desc != nullptr; }
 		char * put(const Val & key, size_t value_size, bool nooverwrite); // danger! db will alloc space for key/value in db and return address for you to copy value to
 		bool put(const Val & key, const Val & value, bool nooverwrite); // false if nooverwrite and key existed

@@ -78,6 +78,7 @@ namespace mustela {
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 
 		std::string print_meta_db();
+		void print_free_list(){ free_list.print_db(); }
 		std::string get_meta_stats();
 	};
 }

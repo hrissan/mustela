@@ -57,7 +57,7 @@ void TX::mark_free_in_future_page(Pid page, Pid contigous_count){
 	free_list.mark_free_in_future_page(page, contigous_count);
 }
 Pid TX::get_free_page(Pid contigous_count){
-	Pid pa = free_list.get_free_page(*this, contigous_count, oldest_reader_tid);
+	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid);
 	if( !pa ){
 		my_db.grow_file(meta_page.page_count + contigous_count);
 		pa = meta_page.page_count;
@@ -522,7 +522,7 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 void TX::commit(){
 	if( meta_page_dirty ) {
 		{
-			Bucket meta_bucket(*this, &meta_page.meta_bucket);
+			Bucket meta_bucket(this, &meta_page.meta_bucket);
 			for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
 				CLeafPtr dap = readable_leaf(tit.second.root_page);
 				if (dap.page->tid != meta_page.tid) // Table not dirty
@@ -532,7 +532,7 @@ void TX::commit(){
 				ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
 			}
 		}
-		free_list.commit_free_pages(*this, meta_page.tid);
+		free_list.commit_free_pages(this, meta_page.tid);
 		meta_page_dirty = false;
 		// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
 		my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
@@ -551,13 +551,13 @@ void TX::commit(){
 		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 	}
 	// Now invalidate all cursors and buckets
-	for(auto && c : my_cursors) {
-		c->bucket_desc = nullptr;
-		c->path.clear();
+	for(auto cit = my_cursors.begin(); cit != my_cursors.end(); cit = my_cursors.erase(cit)){
+		(*cit)->my_txn = nullptr;
+		(*cit)->bucket_desc = nullptr;
 	}
-	for(auto && b : my_buckets) {
-		b->bucket_desc = nullptr;
-		b->debug_name = std::string();
+	for(auto cit = my_buckets.begin(); cit != my_buckets.end(); cit = my_buckets.erase(cit)){
+		(*cit)->my_txn = nullptr;
+		(*cit)->bucket_desc = nullptr;
 	}
 	// Now start new transaction
 	my_db.trim_old_c_mappings(c_mappings_end_page);
@@ -573,7 +573,7 @@ std::vector<Val> TX::get_bucket_names(){
 	std::vector<Val> results;
 	for(auto && tit : bucket_descs) // First write all dirty table descriptions
 		results.push_back(Val(tit.first));
-	Cursor cur(*this, &meta_page.meta_bucket);
+	Cursor cur(this, &meta_page.meta_bucket);
 	Val c_key, c_value, c_tail;
 	char ch = bucket_prefix;
 	const Val prefix(&ch, 1);
@@ -594,7 +594,8 @@ bool TX::drop_bucket(const Val & name){
 	if( !bucket_desc )
 		return false;
 	{
-		Cursor cursor(*this, bucket_desc);
+		// TODO - delete page by page
+		Cursor cursor(this, bucket_desc);
 		cursor.first();
 		while(bucket_desc->count != 0){
 			cursor.del();
@@ -602,19 +603,22 @@ bool TX::drop_bucket(const Val & name){
 		ass(bucket_desc->leaf_page_count == 1 && bucket_desc->node_page_count == 0 && bucket_desc->overflow_page_count == 0 && bucket_desc->height == 0, "Bucket in wrong state after deleting all keys");
 		mark_free_in_future_page(bucket_desc->root_page, 1);
 	}
-	for(auto && c : my_cursors) // All cursor to that table become set to end
-		if( c->bucket_desc == bucket_desc ) {
-			c->bucket_desc = nullptr;
-			c->path.clear();
-		}
-	for(auto && b : my_buckets)
-		if( b->bucket_desc == bucket_desc ) {
-			b->bucket_desc = nullptr;
-			b->debug_name = std::string();
-		}
-	// TODO - mark all table pages as free
+	for(auto cit = my_cursors.begin(); cit != my_cursors.end();) // All cursor to that table become set to end
+		if( (*cit)->bucket_desc == bucket_desc ){
+			(*cit)->my_txn = nullptr;
+			(*cit)->bucket_desc = nullptr;
+			cit = my_cursors.erase(cit);
+		}else
+			++cit;
+	for(auto cit = my_buckets.begin(); cit != my_buckets.end();) // All cursor to that table become set to end
+		if( (*cit)->bucket_desc == bucket_desc ){
+			(*cit)->my_txn = nullptr;
+			(*cit)->bucket_desc = nullptr;
+			cit = my_buckets.erase(cit);
+		}else
+			++cit;
 	std::string key = bucket_prefix + name.to_string();
-	Bucket meta_bucket(*this, &meta_page.meta_bucket);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	ass(meta_bucket.del(Val(key), true), "Error while dropping table");
 	bucket_descs.erase(name.to_string());
 	return true;
@@ -625,7 +629,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name){
 		return &tit->second;
 	std::string key = bucket_prefix + name.to_string();
 	Val value;
-	Bucket meta_bucket(*this, &meta_page.meta_bucket);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	if( !meta_bucket.get(Val(key), value) )
 		return nullptr;
 	BucketDesc & td = bucket_descs[name.to_string()];
@@ -696,10 +700,10 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 	return result + "]}";
 }
 std::string TX::print_meta_db(){
-	Bucket meta_bucket(*this, &meta_page.meta_bucket);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	return meta_bucket.print_db();
 }
 std::string TX::get_meta_stats(){
-	Bucket meta_bucket(*this, &meta_page.meta_bucket);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	return meta_bucket.get_stats();
 }

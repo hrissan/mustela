@@ -78,7 +78,7 @@ void FreeList::remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache
 		old_count = old_count;
 	cache.insert(std::make_pair(page, old_count));
 }
-Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
+Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 	while( true ){
 		auto siit = size_index.lower_bound(contigous_count);
 		if( siit != size_index.end() ){
@@ -98,7 +98,7 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 		Val key(keybuf, p1);
 		Val value;
 		{
-			Cursor main_cursor(tx, &tx.meta_page.meta_bucket);
+			Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
 			main_cursor.seek(key);
 			if( !main_cursor.get(key, value) )
 				break;
@@ -131,8 +131,8 @@ Pid FreeList::get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid){
 			--fit;
 			Pid last_page = fit->first;
 			Pid last_count = fit->second;
-			if( last_page + last_count == tx.meta_page.page_count){
-				tx.meta_page.page_count -= last_count;
+			if( last_page + last_count == tx->meta_page.page_count){
+				tx->meta_page.page_count -= last_count;
 				remove_from_cache(last_page, last_count, free_pages, free_pages_record_count, true);
 			}
 		}
@@ -150,7 +150,7 @@ void FreeList::mark_free_in_future_page(Pid page, Pid count){
 	}
 	add_to_cache(page, count, future_pages, future_pages_record_count, false);
 }
-void FreeList::fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages){
+void FreeList::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages){
 	size_t space_count = 0;
 	size_t space_pos = 0;
 	for(auto && pa : pages){
@@ -177,9 +177,9 @@ void FreeList::fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, co
 		space_pos = 0;
 	}
 }
-void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count){
-	Bucket meta_bucket(tx, &tx.meta_page.meta_bucket);
-	const size_t page_records = tx.page_size / RECORD_SIZE;
+void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count){
+	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
+	const size_t page_records = tx->page_size / RECORD_SIZE;
 	while(space_record_count < record_count){
 		char keybuf[20]={TX::freelist_prefix};
 		size_t p1 = 1;
@@ -195,8 +195,8 @@ void FreeList::grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector
 		space_record_count += recs;
 	}
 }
-void FreeList::commit_free_pages(TX & tx, Tid write_tid){
-	Bucket meta_bucket(tx, &tx.meta_page.meta_bucket);
+void FreeList::commit_free_pages(TX * tx, Tid write_tid){
+	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
 	uint32_t old_batch = 0;
 	size_t old_record_count = 0;
 	std::vector<MVal> old_space;

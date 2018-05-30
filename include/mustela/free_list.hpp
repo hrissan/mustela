@@ -23,18 +23,19 @@ namespace mustela {
 		void add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index);
 		void remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index);
 		
+//		Cursor free_cursor;
 		Tid next_record_tid;
 		uint64_t next_record_batch;
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
 		
-		void fill_record_space(TX & tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
-		void grow_record_space(TX & tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);
+		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
+		void grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);
 	public:
 		FreeList():next_record_tid(0), next_record_batch(0)
 		{}
-		Pid get_free_page(TX & tx, Pid contigous_count, Tid oldest_read_tid);
+		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid);
 		void mark_free_in_future_page(Pid page, Pid count);
-		void commit_free_pages(TX & tx, Tid write_tid);
+		void commit_free_pages(TX * tx, Tid write_tid);
 		
 		void print_db();
 		static void test();

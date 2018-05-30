@@ -13,11 +13,12 @@ namespace mustela {
 		friend class TX;
 		friend class Bucket;
 		friend class FreeList;
-		TX & my_txn;
+		TX * my_txn;
 		BucketDesc * bucket_desc;
+		void unlink();
 		std::vector<std::pair<Pid, PageIndex>> path;
 		
-		explicit Cursor(TX & my_txn, BucketDesc * bucket_desc);
+		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc);
 		bool fix_cursor_after_last_item(); // true if points to item
 		void set_at_direction(size_t height, Pid pa, int dir);
 		void end();
@@ -60,11 +61,12 @@ namespace mustela {
 			}
 		}
 	public:
-		Cursor(Cursor && other);
-		Cursor & operator=(Cursor && other)=delete;
-		Cursor(const Cursor & other);
 		explicit Cursor(Bucket & bucket);
 		~Cursor();
+		Cursor(Cursor && other);
+		Cursor(const Cursor & other);
+		Cursor & operator=(Cursor && other);
+		Cursor & operator=(const Cursor & other);
 		bool operator==(const Cursor & other)const;
 		bool operator!=(const Cursor & other)const{ return !(*this == other); }
 

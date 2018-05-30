@@ -98,7 +98,7 @@ void interactive_test(){
 		//        std::cout << json << std::endl;
 		std::cout << txn.get_meta_stats() << std::endl;
 		std::cout << main_bucket.get_stats() << std::endl;
-		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards" << std::endl;
+		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards, f - print free list" << std::endl;
 		std::string input;
 		if( !cmds.empty()){
 			input = cmds.at(0);
@@ -113,6 +113,11 @@ void interactive_test(){
 			std::cout << "Meta table: " << json << std::endl;
 			json = main_bucket.print_db();
 			std::cout << "Main table: " << json << std::endl;
+			continue;
+		}
+		if( input == "f"){
+			std::cout << "Free table: " << std::endl;
+			txn.print_free_list();
 			continue;
 		}
 		bool new_range = input.find("n") != std::string::npos;
