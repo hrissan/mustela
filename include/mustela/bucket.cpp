@@ -22,7 +22,10 @@ Bucket::Bucket(TX & my_txn_r, const Val & name, bool create):my_txn(&my_txn_r), 
 		Bucket meta_bucket(my_txn, &my_txn->meta_page.meta_bucket);
 		ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
 	}
-	ass(my_txn->my_buckets.insert(this).second, "Double insert");
+	if(bucket_desc)
+		ass(my_txn->my_buckets.insert(this).second, "Double insert");
+	else
+		my_txn = nullptr;
 }
 Bucket::~Bucket(){
 	unlink();

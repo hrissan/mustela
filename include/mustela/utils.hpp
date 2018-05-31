@@ -57,7 +57,7 @@ namespace mustela {
 	unsigned char write_u64_sqlite4(uint64_t val, void * ptr);
 
 	uint32_t crc32c(uint32_t crc, const unsigned char *buf, size_t len);
-	inline uint32_t crc32c(uint32_t crc, const char *buf, size_t len){
+	inline uint32_t crc32c(uint32_t crc, const void *buf, size_t len){
 		return crc32c(crc, reinterpret_cast<const unsigned char *>(buf), len);
 	}
 
@@ -131,6 +131,9 @@ namespace mustela {
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form
 //	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
 	constexpr int NODE_PID_SIZE = 5;
+	constexpr size_t MIN_PAGE_SIZE = 128;
+	constexpr size_t GOOD_PAGE_SIZE = 4096;
+	constexpr size_t MAX_PAGE_SIZE = 1 << 8*sizeof(PageOffset);
 	// 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pages
 	// TODO - move NODE_PID_SIZE into MetaPage
 	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path

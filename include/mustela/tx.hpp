@@ -18,10 +18,10 @@ namespace mustela {
 		friend class Bucket;
 
 		DB & my_db;
-		Pid c_mappings_end_page = 0; // We keep c_mappings while TX is using it
+		size_t c_mappings_end_addr = 0; // We keep c_mappings while TX is using it
 		std::set<Cursor *> my_cursors;
 		std::set<Bucket *> my_buckets;
-		size_t meta_page_index;
+		Pid meta_page_index;
 		Tid oldest_reader_tid;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
 		NodePtr push_tmp_copy(const NodePage * other){
@@ -66,7 +66,7 @@ namespace mustela {
 		std::string print_db(const BucketDesc * bucket_desc);
 		std::string print_db(Pid pa, size_t height, bool parse_meta);
 	public:
-		const uint32_t page_size; // copy from my_db
+		const size_t page_size; // copy from my_db
 		const bool read_only;
 		
 		static const char bucket_prefix = 'b';

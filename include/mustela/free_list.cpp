@@ -53,8 +53,6 @@ void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, siz
 		}
 	}
 	record_count += get_records_count(count);
-	if( count == 0 || count > 1000000000)
-		count = count;
 	cache.insert(std::make_pair(page, count));
 	if( update_index)
 		add_to_size_index(page, count);
@@ -143,8 +141,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 	return 0;
 }
 void FreeList::mark_free_in_future_page(Pid page, Pid count){
-	if(page < 3)
-		std::cout << "Achtung!" << std::endl;
+	ass(page >= 3, "Adding meta to freelist"); // TODO - constant
 	auto bfit = back_from_future_pages.find(page);
 	if( bfit != back_from_future_pages.end()){
 		back_from_future_pages.erase(bfit);

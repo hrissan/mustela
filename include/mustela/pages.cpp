@@ -8,7 +8,7 @@ namespace mustela {
 //		return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && meta_bucket.root_page < page_count;
 //	}
 	
-	MVal DataPage::get_item_key(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item){
+	MVal DataPage::get_item_key(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item){
 		ass(item < item_count, "get_item_key item too large");
 		char * raw_this = (char *)this;
 		PageOffset item_offset = item_offsets[item];
@@ -17,7 +17,7 @@ namespace mustela {
 		ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
 		return MVal(raw_this + item_offset + keysizesize, keysize);
 	}
-	PageIndex DataPage::lower_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const{
+	PageIndex DataPage::lower_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const{
 		PageIndex first = 0;
 		PageIndex count = item_count;
 		while (count > 0) {
@@ -39,7 +39,7 @@ namespace mustela {
 		}
 		return first;
 	}
-	PageIndex DataPage::upper_bound_item(uint32_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key)const{
+	PageIndex DataPage::upper_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key)const{
 		PageIndex first = 0;
 		PageIndex count = item_count;
 		while (count > 0) {
@@ -56,7 +56,7 @@ namespace mustela {
 		
 	}
 	
-	void DataPage::remove_simple(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex to_remove_item, size_t item_size){
+	void DataPage::remove_simple(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex to_remove_item, size_t item_size){
 		char * raw_this = (char *)this;
 		//        auto rem_size = get_item_size(page_size, is_leaf, item_offsets, item_count, to_remove_item);
 		auto kv_size = item_size - sizeof(PageOffset);
@@ -69,7 +69,7 @@ namespace mustela {
 		item_count -= 1;
 		item_offsets[item_count] = 0; // clear unused part
 	}
-	MVal DataPage::insert_at(uint32_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex insert_index, Val key, size_t item_size){
+	MVal DataPage::insert_at(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex insert_index, Val key, size_t item_size){
 		char * raw_this = (char *)this;
 		auto kv_size = item_size - sizeof(PageOffset);
 		for(PageIndex pos = item_count; pos-- > insert_index;)
@@ -207,7 +207,7 @@ namespace mustela {
 	}
 	
 	void test_node_page(){
-		const uint32_t page_size = 128;
+		const size_t page_size = 128;
 		NodePtr pa(page_size, (NodePage *)malloc(page_size));
 		pa.init_dirty(10);
 		std::map<std::string, Pid> mirror;
@@ -243,7 +243,7 @@ namespace mustela {
 	}
 	void test_data_pages(){
 		test_node_page();
-		const uint32_t page_size = 256;
+		const size_t page_size = 256;
 		LeafPtr pa(page_size, (LeafPage *)malloc(page_size));
 		pa.init_dirty(10);
 		std::map<std::string, std::string> mirror;

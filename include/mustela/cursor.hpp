@@ -70,13 +70,13 @@ namespace mustela {
 		bool operator==(const Cursor & other)const;
 		bool operator!=(const Cursor & other)const{ return !(*this == other); }
 
-		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key and returns false
-		void first();
-		void last();
+		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key or end() and returns false
+		void first(); // sets to end(), if db is empty
+		void last(); // sets to end(), if db is empty
 		bool get(Val & key, Val & value);
-		bool del(); // If you can get, you can del. After del, cursor points to the next item
-		void next();
-		void prev();
+		bool del(); // If you can get, you can del. After del, cursor points to the next item, or end() if it was last one
+		void next(); // next from last() goes to the end
+		void prev(); // prev from first() goes to the end, beware
 		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a")*/; cur.next() ) {}
 		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a")*/; cur.prev() ) {}
 	};

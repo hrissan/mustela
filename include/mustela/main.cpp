@@ -23,6 +23,7 @@ void interactive_test(){
 	//	    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
 	//	    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
 	mustela::DB db("test.mustella");
+	std::cout << "Meta page size is " << sizeof(mustela::MetaPage) << " Max Key Size is " << db.max_key_size() << std::endl;
 	mustela::TX txn(db);
 	mustela::Val main_bucket_name("main");
 	
@@ -190,7 +191,12 @@ int main(int argc, char * argv[]){
 	
 	mustela::FreeList::test();
 	mustela::test_data_pages();
-	
+	{
+		mustela::DB db("test.mustella");
+		mustela::TX txn(db);
+		mustela::Bucket main_bucket(txn, mustela::Val());
+		txn.commit();
+	}
 	interactive_test();
 	/*    txn.put(mustela::Val("A"), mustela::Val("AVAL"), true);
 	 txn.put(mustela::Val("B"), mustela::Val("BVAL"), true);

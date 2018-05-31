@@ -14,23 +14,22 @@ TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), rea
 	start_transaction();
 }
 void TX::start_transaction(){
-	c_mappings_end_page = my_db.c_mappings.back().end_page;
+	c_mappings_end_addr = my_db.c_mappings.back().end_addr;
 	my_db.c_mappings.back().ref_count += 1;
 	
-	meta_page_index = my_db.oldest_meta_page_index(); // Overwrite oldest page
-	auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
-	oldest_reader_tid = oldest_meta_page->tid; // TODO ask from reader-writer lock
-	auto newest_page_index = my_db.last_meta_page_index(); // by newest
+	Pid newest_page_index = 0;
+	ass(my_db.get_meta_indices(&newest_page_index, &meta_page_index, &oldest_reader_tid), "No meta found in start_transaction - hot corruption of DB");
+//	auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
 	meta_page = *(my_db.readable_meta_page(newest_page_index));
 	meta_page.tid += 1;
-	meta_page.tid2 = meta_page.tid;
+	meta_page.crc32 = 0;
 	meta_page_dirty = false;
 }
 
 TX::~TX(){
 	// rollback is nop
 	ass( my_cursors.empty(), "All cursors should be destroyed before transaction they are in"); // potential throw in destructor ahaha
-	my_db.trim_old_c_mappings(c_mappings_end_page);
+	my_db.trim_old_c_mappings(c_mappings_end_addr);
 }
 CLeafPtr TX::readable_leaf(Pid pa){
 	return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa));
@@ -535,11 +534,12 @@ void TX::commit(){
 		}
 		free_list.commit_free_pages(this, meta_page.tid);
 		meta_page_dirty = false;
+		meta_page.crc32 = crc32c(0, &meta_page, sizeof(MetaPage) - sizeof(uint32_t));
 		// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
 		my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
 		for (size_t i = 0; i != my_db.mappings.size(); ++i) {
 			Mapping &ma = my_db.mappings[i];
-			msync(ma.addr, ma.end_page * page_size, MS_SYNC);
+			msync(ma.addr, ma.end_addr, MS_SYNC);
 		}
 		// Now modify and sync our meta page
 		MetaPage *wr_meta = my_db.writable_meta_page(meta_page_index);
@@ -561,7 +561,7 @@ void TX::commit(){
 		(*cit)->bucket_desc = nullptr;
 	}
 	// Now start new transaction
-	my_db.trim_old_c_mappings(c_mappings_end_page);
+	my_db.trim_old_c_mappings(c_mappings_end_addr);
 	start_transaction();
 }
 //{'branch_pages': 1040L,
@@ -572,8 +572,8 @@ void TX::commit(){
 //    'psize': 4096L}
 std::vector<Val> TX::get_bucket_names(){
 	std::vector<Val> results;
-	for(auto && tit : bucket_descs) // First write all dirty table descriptions
-		results.push_back(Val(tit.first));
+//	for(auto && tit : bucket_descs) // First write all dirty table descriptions
+//		results.push_back(Val(tit.first));
 	Cursor cur(this, &meta_page.meta_bucket);
 	Val c_key, c_value, c_tail;
 	char ch = bucket_prefix;
@@ -581,7 +581,7 @@ std::vector<Val> TX::get_bucket_names(){
 	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
 		if(bucket_descs.count(c_tail.to_string()) == 0)
 			results.push_back(c_tail);
-	std::sort(results.begin(), results.end());
+//	std::sort(results.begin(), results.end()); - we get buckets sorted already
 	return results;
 }
 //	bool TX::create_table(const Val & table){
