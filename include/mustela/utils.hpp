@@ -75,6 +75,12 @@ namespace mustela {
 			throw Exception(what);
 		}
 	}
+	inline void do_assert(bool expr, const char* file, int line, const char * what){
+		if( !expr ) {
+			std::cerr << file << ":" << line << ": " << what << std::endl;
+			throw Exception(what);
+		}
+	}
 	struct MVal {
 		char * data;
 		size_t size;

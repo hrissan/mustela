@@ -39,18 +39,34 @@ DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(),
 	Pid newest_index = 0, overwrite_index = 0;
 	Tid earliest_tid = 0;
 	if(page_size >= MIN_PAGE_SIZE && page_size <= MAX_PAGE_SIZE && (page_size & (page_size - 1)) == 0 &&
-		file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid))
+		file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid)){
+		print_db();
 		return;
+	}
 	for(page_size = MIN_PAGE_SIZE; page_size <= MAX_PAGE_SIZE; page_size *= 2)
-		if( file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid) )
+		if( file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid) ){
+			print_db();
 			return;
+		}
 	throw Exception("Failed to find valid meta page of any supported page size");
 }
 DB::~DB(){
 	for(auto && ma : c_mappings)
 		ass(ma.ref_count == 0, "Some TX still exist while in DB::~DB");
 }
-
+void DB::print_db(){
+	std::cerr << "-+-- DB: page_size=" << page_size << " phys. page_size=" << physical_page_size << " file_size=" << file_size << std::endl;
+	for(int i = 0; i != 3; ++i){
+		const MetaPage * mp = readable_meta_page(i);
+		std::cerr << " +-- meta page " << i << ": ";
+		if( !is_valid_meta(mp) ){
+			std::cerr << "CORRUPTED" << std::endl;;
+			continue;
+		}
+		std::cerr << "tid=" << mp->tid << " page_count=" << mp->page_count << std::endl;;
+		std::cerr << "  +- meta bucket: height=" << mp->meta_bucket.height << " items=" << mp->meta_bucket.count << " leafs=" << mp->meta_bucket.leaf_page_count << " nodes=" << mp->meta_bucket.node_page_count << " overflows=" << mp->meta_bucket.overflow_page_count << " root_page=" << mp->meta_bucket.root_page << std::endl;
+	}
+}
 size_t DB::max_key_size()const{
     return CNodePtr::max_key_size(page_size);
 }
@@ -144,7 +160,7 @@ void DB::grow_c_mappings() {
 		throw Exception("mmap PROT_READ failed");
 	c_mappings.push_back(Mapping(new_fs, (char *)cm));
 }
-const DataPage * DB::readable_page(Pid page)const{
+const DataPage * DB::readable_page(Pid page)const{ // TODO - optimize by moving back() into variables inside DB class
 	ass( !c_mappings.empty() && (page + 1)*page_size <= c_mappings.back().end_addr, "readable_page out of range");
 	return (const DataPage * )(c_mappings.back().addr + page_size * page);
 }

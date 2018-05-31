@@ -54,6 +54,7 @@ namespace mustela {
 	public:
 		explicit DB(const std::string & file_path, bool read_only = false); // If file does not exist,
 		~DB();
+		void print_db();
 		size_t max_key_size()const;
 		size_t max_bucket_name_size()const;
 		static void remove_db(const std::string & file_path);

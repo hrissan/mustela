@@ -24,14 +24,13 @@ void interactive_test(){
 	//	    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
 	//	    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
 	mustela::DB db("test.mustella");
-	std::cout << "Meta page size is " << sizeof(mustela::MetaPage) << " Max Key Size is " << db.max_key_size() << std::endl;
 	mustela::TX txn(db);
 	mustela::Val main_bucket_name("main");
 	
 	{
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
-		std::string json = txn.print_meta_db();
-		std::cout << "Meta table: " << json << std::endl;
+//		std::string json = txn.print_meta_db();
+//		std::cout << "Meta table: " << json << std::endl;
 	}
 	
 	for(auto && tt : txn.get_bucket_names() )
@@ -63,13 +62,13 @@ void interactive_test(){
 	
 	std::map<std::string, Mirror> mirror;
 	
-	const int items_counter = 100;
+	const int items_counter = 1000;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){
 	//        int j = dist(e);
 	//    }
-	std::vector<std::string> cmds{"ar", "db", "t", "t", "t", "t", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
+	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket(txn, main_bucket_name);
@@ -145,11 +144,11 @@ void interactive_test(){
 			//std::string key = std::to_string(j) + std::string(4, 'A');
 			std::string val = "value" + std::to_string(j);// + std::string(j % 128, '*');
 			mustela::Val got;
-			if( (!add && i == 82 && j == 82)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
-				got.size = 0;
-				std::string json = main_bucket.print_db();
-				std::cout << "Main table: " << json << std::endl;
-			}
+//			if( (!add && i == 82 && j == 82)){
+//				got.size = 0;
+//				std::string json = main_bucket.print_db();
+//				std::cout << "Main table: " << json << std::endl;
+//			}
 			bool in_db = main_bucket.get(mustela::Val(key), got) && got.to_string() == val;
 			auto mit = mirror.find(key);
 			bool in_mirror = mit != mirror.end() && mit->second.value == val;
@@ -167,19 +166,19 @@ void interactive_test(){
 					std::cout << "BAD del" << std::endl;
 				mirror.erase(key);
 			}
-			if( (!add && i == 82 && j == 82)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
-				got.size = 0;
-				std::string json = main_bucket.print_db();
-				std::cout << "Main table: " << json << std::endl;
-			}
+//			if( (!add && i == 82 && j == 82)){ //  || (add && i == 25 && j == 4) || (!add && i == 997 && j == 997)  || (!add && i == j && j >= 990)
+//				got.size = 0;
+//				std::string json = main_bucket.print_db();
+//				std::cout << "Main table: " << json << std::endl;
+//			}
 		for(auto && ma : mirror){
 			mustela::Val value, c_key, c_value;
 			bool result = main_bucket.get(mustela::Val(ma.first), value);
 			bool c_result = ma.second.cursor.get(c_key, c_value);
 			if( !result || !c_result || ma.second.value != value.to_string() || c_key.to_string() != ma.first || c_value.to_string() != ma.second.value ){
-				std::cout << "Bad check ma=" << ma.first << std::endl;
+				std::cerr << "Bad check ma=" << ma.first << std::endl;
 				std::string json = main_bucket.print_db();
-				std::cout << "Main table: " << json << std::endl;
+				std::cerr << "Main table: " << json << std::endl;
 //				result = main_bucket.get(mustela::Val(ma.first), value);
 			}
 		}
