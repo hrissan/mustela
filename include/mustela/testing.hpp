@@ -2,4 +2,4 @@
 
 #include <string>
 
-void run_test_driver(std::string const& db_path);
+void run_test_driver(std::string const& db_path, std::istream& scenario);
