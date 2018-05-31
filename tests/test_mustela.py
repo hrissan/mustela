@@ -78,6 +78,16 @@ class MustelaTestMachine(RuleBasedStateMachine):
         del self.db[bucket]
         self.roundtrip('drop-bucket', bucket)
 
+    @rule(reset=st.booleans())
+    def commit(self, reset):
+        self.committed = clone_db(self.db)
+        self.roundtrip('commit-reset' if reset else 'commit')
+
+    @rule(reset=st.booleans())
+    def rollback(self, reset):
+        self.db = clone_db(self.committed)
+        self.roundtrip('rollback-reset' if reset else 'rollback')
+
     @precondition(lambda self: self.db)
     @rule(data=st.data(), k=gen_key(), v=st.binary())
     def put(self, data, k, v):
@@ -100,16 +110,6 @@ class MustelaTestMachine(RuleBasedStateMachine):
         k = data.draw(st.sampled_from(list(self.db[bucket])), 'key')
         del self.db[bucket][k]
         self.roundtrip('del', bucket, k)
-
-    @rule(reset=st.booleans())
-    def commit(self, reset):
-        self.committed = clone_db(self.db)
-        self.roundtrip('commit-reset' if reset else 'commit')
-
-    @rule(reset=st.booleans())
-    def rollback(self, reset):
-        self.db = clone_db(self.committed)
-        self.roundtrip('rollback-reset' if reset else 'rollback')
 
 
 with settings(max_examples=100, stateful_step_count=100):
