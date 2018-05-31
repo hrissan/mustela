@@ -160,8 +160,8 @@ void DB::grow_c_mappings() {
 		throw Exception("mmap PROT_READ failed");
 	c_mappings.push_back(Mapping(new_fs, (char *)cm));
 }
-const DataPage * DB::readable_page(Pid page)const{ // TODO - optimize by moving back() into variables inside DB class
-	ass( !c_mappings.empty() && (page + 1)*page_size <= c_mappings.back().end_addr, "readable_page out of range");
+const DataPage * DB::readable_page(Pid page, Pid count)const{ // TODO - optimize by moving back() into variables inside DB class
+	ass( !c_mappings.empty() && (page + count)*page_size <= c_mappings.back().end_addr, "readable_page out of range");
 	return (const DataPage * )(c_mappings.back().addr + page_size * page);
 }
 void DB::trim_old_c_mappings(size_t end_addr){
@@ -174,6 +174,14 @@ void DB::trim_old_c_mappings(size_t end_addr){
 		munmap(c_mappings.front().addr, c_mappings.front().end_addr);
 		c_mappings.erase(c_mappings.begin());
 	}
+}
+void DB::trim_old_mappings(){
+	if( mappings.empty() )
+		return;
+	for(size_t m = 0; m != mappings.size() - 1; ++m){
+		munmap(mappings[m].addr, mappings[m].end_addr);
+	}
+	mappings.erase(mappings.begin(), mappings.end() - 1);
 }
 
 // Mappings cannot be in chunks, because count pages could fall onto the edge between chunkcs
@@ -215,12 +223,3 @@ void DB::grow_file(Pid new_page_count){
 	mappings.push_back(Mapping(new_fs, (char *)wm));
 	grow_c_mappings();
 }
-void DB::trim_old_mappings(){
-	if( mappings.empty() )
-		return;
-	for(size_t m = 0; m != mappings.size() - 1; ++m){
-		munmap(mappings[m].addr, mappings[m].end_addr);
-	}
-	mappings.erase(mappings.begin(), mappings.end() - 1);
-}
-

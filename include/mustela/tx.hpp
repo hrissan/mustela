@@ -56,7 +56,7 @@ namespace mustela {
 
 		CLeafPtr readable_leaf(Pid pa);
 		CNodePtr readable_node(Pid pa);
-		const char * readable_overflow(Pid pa);
+		const char * readable_overflow(Pid pa, Pid count);
 		LeafPtr writable_leaf(Pid pa);
 		NodePtr writable_node(Pid pa);
 		char * writable_overflow(Pid pa, Pid count);

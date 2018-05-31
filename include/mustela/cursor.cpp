@@ -138,8 +138,10 @@ bool Cursor::get(Val & key, Val & value){
 	ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::get" );
 	Pid overflow_page;
 	auto kv = dap.get_kv(path_el.second, overflow_page);
-	if( overflow_page )
-		kv.value.data = my_txn->readable_overflow(overflow_page);
+	if( overflow_page ){
+		Pid overflow_count = (kv.value.size + my_txn->page_size - 1)/my_txn->page_size;
+		kv.value.data = my_txn->readable_overflow(overflow_page, overflow_count);
+	}
 	key = kv.key;
 	value = kv.value;
 	return true;

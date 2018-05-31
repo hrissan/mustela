@@ -19,10 +19,8 @@ void TX::start_transaction(){
 	
 	Pid newest_page_index = 0;
 	ass(my_db.get_meta_indices(&newest_page_index, &meta_page_index, &oldest_reader_tid), "No meta found in start_transaction - hot corruption of DB");
-//	auto oldest_meta_page = my_db.readable_meta_page(meta_page_index);
 	meta_page = *(my_db.readable_meta_page(newest_page_index));
 	meta_page.tid += 1;
-	meta_page.crc32 = 0;
 	meta_page_dirty = false;
 	ass(meta_page.tid > oldest_reader_tid, "We should not be able to treat our own pages as free");
 }
@@ -33,10 +31,10 @@ TX::~TX(){
 	my_db.trim_old_c_mappings(c_mappings_end_addr);
 }
 CLeafPtr TX::readable_leaf(Pid pa){
-	return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa));
+	return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa, 1));
 }
 CNodePtr TX::readable_node(Pid pa){
-	return CNodePtr(page_size, (const NodePage *)my_db.readable_page(pa));
+	return CNodePtr(page_size, (const NodePage *)my_db.readable_page(pa, 1));
 }
 LeafPtr TX::writable_leaf(Pid pa){
 	LeafPage * result = (LeafPage *)my_db.writable_page(pa, 1);
@@ -48,8 +46,8 @@ NodePtr TX::writable_node(Pid pa){
 	ass(result->tid == meta_page.tid, "writable_node is not from our transaction");
 	return NodePtr(page_size, result);
 }
-const char * TX::readable_overflow(Pid pa){
-	return (const char *)my_db.readable_page(pa);
+const char * TX::readable_overflow(Pid pa, Pid count){
+	return (const char *)my_db.readable_page(pa, count);
 }
 char * TX::writable_overflow(Pid pa, Pid count){
 	return (char *)my_db.writable_page(pa, count);
@@ -73,7 +71,7 @@ Pid TX::get_free_page(Pid contigous_count){
 }
 DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	Pid old_page = cur.path.at(height).first;
-	const DataPage * dap = my_db.readable_page(old_page);
+	const DataPage * dap = my_db.readable_page(old_page, 1);
 	if( dap->tid == meta_page.tid ){ // Reached already writable page
 		DataPage * wr_dap = my_db.writable_page(old_page, 1);
 		return wr_dap;
@@ -668,8 +666,10 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 				result += ",";
 			Pid overflow_page;
 			auto kv = dap.get_kv(i, overflow_page);
-			if( overflow_page )
-				kv.value.data = readable_overflow(overflow_page);
+			if( overflow_page ){
+				Pid overflow_count = (kv.value.size + page_size - 1)/page_size;
+				kv.value.data = readable_overflow(overflow_page, overflow_count);
+			}
 			//                std::cerr << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
 			std::cerr << trim_key(kv.key.to_string(), parse_meta) << "(" << kv.value.size << "), ";
 			result += "\"" + trim_key(kv.key.to_string(), parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +

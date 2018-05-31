@@ -12,8 +12,8 @@ namespace mustela {
 	struct Mapping {
 		size_t end_addr;
 		char * addr;
-		int ref_count;
-		explicit Mapping(size_t end_addr, char * addr):end_addr(end_addr), addr(addr), ref_count(0)
+		int ref_count = 0;
+		explicit Mapping(size_t end_addr, char * addr):end_addr(end_addr), addr(addr)
 		{}
 	};
 	class TX;
@@ -36,6 +36,7 @@ namespace mustela {
 		size_t page_size;
 		const size_t physical_page_size; // We allow to work with smaller pages when reading file from different platform (or portable variant)
 		
+		// mappings are expensive to create, so they are shared between transactions
 		std::vector<Mapping> c_mappings;
 		std::vector<Mapping> mappings;
 		bool is_valid_meta(const MetaPage * mp)const;
@@ -45,9 +46,11 @@ namespace mustela {
 		void grow_c_mappings();
 		void trim_old_mappings();
 		void trim_old_c_mappings(size_t end_addr);
+
+		const DataPage * readable_page(Pid page, Pid count)const;
 		DataPage * writable_page(Pid page, Pid count);
-		const DataPage * readable_page(Pid page)const;
-		const MetaPage * readable_meta_page(Pid index)const { return (const MetaPage * )readable_page(index); }
+
+		const MetaPage * readable_meta_page(Pid index)const { return (const MetaPage * )readable_page(index, 1); }
 		MetaPage * writable_meta_page(Pid index) { return (MetaPage * )writable_page(index, 1); }
 		void create_db();
 		bool open_db();
