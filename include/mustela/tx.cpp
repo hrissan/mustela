@@ -371,7 +371,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			use_left_sib = false;
 	}
 	if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
-		std::cout << "Borrowing key from sibling" << std::endl;
+		std::cerr << "Borrowing key from sibling" << std::endl;
 		ass(left_sib.page || right_sib.page, "Cannot borrow - no siblings for node with 0 items" );
 		if(left_sib.page && right_sib.page){
 			if(left_sib.data_size() < right_sib.data_size())
@@ -424,7 +424,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		return;
 	}
 	if( use_left_sib && use_right_sib )
-		std::cout << "3-way merge" << std::endl;
+		std::cerr << "3-way merge" << std::endl;
 	if( use_left_sib ){
 		Pid spec_val = wr_dap.get_value(-1);
 		wr_dap.insert_at(0, my_kv.key, spec_val);
@@ -487,10 +487,10 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 	}
 	if( wr_dap.size() == 0){
 		ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
-		//            std::cout << "We could optimize by unlinking our leaf" << std::endl;
+		//            std::cerr << "We could optimize by unlinking our leaf" << std::endl;
 	}
 	if( left_sib.page && right_sib.page )
-		std::cout << "3-way merge" << std::endl;
+		std::cerr << "3-way merge" << std::endl;
 	if( left_sib.page ){
 		wr_dap.insert_range(0, left_sib, 0, left_sib.size());
 		mark_free_in_future_page(left_sib.page->pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
@@ -661,7 +661,7 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 	std::string result = "{\"keys\":[";
 	if( height == 0 ){
 		CLeafPtr dap = readable_leaf(pid);
-		std::cout << "Leaf pid=" << pid << " [";
+		std::cerr << "Leaf pid=" << pid << " [";
 		for(int i = 0; i != dap.size(); ++i){
 			if( i != 0)
 				result += ",";
@@ -669,25 +669,25 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 			auto kv = dap.get_kv(i, overflow_page);
 			if( overflow_page )
 				kv.value.data = readable_overflow(overflow_page);
-			//                std::cout << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
-			std::cout << trim_key(kv.key.to_string(), parse_meta) << "(" << kv.value.size << "), ";
+			//                std::cerr << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
+			std::cerr << trim_key(kv.key.to_string(), parse_meta) << "(" << kv.value.size << "), ";
 			result += "\"" + trim_key(kv.key.to_string(), parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +
 		}
-		std::cout << "]" << std::endl;
+		std::cerr << "]" << std::endl;
 		return result + "]}";
 	}
 	CNodePtr nap = readable_node(pid);
 	Pid spec_value = nap.get_value(-1);
-	std::cout << "Node pid=" << pid << " [" << spec_value << ", ";
+	std::cerr << "Node pid=" << pid << " [" << spec_value << ", ";
 	for(int i = 0; i != nap.size(); ++i){
 		if( i != 0)
 			result += ",";
 		ValPid va = nap.get_kv(i);
-		std::cout << trim_key(va.key.to_string(), parse_meta) << ":" << va.pid << ", ";
+		std::cerr << trim_key(va.key.to_string(), parse_meta) << ":" << va.pid << ", ";
 		result += "\"" + trim_key(va.key.to_string(), parse_meta) + ":" + std::to_string(va.pid) + "\"";
 	}
 	result += "],\"children\":[";
-	std::cout << "]" << std::endl;
+	std::cerr << "]" << std::endl;
 	std::string spec_str = print_db(spec_value, height - 1, parse_meta);
 	result += spec_str;
 	for(int i = 0; i != nap.size(); ++i){

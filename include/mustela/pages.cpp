@@ -231,14 +231,14 @@ namespace mustela {
 				mirror[key] = val;
 			}
 		}
-		std::cout << "Special value=" << pa.get_value(-1) << std::endl;
-		std::cout << "Mirror" << std::endl;
+		std::cerr << "Special value=" << pa.get_value(-1) << std::endl;
+		std::cerr << "Mirror" << std::endl;
 		for(auto && ma : mirror)
-			std::cout << ma.first << ":" << ma.second << std::endl;
-		std::cout << "Page" << std::endl;
+			std::cerr << ma.first << ":" << ma.second << std::endl;
+		std::cerr << "Page" << std::endl;
 		for(int i = 0; i != pa.size(); ++i){
 			ValPid va = pa.get_kv(i);
-			std::cout << va.key.to_string() << ":" << va.pid << std::endl;
+			std::cerr << va.key.to_string() << ":" << va.pid << std::endl;
 		}
 	}
 	void test_data_pages(){
@@ -270,15 +270,15 @@ namespace mustela {
 				mirror[key] = val;
 			}
 		}
-		std::cout << "Mirror" << std::endl;
+		std::cerr << "Mirror" << std::endl;
 		for(auto && ma : mirror)
-			std::cout << ma.first << ":" << ma.second << std::endl;
-		std::cout << "Page" << std::endl;
+			std::cerr << ma.first << ":" << ma.second << std::endl;
+		std::cerr << "Page" << std::endl;
 		for(int i = 0; i != pa.size(); ++i){
 			Pid overflow_page;
 			ValVal va = pa.get_kv(i, overflow_page);
 			ass(overflow_page == 0, "This test should not use overflow");
-			std::cout << va.key.to_string() << ":" << va.value.to_string() << std::endl;
+			std::cerr << va.key.to_string() << ":" << va.value.to_string() << std::endl;
 		}
 	}
 	

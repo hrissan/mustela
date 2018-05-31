@@ -31,7 +31,7 @@ void FreeList::remove_from_size_index(Pid page, Pid count){
 
 void FreeList::add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index){
 	if( count == 255 )
-		std::cout << "FreeList::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
+		std::cerr << "FreeList::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
 	auto it = cache.lower_bound(page);
 	ass(it == cache.end() || it->first != page, "adding existing page to cache");
 	if(it != cache.end() && it->first == page + count){
@@ -115,7 +115,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 		p1 += read_u64_sqlite4(next_record_batch, key.data + p1);
 		if( next_record_tid >= oldest_read_tid )
 			break;
-		std::cout << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
+		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 		records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 		next_record_batch += 1;
 		size_t rec = 0;
@@ -159,7 +159,7 @@ void FreeList::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, co
 		while( count > 0 ){
 			Pid r_count = std::min<Pid>(count, 255);
 			if( r_count == 255 )
-				std::cout << "Aha!" << std::endl;
+				std::cerr << "Aha!" << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
 			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
 			space.at(space_count).data[space_pos] = r_count; space_pos += 1;
@@ -186,11 +186,11 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		p1 += write_u64_sqlite4(tid, keybuf + p1);
 		p1 += write_u64_sqlite4(batch, keybuf + p1);
 		size_t recs = std::min(page_records, record_count - space_record_count);
-		std::cout << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
+		std::cerr << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
 		recs = page_records;
 		batch += 1;
 		char * raw_space = meta_bucket.put(Val(keybuf, p1), recs * RECORD_SIZE, true);
-		//        std::cout << tx.print_db() << std::endl;
+		//        std::cerr << tx.print_db() << std::endl;
 		space.push_back(MVal(raw_space, recs * RECORD_SIZE));
 		space_record_count += recs;
 	}
@@ -210,19 +210,19 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 			size_t p1 = 1;
 			p1 += write_u64_sqlite4(records_to_delete.back().first, keybuf + p1);
 			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
-			std::cout << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
+			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
 			ass(meta_bucket.del(Val(keybuf, p1), true), "Failed to delete free list records after reading");
-			//                std::cout << tx.print_db() << std::endl;
+			//                std::cerr << tx.print_db() << std::endl;
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages_record_count);
 		grow_record_space(tx, write_tid, future_batch, future_space, future_record_count, future_pages_record_count);
 	}
-	//        std::cout << tx.print_db() << std::endl;
+	//        std::cerr << tx.print_db() << std::endl;
 	fill_record_space(tx, 0, old_space, free_pages);
-	//        std::cout << tx.print_db() << std::endl;
+	//        std::cerr << tx.print_db() << std::endl;
 	fill_record_space(tx, write_tid, future_space, future_pages);
-	//        std::cout << tx.print_db() << std::endl;
+	//        std::cerr << tx.print_db() << std::endl;
 	back_from_future_pages.clear();
 	free_pages.clear();
 	future_pages.clear();
@@ -233,22 +233,22 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 	next_record_batch = 0;
 }
 void FreeList::print_db(){
-	std::cout << "FreeList future pages:";
+	std::cerr << "FreeList future pages:";
 	int counter = 0;
 	for(auto && it : future_pages){
 		if( counter++ % 10 == 0)
-			std::cout << std::endl;
-		std::cout << "[" << it.first << ":" << it.second << "] ";
+			std::cerr << std::endl;
+		std::cerr << "[" << it.first << ":" << it.second << "] ";
 	}
-	std::cout << std::endl;
-	std::cout << "FreeList free pages:";
+	std::cerr << std::endl;
+	std::cerr << "FreeList free pages:";
 	counter = 0;
 	for(auto && it : free_pages){
 		if( counter++ % 10 == 0)
-			std::cout << std::endl;
-		std::cout << "[" << it.first << ":" << it.second << "] ";
+			std::cerr << std::endl;
+		std::cerr << "[" << it.first << ":" << it.second << "] ";
 	}
-	std::cout << std::endl;
+	std::cerr << std::endl;
 }
 void FreeList::test(){
 	FreeList list;
