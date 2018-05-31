@@ -4,6 +4,7 @@
 #include <string>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
 namespace mustela {
 
@@ -111,6 +112,8 @@ namespace mustela {
 		explicit Val(const char * data):data(data), size(strlen(data))
 		{}
 		explicit Val(const std::string & str):data(str.data()), size(str.size())
+		{}
+		explicit Val(const std::vector<uint8_t> & buf):data(reinterpret_cast<const char*>(buf.data())), size(buf.size())
 		{}
 		Val(const MVal & mval):data(mval.data), size(mval.size) // allow conversion
 		{}
