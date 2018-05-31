@@ -194,7 +194,10 @@ int main(int argc, char * argv[]){
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);
-		mustela::Bucket main_bucket(txn, mustela::Val());
+//		mustela::Bucket main_bucket(txn, mustela::Val("main"), false);
+//		auto ab = txn.get_bucket_names();
+//		txn.drop_bucket(mustela::Val("main"));
+//		ab = txn.get_bucket_names();
 		txn.commit();
 	}
 	interactive_test();

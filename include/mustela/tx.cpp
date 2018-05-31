@@ -572,16 +572,12 @@ void TX::commit(){
 //    'psize': 4096L}
 std::vector<Val> TX::get_bucket_names(){
 	std::vector<Val> results;
-//	for(auto && tit : bucket_descs) // First write all dirty table descriptions
-//		results.push_back(Val(tit.first));
 	Cursor cur(this, &meta_page.meta_bucket);
 	Val c_key, c_value, c_tail;
 	char ch = bucket_prefix;
 	const Val prefix(&ch, 1);
 	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
-		if(bucket_descs.count(c_tail.to_string()) == 0)
-			results.push_back(c_tail);
-//	std::sort(results.begin(), results.end()); - we get buckets sorted already
+		results.push_back(c_tail);
 	return results;
 }
 //	bool TX::create_table(const Val & table){
