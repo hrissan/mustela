@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <cstring>
+#include <iostream>
 
 namespace mustela {
 
@@ -66,9 +67,13 @@ namespace mustela {
 		explicit Exception(const std::string & what)
 		{}
 	};
-	inline void ass(bool expr, std::string what){
-		if( !expr )
+
+#define ass(expr, what) do_assert(expr, __FILE__, __LINE__, what)
+	inline void do_assert(bool expr, const char* file, int line, std::string what){
+		if( !expr ) {
+			std::cerr << file << ":" << line << ": " << what << std::endl;
 			throw Exception(what);
+		}
 	}
 	struct MVal {
 		char * data;
