@@ -202,8 +202,8 @@ namespace {
 }
 
 void run_test_driver(std::string const& db_path, std::istream& scenario) {
-    std::cerr << ">>>" << std::endl;
     auto state = test_state(db_path);
+    std::cerr << ">>> " << state.db->max_bucket_name_size() << " >>> " << state.db->max_key_size() <<  " >>>" << std::endl;
 
     for (std::string line; std::getline(scenario, line, '\n');) {
         std::cerr << ">>> " << line << std::endl;
