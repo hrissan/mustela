@@ -440,8 +440,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			c->on_insert(cur.bucket_desc, height, path_el.first, -1, left_sib.size() + 1);
 			c->on_merge(cur.bucket_desc, height, left_sib.page->pid, path_el.first, 0);
 		}
-		path_el = cur.path.at(0); // path_pa was modified by code above
-		path_pa = cur.path.at(1); // path_pa was modified by code above
+		path_el = cur.path.at(height); // path_pa was modified by code above
+		path_pa = cur.path.at(height + 1); // path_pa was modified by code above
 	}
 	if( use_right_sib ){
 		for(auto && c : my_cursors){
@@ -650,7 +650,7 @@ static std::string trim_key(const std::string & key, bool parse_meta){
 		if( std::isprint(ch) && ch != '"')
 			result += ch;
 		else
-			result += "$" + std::to_string(unsigned(ch));
+			result += std::string("$") + "0123456789abcdef"[static_cast<unsigned char>(ch) >> 4] + "0123456789abcdef"[static_cast<unsigned char>(ch) & 0xf];
 	return result;
 }
 std::string TX::print_db(const BucketDesc * bucket_desc){

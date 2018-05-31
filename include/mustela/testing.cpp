@@ -161,6 +161,7 @@ namespace {
 
 void run_test_driver(std::string const& db_path, std::istream& scenario) {
     std::cerr << ">>>" << std::endl;
+    mustela::DB::remove_db(db_path);
     auto state = test_state(db_path);
 
     for (std::string line; std::getline(scenario, line, '\n');) {
