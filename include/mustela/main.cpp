@@ -2,6 +2,7 @@
 // http://ysangkok.github.io/js-clrs-btree/btree.html
 
 #include <iostream>
+#include <fstream>
 #include <map>
 #include <random>
 #include "mustela.hpp"
@@ -188,8 +189,13 @@ void interactive_test(){
 }
 
 int main(int argc, char * argv[]){
-	if (argc == 3 && std::string(argv[1]) == "--test") {
-		run_test_driver(argv[2]);
+	if (argc >= 3 && std::string(argv[1]) == "--test") {
+	    if (argc == 5 && std::string(argv[3]) == "--scenario") {
+	    	auto f = std::ifstream(static_cast<char const*>(argv[4]));
+			run_test_driver(argv[2], f);
+	    } else {
+			run_test_driver(argv[2], std::cin);
+	    }
 		return 0;
 	}
 	

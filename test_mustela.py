@@ -59,7 +59,9 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.dir.cleanup()
 
     def roundtrip(self, cmd: str, *args):
-        self.mustela.stdin.write(cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args) + '\n')
+        input_ = cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args)
+        note('>>> ' + input_)
+        self.mustela.stdin.write(input_ + '\n')
         h = self.mustela.stdout.readline().strip()
         assert binascii.hexlify(db_hash(self.db)) == h.encode('ascii')
 
