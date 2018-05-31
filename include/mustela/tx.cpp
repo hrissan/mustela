@@ -24,6 +24,7 @@ void TX::start_transaction(){
 	meta_page.tid += 1;
 	meta_page.crc32 = 0;
 	meta_page_dirty = false;
+	ass(meta_page.tid > oldest_reader_tid, "We should not be able to treat our own pages as free");
 }
 
 TX::~TX(){

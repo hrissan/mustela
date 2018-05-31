@@ -125,6 +125,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
 			if( count == 0) // Marker of unused space
 				break;
+			ass(page >= 3, "Meta somehow got into freelist - detected while reading"); // TODO - constant
 			add_to_cache(page, count, free_pages, free_pages_record_count, true);
 		}
 		if( !free_pages.empty() ){ // Try to defrag the end of file
@@ -160,6 +161,7 @@ void FreeList::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, co
 			Pid r_count = std::min<Pid>(count, 255);
 			if( r_count == 255 )
 				std::cerr << "Aha!" << std::endl;
+//			std::cerr << "FreeList fill " << pid << ":" << r_count << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
 			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
 			space.at(space_count).data[space_pos] = r_count; space_pos += 1;
@@ -189,7 +191,7 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		std::cerr << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
 		recs = page_records;
 		batch += 1;
-		char * raw_space = meta_bucket.put(Val(keybuf, p1), recs * RECORD_SIZE, true);
+		char * raw_space = meta_bucket.put(Val(keybuf, p1), tx->page_size, true);
 		//        std::cerr << tx.print_db() << std::endl;
 		space.push_back(MVal(raw_space, recs * RECORD_SIZE));
 		space_record_count += recs;

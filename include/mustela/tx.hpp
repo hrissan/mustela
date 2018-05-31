@@ -21,8 +21,8 @@ namespace mustela {
 		size_t c_mappings_end_addr = 0; // We keep c_mappings while TX is using it
 		std::set<Cursor *> my_cursors;
 		std::set<Bucket *> my_buckets;
-		Pid meta_page_index;
-		Tid oldest_reader_tid;
+		Pid meta_page_index = 0;
+		Tid oldest_reader_tid = 0;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
 		NodePtr push_tmp_copy(const NodePage * other){
 			tmp_pages.push_back(std::vector<char>(page_size, 0));
@@ -38,7 +38,7 @@ namespace mustela {
 			tmp_pages.clear();
 		}
 		MetaPage meta_page;
-		bool meta_page_dirty;
+		bool meta_page_dirty = false;
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name);
 		FreeList free_list;

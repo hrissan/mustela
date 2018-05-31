@@ -65,7 +65,7 @@ bool DB::is_valid_meta(const MetaPage * mp)const{
 
 bool DB::get_meta_indices(Pid * newest_index, Pid * overwrite_index, Tid * earliest_tid)const{
 	Tid newest_tid = 0;
-	Tid oldest_tid = std::numeric_limits<Tid>::max();
+	*earliest_tid = std::numeric_limits<Tid>::max();
 	bool invalid_found = false;
 	for(int i = 0; i != 3; ++i){
 		const MetaPage * mp = readable_meta_page(i);
@@ -78,13 +78,13 @@ bool DB::get_meta_indices(Pid * newest_index, Pid * overwrite_index, Tid * earli
 			newest_tid = mp->tid;
 			*newest_index = i;
 		}
-		if(mp->tid < oldest_tid){
-			oldest_tid = mp->tid;
+		if(mp->tid < *earliest_tid){
+			*earliest_tid = mp->tid;
 			if(!invalid_found)
 				*overwrite_index = i;
 		}
 	}
-	return oldest_tid != std::numeric_limits<Tid>::max();
+	return *earliest_tid != std::numeric_limits<Tid>::max();
 }
 
 void DB::create_db(){
