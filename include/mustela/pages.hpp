@@ -41,7 +41,6 @@ namespace mustela {
 		void remove_simple(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex to_remove_item, size_t item_size);
 		MVal insert_at(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex insert_index, Val key, size_t item_size);
 	};
-	constexpr PageOffset NODE_HEADER_SIZE = sizeof(Pid) + sizeof(Tid) + sizeof(PageIndex) + 2*sizeof(PageOffset);
 	struct NodePage : public DataPage {
 		//uint64_t total_item_count; // with child pages
 		PageIndex item_count;
@@ -52,7 +51,7 @@ namespace mustela {
 		// Branch page // TODO insert total_item_count to each entry (including -1)
 		// header [io0, io1, io2] free_middle [skey2 page_be2, gap, skey0 page_be0, gap, skey1 page_be1] page_last
 	};
-	constexpr PageOffset LEAF_HEADER_SIZE = sizeof(Pid) + sizeof(Tid) + sizeof(PageIndex) + 2*sizeof(PageOffset);
+	constexpr PageOffset NODE_HEADER_SIZE = sizeof(NodePage) - sizeof(PageOffset);
 	struct LeafPage : public DataPage {
 		PageIndex item_count;
 		PageOffset items_size; // bytes keys+values + their sizes occupy. for branch pages instead of svalue we store pagenum
@@ -61,6 +60,7 @@ namespace mustela {
 		// Leaf page
 		// header [io0, io1, io2] free_middle [skey2 svalue2, gap, skey0 svalue0, gap, skey1 svalue1]
 	};
+	constexpr PageOffset LEAF_HEADER_SIZE = sizeof(LeafPage) - sizeof(PageOffset);
 #pragma pack(pop)
 
 	constexpr int MIN_KEY_COUNT = 2;
@@ -94,8 +94,7 @@ namespace mustela {
 			return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
 		}
 		static PageOffset max_key_size(size_t page_size){
-			constexpr int KEY_COUNT = 2; // min keys per page
-			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/KEY_COUNT - NODE_PID_SIZE - sizeof(PageOffset);
+			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/MIN_KEY_COUNT - NODE_PID_SIZE - sizeof(PageOffset);
 			space -= get_compact_size_sqlite4(space);
 			return space;
 		}

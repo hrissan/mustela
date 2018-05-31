@@ -62,7 +62,7 @@ void interactive_test(){
 	
 	std::map<std::string, Mirror> mirror;
 	
-	const int items_counter = 1000;
+	const int items_counter = 200;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){

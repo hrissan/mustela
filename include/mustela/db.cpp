@@ -39,12 +39,12 @@ DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(),
 	Pid newest_index = 0, overwrite_index = 0;
 	Tid earliest_tid = 0;
 	if(page_size >= MIN_PAGE_SIZE && page_size <= MAX_PAGE_SIZE && (page_size & (page_size - 1)) == 0 &&
-		file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid)){
+		file_size >= META_PAGES_COUNT * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid)){
 		print_db();
 		return;
 	}
 	for(page_size = MIN_PAGE_SIZE; page_size <= MAX_PAGE_SIZE; page_size *= 2)
-		if( file_size >= 4 * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid) ){
+		if( file_size >= META_PAGES_COUNT * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid) ){
 			print_db();
 			return;
 		}
@@ -56,7 +56,7 @@ DB::~DB(){
 }
 void DB::print_db(){
 	std::cerr << "-+-- DB: page_size=" << page_size << " phys. page_size=" << physical_page_size << " file_size=" << file_size << std::endl;
-	for(int i = 0; i != 3; ++i){
+	for(int i = 0; i != META_PAGES_COUNT; ++i){
 		const MetaPage * mp = readable_meta_page(i);
 		std::cerr << " +-- meta page " << i << ": ";
 		if( !is_valid_meta(mp) ){
@@ -81,7 +81,7 @@ void DB::remove_db(const std::string & file_path){
 bool DB::is_valid_meta(const MetaPage * mp)const{
 	if( mp->magic != META_MAGIC || mp->version != OUR_VERSION)
 		return false; // throw Exception("file is either not mustela DB or corrupted - wrong meta page");
-	if( mp->pid_size > 8 || mp->page_size != page_size || mp->meta_bucket.root_page >= mp->page_count || mp->page_count * page_size > file_size )
+	if( mp->pid_size > 8 || mp->page_size != page_size || mp->page_count < 4 || mp->meta_bucket.root_page >= mp->page_count || mp->page_count * page_size > file_size )
 		return false;
 	if( mp->crc32 != crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t)))
 		return false;
@@ -92,7 +92,7 @@ bool DB::get_meta_indices(Pid * newest_index, Pid * overwrite_index, Tid * earli
 	Tid newest_tid = 0;
 	*earliest_tid = std::numeric_limits<Tid>::max();
 	bool invalid_found = false;
-	for(int i = 0; i != 3; ++i){
+	for(int i = 0; i != META_PAGES_COUNT; ++i){
 		const MetaPage * mp = readable_meta_page(i);
 		if( !is_valid_meta(mp) ){
 			invalid_found = true;
@@ -119,25 +119,19 @@ void DB::create_db(){
 	memset(data_buf, 0, page_size); // C++ standard URODI "variable size object cannot be initialized"
 	MetaPage * mp = (MetaPage *)data_buf;
 	mp->magic = META_MAGIC;
-	mp->page_count = 4;
+	mp->page_count = META_PAGES_COUNT + 1;
 	mp->version = OUR_VERSION;
 	mp->page_size = static_cast<uint32_t>(page_size);
 	mp->pid_size = NODE_PID_SIZE;
 	mp->meta_bucket.leaf_page_count = 1;
-	mp->meta_bucket.root_page = 3;
-	mp->crc32 = crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t));
-	if( write(fd.fd, data_buf, page_size) == -1)
-		throw Exception("file write failed in create_db");
-	mp->pid = 1;
-	mp->crc32 = crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t));
-	if( write(fd.fd, data_buf, page_size) == -1)
-		throw Exception("file write failed in create_db");
-	mp->pid = 2;
-	mp->crc32 = crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t));
-	if( write(fd.fd, data_buf, page_size) == -1)
-		throw Exception("file write failed in create_db");
+	mp->meta_bucket.root_page = META_PAGES_COUNT;
+	for(mp->pid = 0; mp->pid != META_PAGES_COUNT; ++mp->pid){
+		mp->crc32 = crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t));
+		if( write(fd.fd, data_buf, page_size) == -1)
+			throw Exception("file write failed in create_db");
+	}
 	LeafPtr wr_dap(page_size, (LeafPage *)data_buf);
-	wr_dap.mpage()->pid = 3;
+	wr_dap.mpage()->pid = META_PAGES_COUNT;
 	wr_dap.init_dirty(0);
 	if( write(fd.fd, data_buf, page_size) == -1)
 		throw Exception("file write failed in create_db");
@@ -153,7 +147,7 @@ void DB::grow_c_mappings() {
 	if( !c_mappings.empty() && c_mappings.back().end_addr >= file_size )
 		return;
 	uint64_t fs = read_only ? file_size : (file_size + 1024) * 3 / 2; // *1024*1024
-	fs = std::max<uint64_t>(fs, 4 * MAX_PAGE_SIZE); // for initial meta discovery in open_db
+	fs = std::max<uint64_t>(fs, META_PAGES_COUNT * MAX_PAGE_SIZE); // for initial meta discovery in open_db
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 	void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd.fd, 0);
 	if (cm == MAP_FAILED)

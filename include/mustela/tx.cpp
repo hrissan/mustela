@@ -547,7 +547,7 @@ void TX::commit(){
 		size_t high = (meta_page_index + 1) * page_size;
 		low = ((low / my_db.physical_page_size)) * my_db.physical_page_size; // find lowest physical page
 		high = ((high + my_db.physical_page_size - 1) / my_db.physical_page_size) *
-		my_db.physical_page_size; // find highest physical page
+			my_db.physical_page_size; // find highest physical page
 		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
 	}
 	// Now invalidate all cursors and buckets

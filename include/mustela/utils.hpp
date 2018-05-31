@@ -129,18 +129,18 @@ namespace mustela {
 			tail = Val(data + prefix.size, size - prefix.size);
 			return true;
 		}
-		//		size_t encoded_size()const;
 	};
 	
 	typedef uint64_t Tid;
 	typedef uint64_t Pid;
 	typedef uint16_t PageOffset;
-	typedef int16_t PageIndex;
+	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
 
 	constexpr uint32_t OUR_VERSION = 1;
 	
-	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in binary form
+	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
 //	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
+	constexpr int META_PAGES_COUNT = 3; // We might end up using 2 like lmdb
 	constexpr int NODE_PID_SIZE = 5;
 	constexpr size_t MIN_PAGE_SIZE = 128;
 	constexpr size_t GOOD_PAGE_SIZE = 4096;

@@ -24,8 +24,7 @@ namespace mustela {
 		void add_to_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index);
 		void remove_from_cache(Pid page, Pid count, std::map<Pid, Pid> & cache, size_t & record_count, bool update_index);
 		
-//		Cursor free_cursor;
-		Tid next_record_tid;
+		Tid next_record_tid; 
 		uint64_t next_record_batch;
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
 		// TODO - records_to_delete are unnecessary - they form single range for deletion

@@ -86,7 +86,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid pa = *(siit->second.begin());
 			remove_from_cache(pa, contigous_count, free_pages, free_pages_record_count, true);
 			back_from_future_pages.insert(pa);
-			ass(pa >= 3, "Meta somehow got into freelist"); // TODO - constant
+			ass(pa >= META_PAGES_COUNT, "Meta somehow got into freelist"); // TODO - constant
 			// TODO - check tid of the page?
 			return pa;
 		}
@@ -125,7 +125,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
 			if( count == 0) // Marker of unused space
 				break;
-			ass(page >= 3, "Meta somehow got into freelist - detected while reading"); // TODO - constant
+			ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading"); // TODO - constant
 			add_to_cache(page, count, free_pages, free_pages_record_count, true);
 		}
 		if( !free_pages.empty() ){ // Try to defrag the end of file
@@ -142,7 +142,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 	return 0;
 }
 void FreeList::mark_free_in_future_page(Pid page, Pid count){
-	ass(page >= 3, "Adding meta to freelist"); // TODO - constant
+	ass(page >= META_PAGES_COUNT, "Adding meta to freelist"); // TODO - constant
 	auto bfit = back_from_future_pages.find(page);
 	if( bfit != back_from_future_pages.end()){
 		back_from_future_pages.erase(bfit);
