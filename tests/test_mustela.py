@@ -60,7 +60,6 @@ class MustelaTestMachine(RuleBasedStateMachine):
 
     def roundtrip(self, cmd: str, *args):
         input_ = cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args)
-        note('>>> ' + input_)
         self.mustela.stdin.write(input_ + '\n')
         h = self.mustela.stdout.readline().strip()
         assert binascii.hexlify(db_hash(self.db)) == h.encode('ascii')
@@ -102,25 +101,15 @@ class MustelaTestMachine(RuleBasedStateMachine):
         del self.db[bucket][k]
         self.roundtrip('del', bucket, k)
 
-    @rule()
-    def commit(self):
+    @rule(reset=st.booleans())
+    def commit(self, reset):
         self.committed = clone_db(self.db)
-        self.roundtrip('commit')
+        self.roundtrip('commit-reset' if reset else 'commit')
 
-    @rule()
-    def commit_reset(self):
-        self.committed = clone_db(self.db)
-        self.roundtrip('commit-reset')
-
-    @rule()
-    def rollback(self):
+    @rule(reset=st.booleans())
+    def rollback(self, reset):
         self.db = clone_db(self.committed)
-        self.roundtrip('rollback')
-
-    @rule()
-    def rollback_reset(self):
-        self.db = clone_db(self.committed)
-        self.roundtrip('rollback-reset')
+        self.roundtrip('rollback-reset' if reset else 'rollback')
 
 
 with settings(max_examples=100, stateful_step_count=100):

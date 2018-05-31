@@ -160,9 +160,12 @@ namespace {
 }
 
 void run_test_driver(std::string const& db_path, std::istream& scenario) {
+    std::cerr << ">>>" << std::endl;
     auto state = test_state(db_path);
 
     for (std::string line; std::getline(scenario, line, '\n');) {
+        std::cerr << ">>> " << line << std::endl;
+
         auto iss = std::istringstream(line);
         auto tokens = std::vector<std::string>{};
         for (std::string tok; std::getline(iss, tok, ',');) {
