@@ -66,7 +66,7 @@ namespace mustela {
 	constexpr int MIN_KEY_COUNT = 2;
 	static_assert(MIN_KEY_COUNT == 2, "Should be 2 for invariants, do not change");
 	static_assert(MIN_PAGE_SIZE >= sizeof(MetaPage), "Metapage does not fit into page size");
-	static_assert(MIN_PAGE_SIZE >= (NODE_PID_SIZE + 1)*MIN_KEY_COUNT + NODE_PID_SIZE + NODE_HEADER_SIZE, "Node page with min keys does not fit into page size");
+	static_assert(MIN_PAGE_SIZE >= (NODE_PID_SIZE + 1 + sizeof(PageOffset))*MIN_KEY_COUNT + NODE_PID_SIZE + NODE_HEADER_SIZE, "Node page with min keys does not fit into page size");
 
 	struct CNodePtr {
 		size_t page_size;
@@ -95,7 +95,7 @@ namespace mustela {
 		}
 		static PageOffset max_key_size(size_t page_size){
 			constexpr int KEY_COUNT = 2; // min keys per page
-			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/KEY_COUNT - NODE_PID_SIZE;
+			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/KEY_COUNT - NODE_PID_SIZE - sizeof(PageOffset);
 			space -= get_compact_size_sqlite4(space);
 			return space;
 		}

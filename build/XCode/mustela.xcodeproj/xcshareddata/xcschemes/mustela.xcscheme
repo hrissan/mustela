@@ -67,7 +67,7 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "--test test.db --scenario case1.txt"
+            argument = "--test test.db --scenario ../../tests/case2.txt"
             isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>

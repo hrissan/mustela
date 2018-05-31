@@ -240,6 +240,14 @@ namespace mustela {
 			ValPid va = pa.get_kv(i);
 			std::cerr << va.key.to_string() << ":" << va.pid << std::endl;
 		}
+		for(int i = -5; i != 0; ++i)
+			for(int j = -5; j != 0; ++j){
+				std::string key1 = std::string(NodePtr::max_key_size(page_size) + i, 'A');
+				std::string key2 = std::string(NodePtr::max_key_size(page_size) + j, 'B');
+				pa.init_dirty(10);
+				pa.insert_at(0, Val(key1), 0);
+				pa.insert_at(1, Val(key2), 0);
+			}
 	}
 	void test_data_pages(){
 		test_node_page();
