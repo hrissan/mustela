@@ -24,12 +24,12 @@ namespace mustela {
 		Pid meta_page_index = 0;
 		Tid oldest_reader_tid = 0;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
-		NodePtr push_tmp_copy(const NodePage * other){
+		NodePtr push_tmp_copy(const NodePage * other){ // TODO - get rid
 			tmp_pages.push_back(std::vector<char>(page_size, 0));
 			memcpy(tmp_pages.back().data(), other, page_size);
 			return NodePtr(page_size, (NodePage * )tmp_pages.back().data());
 		}
-		LeafPtr push_tmp_copy(const LeafPage * other){
+		LeafPtr push_tmp_copy(const LeafPage * other){ // TODO - get rid
 			tmp_pages.push_back(std::vector<char>(page_size, 0));
 			memcpy(tmp_pages.back().data(), other, page_size);
 			return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
@@ -40,7 +40,7 @@ namespace mustela {
 		MetaPage meta_page;
 		bool meta_page_dirty = false;
 		std::map<std::string, BucketDesc> bucket_descs;
-		BucketDesc * load_bucket_desc(const Val & name);
+		BucketDesc * load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists);
 		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
@@ -71,10 +71,13 @@ namespace mustela {
 		
 		static const char bucket_prefix = 'b';
 		static const char freelist_prefix = 'f';
+		
 		explicit TX(DB & my_db, bool read_only = false);
 		~TX();
-		std::vector<Val> get_bucket_names(); // sorted
+		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
+		std::vector<Val> get_bucket_names(); // sorted
+		
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 
 		std::string print_meta_db();

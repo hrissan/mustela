@@ -71,13 +71,13 @@ void interactive_test(){
 	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
 	while(true){
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
-		mustela::Bucket main_bucket(txn, main_bucket_name);
+		mustela::Bucket main_bucket = txn.get_bucket(main_bucket_name);
 		{
 			mirror.clear();
 //			mustela::Bucket main_bucket(txn, main_bucket_name);
 //			std::string json = main_bucket.print_db();
 //			std::cout << "Main table: " << json << std::endl;
-			mustela::Cursor cur(main_bucket);
+			mustela::Cursor cur = main_bucket.get_cursor();
 			mustela::Val c_key, c_value;
 			for (cur.first(); cur.get(c_key, c_value); cur.next()) {
 				if (!mirror.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
@@ -157,7 +157,7 @@ void interactive_test(){
 			if( add ){
 				if( !main_bucket.put(mustela::Val(key), mustela::Val(val), false) )
 					std::cout << "BAD put" << std::endl;
-				mustela::Cursor cur(main_bucket);
+				mustela::Cursor cur = main_bucket.get_cursor();
 				if( !cur.seek(mustela::Val(key)) )
 					std::cout << "BAD seek" << std::endl;
 				mirror.insert(std::make_pair(key, Mirror(val, cur)));
@@ -203,10 +203,10 @@ int main(int argc, char * argv[]){
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);
-//		mustela::Bucket main_bucket(txn, mustela::Val("main"), false);
-//		auto ab = txn.get_bucket_names();
-//		txn.drop_bucket(mustela::Val("main"));
-//		ab = txn.get_bucket_names();
+		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
+		auto ab = txn.get_bucket_names();
+		txn.get_bucket(mustela::Val("zhu"));
+		ab = txn.get_bucket_names();
 		txn.commit();
 	}
 	interactive_test();

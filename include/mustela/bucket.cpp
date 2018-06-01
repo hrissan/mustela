@@ -3,10 +3,13 @@
 using namespace mustela;
 
 
-Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc) {
-	ass(my_txn->my_buckets.insert(this).second, "Double insert");
+Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), bucket_desc(bucket_desc), persistent_name(name) {
+	if(bucket_desc)
+		ass(my_txn->my_buckets.insert(this).second, "Double insert");
+	else
+		my_txn = nullptr;
 }
-Bucket::Bucket(TX & my_txn_r, const Val & name, bool create):my_txn(&my_txn_r), bucket_desc(my_txn->load_bucket_desc(name)), debug_name(name.to_string()) {
+/*Bucket::Bucket(TX & my_txn_r, const Val & name, bool create):my_txn(&my_txn_r), bucket_desc(my_txn->load_bucket_desc(name)), debug_name(name.to_string()) {
 	if( !bucket_desc && create){
 		if( my_txn->read_only )
 			throw Exception("Attempt to modify read-only transaction");
@@ -26,7 +29,7 @@ Bucket::Bucket(TX & my_txn_r, const Val & name, bool create):my_txn(&my_txn_r), 
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 	else
 		my_txn = nullptr;
-}
+}*/
 Bucket::~Bucket(){
 	unlink();
 }
@@ -35,6 +38,7 @@ void Bucket::unlink(){
 		ass(my_txn->my_buckets.erase(this) == 1, "Double etase");
 	my_txn = nullptr;
 	bucket_desc = nullptr;
+	persistent_name = Val();
 }
 Bucket::Bucket(Bucket && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc){
 	if(my_txn)
@@ -142,6 +146,6 @@ std::string Bucket::get_stats()const{
 	",\n\t'leaf_pages': " + std::to_string(bucket_desc->leaf_page_count) +
 	",\n\t'overflow_pages': " + std::to_string(bucket_desc->overflow_page_count) +
 	",\n\t'psize': " + std::to_string(my_txn->page_size) +
-	",\n\t'table': '" + debug_name + "'}";
+	",\n\t'table': '" + persistent_name.to_string() + "'}";
 	return result;
 }

@@ -575,8 +575,11 @@ std::vector<Val> TX::get_bucket_names(){
 	Val c_key, c_value, c_tail;
 	char ch = bucket_prefix;
 	const Val prefix(&ch, 1);
-	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next())
-		results.push_back(c_tail);
+	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next()){
+		Val persistent_name;
+		load_bucket_desc(c_tail, &persistent_name, false);
+		results.push_back(persistent_name);
+	}
 	return results;
 }
 //	bool TX::create_table(const Val & table){
@@ -584,10 +587,17 @@ std::vector<Val> TX::get_bucket_names(){
 //			return false;
 //		return true;
 //	}
+Bucket TX::get_bucket(const Val & name, bool create_if_not_exists){
+	Val persistent_name;
+	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, create_if_not_exists);
+	return Bucket(this, bucket_desc, persistent_name);
+}
+
 bool TX::drop_bucket(const Val & name){
 	if( read_only )
 		throw Exception("Attempt to modify read-only transaction");
-	BucketDesc * bucket_desc = load_bucket_desc(name);
+	Val persistent_name;
+	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, false);
 	if( !bucket_desc )
 		return false;
 	{
@@ -617,23 +627,41 @@ bool TX::drop_bucket(const Val & name){
 	std::string key = bucket_prefix + name.to_string();
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	ass(meta_bucket.del(Val(key), true), "Error while dropping table");
-	bucket_descs.erase(name.to_string());
+	ass(bucket_descs.erase(name.to_string()) == 1, "bucket_desc not found during erase");
 	return true;
 }
-BucketDesc * TX::load_bucket_desc(const Val & name){
-	auto tit = bucket_descs.find(name.to_string());
-	if( tit != bucket_descs.end() )
+BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists){
+	const std::string str_name = name.to_string();
+	auto tit = bucket_descs.find(str_name);
+	if( tit != bucket_descs.end() ){
+		*persistent_name = Val(tit->first);
 		return &tit->second;
-	std::string key = bucket_prefix + name.to_string();
+	}
+	const std::string key = bucket_prefix + str_name;
 	Val value;
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	if( !meta_bucket.get(Val(key), value) )
+	if( meta_bucket.get(Val(key), value) ){
+		tit = bucket_descs.insert(std::make_pair(name.to_string(), BucketDesc{})).first;
+		*persistent_name = Val(tit->first);
+		ass(value.size == sizeof(BucketDesc), "BucketDesc size in DB is wrong");
+		memmove(&tit->second, value.data, value.size);
+		return &tit->second;
+	}
+	if(!create_if_not_exists)
 		return nullptr;
-	BucketDesc & td = bucket_descs[name.to_string()];
-	ass(value.size == sizeof(td), "BucketDesc size in DB is wrong");
-	memmove(&td, value.data, value.size);
-	return &td;
+	if( read_only )
+		throw Exception("Attempt to modify read-only transaction");
+	tit = bucket_descs.insert(std::make_pair(str_name, BucketDesc{})).first;
+	*persistent_name = Val(tit->first);
+	tit->second.root_page = get_free_page(1);
+	LeafPtr wr_root = writable_leaf(tit->second.root_page);
+	wr_root.init_dirty(meta_page.tid);
+	tit->second.leaf_page_count = 1;
+	value = Val(reinterpret_cast<const char *>(&tit->second), sizeof(BucketDesc));
+	ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
+	return &tit->second;
 }
+
 static std::string trim_key(const std::string & key, bool parse_meta){
 	if( parse_meta && !key.empty() && key[0] == TX::freelist_prefix ){
 		Tid next_record_tid;

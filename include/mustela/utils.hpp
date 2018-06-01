@@ -69,12 +69,7 @@ namespace mustela {
 	};
 
 #define ass(expr, what) do_assert(expr, __FILE__, __LINE__, what)
-	inline void do_assert(bool expr, const char* file, int line, std::string what){
-		if( !expr ) {
-			std::cerr << file << ":" << line << ": " << what << std::endl;
-			throw Exception(what);
-		}
-	}
+// do not use std::string for what - will be constructed every time, even when expr is true
 	inline void do_assert(bool expr, const char* file, int line, const char * what){
 		if( !expr ) {
 			std::cerr << file << ":" << line << ": " << what << std::endl;

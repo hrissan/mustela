@@ -76,10 +76,10 @@ namespace {
         assert(ret == 0);
 
         for (auto name: tx.get_bucket_names()) {
-            blake2b_update_val(&ctx, 'b', name);
+            blake2b_update_val(&ctx, 'b', mustela::Val(name));
 
-            mustela::Bucket b(tx, name, false);
-            mustela::Cursor cur(b);
+            mustela::Bucket b = tx.get_bucket(name, false);
+            mustela::Cursor cur = b.get_cursor();
             mustela::Val k, v;
             for (cur.first(); cur.get(k, v); cur.next()) {
                 blake2b_update_val(&ctx, 'k', k);
@@ -128,19 +128,19 @@ namespace {
 
         if (cmd == "create-bucket") {
             auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b(*state.tx, mustela::Val(name.data(), name.size()), true);
+            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), true);
         } else if (cmd == "drop-bucket") {
             auto name = from_hex(get_nth_tok(tokens, 1));
             state.tx->drop_bucket(mustela::Val(name.data(), name.size()));
         } else if (cmd == "put") {
             auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b(*state.tx, mustela::Val(name.data(), name.size()), false);
+            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), false);
             auto k = from_hex(get_nth_tok(tokens, 2));
             auto v = from_hex(get_nth_tok(tokens, 3));
             b.put(mustela::Val(k.data(), k.size()), mustela::Val(v.data(), v.size()), false);
         } else if (cmd == "del") {
             auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b(*state.tx, mustela::Val(name.data(), name.size()), false);
+            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), false);
             auto k = from_hex(get_nth_tok(tokens, 2));
             b.del(mustela::Val(k.data(), k.size()), true);
         } else if (cmd == "commit") {

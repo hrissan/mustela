@@ -8,11 +8,11 @@ Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_des
 	path.resize(bucket_desc->height + 1);
 	end();
 }
-Cursor::Cursor(Bucket & bucket):my_txn(bucket.my_txn), bucket_desc(bucket.bucket_desc){
-	ass(my_txn->my_cursors.insert(this).second, "Double insert");
-	path.resize(bucket_desc->height + 1);
-	end();
-}
+//Cursor::Cursor(Bucket & bucket):my_txn(bucket.my_txn), bucket_desc(bucket.bucket_desc){
+//	ass(my_txn->my_cursors.insert(this).second, "Double insert");
+//	path.resize(bucket_desc->height + 1);
+//	end();
+//}
 Cursor::~Cursor(){
 	unlink();
 }
@@ -52,14 +52,17 @@ Cursor & Cursor::operator=(const Cursor & other){
 }
 
 bool Cursor::operator==(const Cursor & other)const{
-	const_cast<Cursor &>(*this).fix_cursor_after_last_item();
-	const_cast<Cursor &>(other).fix_cursor_after_last_item();
-//		Cursor a(*this);
-//		Cursor b(other);
-//		a.fix_cursor_after_last_item(); // fixes are lazy
-//		b.fix_cursor_after_last_item(); // fixes are lazy
-	return my_txn == other.my_txn && bucket_desc == other.bucket_desc && path == other.path;
+	if(my_txn != other.my_txn || bucket_desc != other.bucket_desc)
+		return false;
+	if(!bucket_desc) // invalid cursors are equal
+		return true;
+	bool end1 = const_cast<Cursor &>(*this).fix_cursor_after_last_item();
+	bool end2 = const_cast<Cursor &>(other).fix_cursor_after_last_item();
+	if(end1 != end2) // fix_cursor returns end for both our end indicators
+		return false;
+	return path == other.path; // compare up to the height + 1 only
 }
+
 bool Cursor::seek(const Val & key){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	Pid pa = bucket_desc->root_page;
@@ -81,6 +84,8 @@ bool Cursor::seek(const Val & key){
 }
 bool Cursor::fix_cursor_after_last_item(){
 	auto path_el = path.at(0);
+	if( path_el.first == 0 ) // fast end indicator
+		return false;
 	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
 	if(path_el.second < dap.size())
 		return true;
@@ -119,7 +124,8 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 }
 void Cursor::end(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-	set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
+	path.at(0).first = 0; // fast end indicator
+//	set_at_direction(bucket_desc->height, bucket_desc->root_page, 1); <- this sets to true end
 }
 void Cursor::first(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
@@ -181,6 +187,8 @@ void Cursor::prev(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	if(bucket_desc->count == 0)
 		return;
+	if( path.at(0).first == 0) // fast end indicator, set at true end
+		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 	if( path.at(0).second > 0 ) {
 //			CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 //			ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
