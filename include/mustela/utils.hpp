@@ -110,10 +110,19 @@ namespace mustela {
 			return compare(other) == 0;
 		}
 		bool operator!=(const Val & other)const{
-			return !operator==(other);
+			return compare(other) != 0;
 		}
 		bool operator<(const Val & other)const{
 			return compare(other) < 0;
+		}
+		bool operator<=(const Val & other)const{
+			return compare(other) <= 0;
+		}
+		bool operator>(const Val & other)const{
+			return compare(other) > 0;
+		}
+		bool operator>=(const Val & other)const{
+			return compare(other) >= 0;
 		}
 		bool has_prefix(const Val & prefix)const {
 			return size >= prefix.size && memcmp(data, prefix.data, prefix.size) == 0;

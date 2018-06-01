@@ -68,7 +68,7 @@ void interactive_test(){
 	//    for(int i = 0; i != items_counter * 4; ++i){
 	//        int j = dist(e);
 	//    }
-	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "dr", "dr", "dr", "dr", "a", "d", "a"};
+	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "d", "dr", "a", "dr", "dr", "ar"};
 	while(true){
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket = txn.get_bucket(main_bucket_name);
@@ -203,11 +203,25 @@ int main(int argc, char * argv[]){
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);
+		txn.check_database([](int progress){
+			std::cout << "Checking... " << progress << "%" << std::endl;
+		});
 		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
 		auto ab = txn.get_bucket_names();
 		txn.get_bucket(mustela::Val("zhu"));
 		ab = txn.get_bucket_names();
+		mustela::Bucket large_bucket = txn.get_bucket(mustela::Val("large"));
+		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
+		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
+		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0xFF)), mustela::Val("uhu"), false);
+		ab = txn.get_bucket_names();
+		txn.check_database([](int progress){
+			std::cout << "Checking... " << progress << "%" << std::endl;
+		});
 		txn.commit();
+		txn.check_database([](int progress){
+			std::cout << "Checking... " << progress << "%" << std::endl;
+		});
 	}
 	interactive_test();
 	/*    txn.put(mustela::Val("A"), mustela::Val("AVAL"), true);

@@ -661,6 +661,66 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
 	return &tit->second;
 }
+void TX::check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages){
+	Pid pa = bucket_desc->root_page;
+	size_t height = bucket_desc->height;
+	BucketDesc stat_bucket_desc{};
+	std::string largest_element(my_db.max_key_size(), 0xFF);
+	check_bucket_page(bucket_desc, &stat_bucket_desc, pa, height, Val(), Val(largest_element), pages);
+	ass(stat_bucket_desc.count == bucket_desc->count && stat_bucket_desc.leaf_page_count == bucket_desc->leaf_page_count &&
+		stat_bucket_desc.node_page_count == bucket_desc->node_page_count && stat_bucket_desc.overflow_page_count == bucket_desc->overflow_page_count, "Bucket stats differ");
+}
+void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_bucket_desc, Pid pa, size_t height, Val left_limit, Val right_limit, MergablePageCache * pages){
+	pages->add_to_cache(pa, 1);
+	if( height == 0 ){
+		stat_bucket_desc->leaf_page_count += 1;
+		CLeafPtr dap = readable_leaf(pa);
+		ass(bucket_desc->height == 0 || dap.size() > 0, "leaf with 0 keys found");
+		stat_bucket_desc->count += dap.size();
+		Val prev_key;
+		for(PageIndex pi = 0; pi != dap.size(); ++pi){
+			Pid overflow_page = 0;
+			ValVal val = dap.get_kv(pi, overflow_page);
+			if( overflow_page != 0 ){
+				Pid overflow_count = (val.value.size + page_size - 1) / page_size;
+				stat_bucket_desc->overflow_page_count += overflow_count;
+				pages->add_to_cache(overflow_page, overflow_count);
+			}
+			if( pi == 0)
+				ass(val.key >= left_limit, "first leaf element < left_limit");
+			else
+				ass(val.key > prev_key, "leaf elements are in wrong order");
+			prev_key = val.key;
+		}
+		ass(stat_bucket_desc->count == bucket_desc->count || prev_key < right_limit, "last leaf element >= right_limit");
+		// last element is the only one allowed to be equal to largest possible key
+		return;
+	}
+	stat_bucket_desc->node_page_count += 1;
+	CNodePtr nap = readable_node(pa);
+	ass(nap.size() > 0, "node with 0 keys found");
+	for(PageIndex pi = -1; pi != nap.size(); ++pi){
+		Val prev_limit = (pi == -1) ? left_limit : nap.get_key(pi);
+		Val next_limit = (pi + 1 < nap.size()) ? nap.get_key(pi + 1) : right_limit;
+		ass(prev_limit < next_limit, "node with wrong keys order found");
+		check_bucket_page(bucket_desc, stat_bucket_desc, nap.get_value(pi), height - 1, prev_limit, next_limit, pages);
+	}
+}
+void TX::check_database(std::function<void(int percent)> on_progress){
+	MergablePageCache pages(false);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
+	check_bucket(meta_bucket.bucket_desc, &pages);
+	for(auto bname : get_bucket_names()){
+		Bucket bucket = get_bucket(bname);
+		check_bucket(bucket.bucket_desc, &pages);
+	}
+	pages.print_db();
+	free_list.get_all_free_pages(this, &pages);
+	pages.print_db();
+	Pid remaining_pages = meta_page.page_count - pages.defrag_end(meta_page.page_count);
+	ass(pages.empty(), "After defrag free pages left");
+	ass(remaining_pages == META_PAGES_COUNT, "There should be exactly meta pages count left after removing everything from database");
+}
 
 static std::string trim_key(const std::string & key, bool parse_meta){
 	if( parse_meta && !key.empty() && key[0] == TX::freelist_prefix ){

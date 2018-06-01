@@ -65,6 +65,9 @@ namespace mustela {
 
 		std::string print_db(const BucketDesc * bucket_desc);
 		std::string print_db(Pid pa, size_t height, bool parse_meta);
+
+	 	void check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages);
+	 	void check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_bucket_desc, Pid pa, size_t height, Val left_limit, Val right_limit, MergablePageCache * pages);
 	public:
 		const size_t page_size; // copy from my_db
 		const bool read_only;
@@ -77,6 +80,8 @@ namespace mustela {
 		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		std::vector<Val> get_bucket_names(); // sorted
+		
+		void check_database(std::function<void(int percent)> on_progress);
 		
 		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
 
