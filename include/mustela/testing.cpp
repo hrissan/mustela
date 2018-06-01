@@ -76,12 +76,12 @@ namespace {
         assert(ret == 0);
 
         for (auto name: tx.get_bucket_names()) {
-            blake2b_update_val(&ctx, 'b', mustela::Val(name));
+            blake2b_update_val(&ctx, 'b', name);
 
             mustela::Bucket b = tx.get_bucket(name, false);
             mustela::Cursor cur = b.get_cursor();
             mustela::Val k, v;
-            for (cur.first(); cur.get(k, v); cur.next()) {
+            for (cur.first(); cur.get(&k, &v); cur.next()) {
                 blake2b_update_val(&ctx, 'k', k);
                 blake2b_update_val(&ctx, 'v', v);
             }

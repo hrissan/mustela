@@ -4,6 +4,7 @@
 using namespace mustela;
 	
 Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc){
+	ass(my_txn && bucket_desc, "get_cursor called on invalid bucket");
 	ass(my_txn->my_cursors.insert(this).second, "Double insert");
 	path.resize(bucket_desc->height + 1);
 	end();
@@ -135,7 +136,7 @@ void Cursor::last(){
 	end();
 	prev();
 }
-bool Cursor::get(Val & key, Val & value){
+bool Cursor::get(Val * key, Val * value){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	if( !fix_cursor_after_last_item() )
 		return false;
@@ -148,8 +149,8 @@ bool Cursor::get(Val & key, Val & value){
 		Pid overflow_count = (kv.value.size + my_txn->page_size - 1)/my_txn->page_size;
 		kv.value.data = my_txn->readable_overflow(overflow_page, overflow_count);
 	}
-	key = kv.key;
-	value = kv.value;
+	*key = kv.key;
+	*value = kv.value;
 	return true;
 }
 bool Cursor::del(){

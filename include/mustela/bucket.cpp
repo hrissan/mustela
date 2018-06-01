@@ -7,29 +7,8 @@ Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), 
 	if(bucket_desc)
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 	else
-		my_txn = nullptr;
+		this->my_txn = nullptr;
 }
-/*Bucket::Bucket(TX & my_txn_r, const Val & name, bool create):my_txn(&my_txn_r), bucket_desc(my_txn->load_bucket_desc(name)), debug_name(name.to_string()) {
-	if( !bucket_desc && create){
-		if( my_txn->read_only )
-			throw Exception("Attempt to modify read-only transaction");
-		BucketDesc & td = my_txn->bucket_descs[name.to_string()];
-		td = BucketDesc{};
-		td.root_page = my_txn->get_free_page(1);
-		LeafPtr wr_root = my_txn->writable_leaf(td.root_page);
-		wr_root.init_dirty(my_txn->meta_page.tid);
-		td.leaf_page_count = 1;
-		bucket_desc = &td;
-		std::string key = TX::bucket_prefix + name.to_string();
-		Val value(reinterpret_cast<const char *>(bucket_desc), sizeof(BucketDesc));
-		Bucket meta_bucket(my_txn, &my_txn->meta_page.meta_bucket);
-		ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
-	}
-	if(bucket_desc)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
-	else
-		my_txn = nullptr;
-}*/
 Bucket::~Bucket(){
 	unlink();
 }
@@ -115,13 +94,13 @@ bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // fals
 		memcpy(dst, value.data, value.size);
 	return dst != nullptr;
 }
-bool Bucket::get(const Val & key, Val & value)const{
+bool Bucket::get(const Val & key, Val * value)const{
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	Cursor main_cursor(my_txn, bucket_desc);
 	if( !main_cursor.seek(key) )
 		return false;
 	Val c_key;
-	return main_cursor.get(c_key, value);
+	return main_cursor.get(&c_key, value);
 }
 bool Bucket::del(const Val & key, bool must_exist){
 	if( my_txn->read_only )

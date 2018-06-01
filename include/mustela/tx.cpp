@@ -575,7 +575,7 @@ std::vector<Val> TX::get_bucket_names(){
 	Val c_key, c_value, c_tail;
 	char ch = bucket_prefix;
 	const Val prefix(&ch, 1);
-	for(cur.seek(prefix); cur.get(c_key, c_value) && c_key.has_prefix(prefix, c_tail); cur.next()){
+	for(cur.seek(prefix); cur.get(&c_key, &c_value) && c_key.has_prefix(prefix, &c_tail); cur.next()){
 		Val persistent_name;
 		load_bucket_desc(c_tail, &persistent_name, false);
 		results.push_back(persistent_name);
@@ -640,7 +640,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	const std::string key = bucket_prefix + str_name;
 	Val value;
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	if( meta_bucket.get(Val(key), value) ){
+	if( meta_bucket.get(Val(key), &value) ){
 		tit = bucket_descs.insert(std::make_pair(name.to_string(), BucketDesc{})).first;
 		*persistent_name = Val(tit->first);
 		ass(value.size == sizeof(BucketDesc), "BucketDesc size in DB is wrong");

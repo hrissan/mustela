@@ -79,14 +79,14 @@ void interactive_test(){
 //			std::cout << "Main table: " << json << std::endl;
 			mustela::Cursor cur = main_bucket.get_cursor();
 			mustela::Val c_key, c_value;
-			for (cur.first(); cur.get(c_key, c_value); cur.next()) {
+			for (cur.first(); cur.get(&c_key, &c_value); cur.next()) {
 				if (!mirror.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
 					std::cout << "BAD mirror insert " << c_key.to_string() << std::endl;
 //				else
 //					std::cout << c_key.to_string() << std::endl;
 			}
 			std::map<std::string, Mirror> mirror2;
-			for (cur.last(); cur.get(c_key, c_value); cur.prev()) {
+			for (cur.last(); cur.get(&c_key, &c_value); cur.prev()) {
 				if (!mirror2.insert(std::make_pair(c_key.to_string(), Mirror(c_value.to_string(), cur))).second)
 					std::cout << "BAD mirror2 insert " << c_key.to_string() << std::endl;
 //				else
@@ -149,7 +149,7 @@ void interactive_test(){
 //				std::string json = main_bucket.print_db();
 //				std::cout << "Main table: " << json << std::endl;
 //			}
-			bool in_db = main_bucket.get(mustela::Val(key), got) && got.to_string() == val;
+			bool in_db = main_bucket.get(mustela::Val(key), &got) && got.to_string() == val;
 			auto mit = mirror.find(key);
 			bool in_mirror = mit != mirror.end() && mit->second.value == val;
 			if( in_db != in_mirror )
@@ -173,8 +173,8 @@ void interactive_test(){
 //			}
 		for(auto && ma : mirror){
 			mustela::Val value, c_key, c_value;
-			bool result = main_bucket.get(mustela::Val(ma.first), value);
-			bool c_result = ma.second.cursor.get(c_key, c_value);
+			bool result = main_bucket.get(mustela::Val(ma.first), &value);
+			bool c_result = ma.second.cursor.get(&c_key, &c_value);
 			if( !result || !c_result || ma.second.value != value.to_string() || c_key.to_string() != ma.first || c_value.to_string() != ma.second.value ){
 				std::cerr << "Bad check ma=" << ma.first << std::endl;
 				std::string json = main_bucket.print_db();

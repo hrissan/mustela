@@ -101,7 +101,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 		{
 			Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
 			main_cursor.seek(key);
-			if( !main_cursor.get(key, value) )
+			if( !main_cursor.get(&key, &value) )
 				break;
 		}
 //		if( !tx.get_next(&tx.meta_page.meta_bucket, key, value))

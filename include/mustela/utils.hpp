@@ -118,10 +118,10 @@ namespace mustela {
 		bool has_prefix(const Val & prefix)const {
 			return size >= prefix.size && memcmp(data, prefix.data, prefix.size) == 0;
 		}
-		bool has_prefix(const Val & prefix, Val & tail)const {
+		bool has_prefix(const Val & prefix, Val * tail)const {
 			if( !has_prefix(prefix) )
 				return false;
-			tail = Val(data + prefix.size, size - prefix.size);
+			*tail = Val(data + prefix.size, size - prefix.size);
 			return true;
 		}
 	};

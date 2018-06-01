@@ -71,6 +71,7 @@ namespace mustela {
 		Cursor(const Cursor & other);
 		Cursor & operator=(Cursor && other);
 		Cursor & operator=(const Cursor & other);
+		
 		bool is_valid()const { return bucket_desc != nullptr; }
 
 		bool operator==(const Cursor & other)const;
@@ -80,12 +81,12 @@ namespace mustela {
 		void end(); // sets to end
 		void first(); // sets to end(), if db is empty
 		void last(); // sets to end(), if db is empty
-		bool get(Val & key, Val & value);
+		bool get(Val * key, Val * value);
 		bool del(); // If you can get, you can del. After del, cursor points to the next item, or end() if it was last one
 		void next(); // next from last() goes to the end
 		void prev(); // prev from first() goes to the end, beware
-		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a")*/; cur.next() ) {}
-		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a")*/; cur.prev() ) {}
+		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.next() ) {}
+		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.prev() ) {}
 	};
 }
 
