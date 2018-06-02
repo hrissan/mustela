@@ -42,6 +42,7 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 	}
 	if( file_size < sizeof(MetaPage) )
 		throw Exception("File size less than 1 meta page - corrupted by truncation");
+	page_size = MAX_PAGE_SIZE;
 	grow_c_mappings();
 	page_size = readable_meta_page(0)->page_size;
 	const MetaPage * newest_meta = nullptr;

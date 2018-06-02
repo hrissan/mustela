@@ -57,7 +57,7 @@ namespace mustela {
 		FD fd;
 		uint64_t file_size = 0;
 		const DBOptions options;
-		size_t page_size;
+		size_t page_size = 0;
 		const size_t physical_page_size; // We allow to work with smaller/larger pages when reading file from different platform (or portable variant)
 		TX * wr_transaction = nullptr;
 		
