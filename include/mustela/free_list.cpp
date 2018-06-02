@@ -121,8 +121,8 @@ void MergablePageCache::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & 
 		Pid count = pa.second;
 		while( count > 0 ){
 			Pid r_count = std::min<Pid>(count, 255);
-			if( r_count == 255 )
-				std::cerr << "Aha!" << std::endl;
+//			if( r_count == 255 )
+//				std::cerr << "Aha!" << std::endl;
 //			std::cerr << "FreeList fill " << pid << ":" << r_count << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
 			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
@@ -178,7 +178,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 		p1 += read_u64_sqlite4(next_record_batch, key.data + p1);
 		if( next_record_tid >= oldest_read_tid )
 			return 0;
-		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
+//		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 		records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 		next_record_batch += 1;
 		size_t rec = 0;
@@ -241,7 +241,7 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		p1 += write_u64_sqlite4(tid, keybuf + p1);
 		p1 += write_u64_sqlite4(batch, keybuf + p1);
 		size_t recs = std::min(page_records, record_count - space_record_count);
-		std::cerr << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
+//		std::cerr << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
 		recs = page_records;
 		batch += 1;
 		char * raw_space = meta_bucket.put(Val(keybuf, p1), tx->page_size, true);
@@ -265,7 +265,7 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 			size_t p1 = 1;
 			p1 += write_u64_sqlite4(records_to_delete.back().first, keybuf + p1);
 			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
-			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
+//			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
 			ass(meta_bucket.del(Val(keybuf, p1), true), "Failed to delete free list records after reading");
 			//                std::cerr << tx.print_db() << std::endl;

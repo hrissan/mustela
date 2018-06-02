@@ -7,14 +7,29 @@ namespace mustela {
 //	bool MetaPage::check(uint32_t system_page_size, uint64_t file_size)const{
 //		return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && meta_bucket.root_page < page_count;
 //	}
-	
+	static unsigned char read_our_sqlite4(uint64_t & val, const void * vptr){
+		const unsigned char * ptr = (const unsigned char * )vptr;
+		unsigned char a0 = *ptr;
+		if (a0 <= 240) {
+			val = a0;
+			return 1;
+		}
+		if(a0 <= 248) {
+			unsigned char a1 = *(ptr + 1);
+			val = 240 + 256 * (a0 - 241) + a1;
+			return 2;
+		}
+		const unsigned char * buf = ptr + 1;
+		val = 2288 + 256 * buf[0] + buf[1];
+		return 3;
+	}
 	MVal DataPage::get_item_key(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item){
-		ass(item < item_count, "get_item_key item too large");
+//		ass(item < item_count, "get_item_key item too large");
 		char * raw_this = (char *)this;
 		PageOffset item_offset = item_offsets[item];
 		uint64_t keysize;
-		auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
-		ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
+		auto keysizesize = read_our_sqlite4(keysize, raw_this + item_offset);
+//		ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
 		return MVal(raw_this + item_offset + keysizesize, keysize);
 	}
 	PageIndex DataPage::lower_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const{
@@ -171,9 +186,12 @@ namespace mustela {
 	
 	PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const{
 		size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size);
-		if( kvs_size + value_size <= capacity() )
-			return overflow = false, kvs_size + value_size;
-		return overflow = true, kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
+		if( kvs_size + value_size <= capacity() ){
+			overflow = false;
+			return kvs_size + value_size;
+		}
+		overflow = true;
+		return kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
 	}
 	size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overflow_count)const{
 		ass(item >= 0 && item < page->item_count, "item_size item too large");
@@ -184,8 +202,11 @@ namespace mustela {
 		uint64_t valuesize;
 		auto valuesizesize = read_u64_sqlite4(valuesize, raw_page + item_offset + keysizesize + keysize);
 		size_t kvs_size = sizeof(PageOffset) + keysizesize + keysize + valuesizesize;
-		if( kvs_size + valuesize <= capacity() )
-			return overflow_page = 0, overflow_count = 0, kvs_size + valuesize;
+		if( kvs_size + valuesize <= capacity() ){
+			overflow_page = 0;
+			overflow_count = 0;
+			return kvs_size + valuesize;
+		}
 		unpack_uint_be(raw_page + item_offset + keysizesize + keysize + valuesizesize, NODE_PID_SIZE, overflow_page);
 		overflow_count = (valuesize + page_size - 1)/page_size;
 		return kvs_size + NODE_PID_SIZE;

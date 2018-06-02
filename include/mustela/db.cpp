@@ -22,7 +22,11 @@ static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint
 DB::FD::~FD(){
 	close(fd); fd = -1;
 }
-DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(MIN_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+std::string DB::lib_version(){
+	return "0.01";
+}
+
+DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(GOOD_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
 	if( fd.fd == -1)
 		throw Exception("file open failed");
 	file_size = lseek(fd.fd, 0, SEEK_END);

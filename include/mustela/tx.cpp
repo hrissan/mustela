@@ -62,8 +62,6 @@ Pid TX::get_free_page(Pid contigous_count){
 		pa = meta_page.page_count;
 		meta_page.page_count += contigous_count;
 	}
-	if( 3731 >= pa && 3731 < pa + contigous_count )
-		pa = pa;
 	DataPage * new_pa = my_db.writable_page(pa, contigous_count);
 	new_pa->pid = pa;
 	new_pa->tid = meta_page.tid;

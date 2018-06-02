@@ -7,6 +7,9 @@
 #include <random>
 #include "mustela.hpp"
 #include "testing.hpp"
+extern "C" {
+#include "blake2b.h"
+}
 
 struct Mirror {
 	std::string value;
@@ -198,30 +201,33 @@ int main(int argc, char * argv[]){
 		return 0;
 	}
 	
-	mustela::FreeList::test();
-	mustela::test_data_pages();
+//	mustela::FreeList::test();
+//	mustela::test_data_pages();
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);
-		txn.check_database([](int progress){
-			std::cout << "Checking... " << progress << "%" << std::endl;
-		});
 		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
 		auto ab = txn.get_bucket_names();
-		txn.get_bucket(mustela::Val("zhu"));
+		mustela::Bucket zhu_bucket = txn.get_bucket(mustela::Val("zhu"));
+		uint8_t keybuf[32] = {};
+		for(unsigned i = 0; i != 1000000; ++i){
+        	auto ctx = blake2b_ctx{};
+        	auto ret = blake2b_init(&ctx, 32, nullptr, 0);
+        	blake2b_update(&ctx, &i, sizeof(i));
+        	blake2b_final(&ctx, &keybuf);
+			zhu_bucket.put(mustela::Val(keybuf,32), mustela::Val(keybuf, 32), false);
+		}
 		ab = txn.get_bucket_names();
 		mustela::Bucket large_bucket = txn.get_bucket(mustela::Val("large"));
 		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0xFF)), mustela::Val("uhu"), false);
 		ab = txn.get_bucket_names();
-		txn.check_database([](int progress){
-			std::cout << "Checking... " << progress << "%" << std::endl;
-		});
 		txn.commit();
 		txn.check_database([](int progress){
 			std::cout << "Checking... " << progress << "%" << std::endl;
 		});
+		return 0;
 	}
 	interactive_test();
 	/*    txn.put(mustela::Val("A"), mustela::Val("AVAL"), true);
