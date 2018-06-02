@@ -67,12 +67,12 @@
       </BuildableProductRunnable>
       <CommandLineArguments>
          <CommandLineArgument
-            argument = "zlo zlo zlo"
+            argument = "--benchmark benchmark.db"
             isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "--test test.db --scenario ../../tests/case2.txt"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
       </CommandLineArguments>
       <AdditionalOptions>

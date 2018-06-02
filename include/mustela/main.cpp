@@ -190,14 +190,54 @@ void interactive_test(){
 	}
 }
 
+void run_benchmark(const std::string & db_path){
+	mustela::DB::remove_db(db_path);
+	mustela::DB db(db_path);
+	const int TEST_COUNT = 1000000;
+
+	auto idea_start  = std::chrono::high_resolution_clock::now();
+	mustela::TX txn(db);
+	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	uint8_t keybuf[32] = {};
+	for(unsigned i = 0; i != TEST_COUNT; ++i){
+		auto ctx = blake2b_ctx{};
+		blake2b_init(&ctx, 32, nullptr, 0);
+		blake2b_update(&ctx, &i, sizeof(i));
+		blake2b_final(&ctx, &keybuf);
+		main_bucket.put(mustela::Val(keybuf,32), mustela::Val(keybuf, 32), false);
+	}
+	txn.commit();
+	auto idea_ms =
+	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+	std::cout << "Random insert of " << TEST_COUNT << " hashes, seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	txn.check_database([](int progress){
+		std::cout << "Checking... " << progress << "%" << std::endl;
+	});
+	std::cout << "DB passed all validity checks" << std::endl;
+}
+
 int main(int argc, char * argv[]){
-	if (argc >= 3 && std::string(argv[1]) == "--test") {
-	    if (argc == 5 && std::string(argv[3]) == "--scenario") {
-	    	auto f = std::ifstream(static_cast<char const*>(argv[4]));
-			run_test_driver(argv[2], f);
-	    } else {
-			run_test_driver(argv[2], std::cin);
-	    }
+	std::string test;
+	std::string benchmark;
+	std::string scenario;
+	for(int i = 1; i < argc - 1; ++i){
+		if(std::string(argv[i]) == "--test")
+			test = argv[i+1];
+		if(std::string(argv[i]) == "--scenario")
+			scenario = argv[i+1];
+		if(std::string(argv[i]) == "--benchmark")
+			benchmark = argv[i+1];
+	}
+	if(!benchmark.empty()){
+		run_benchmark(benchmark);
+		return 0;
+	}
+	if(!test.empty()){
+		if(!scenario.empty()){
+	    	auto f = std::ifstream(scenario);
+			run_test_driver(test, f);
+		}else
+			run_test_driver(test, std::cin);
 		return 0;
 	}
 	
@@ -209,14 +249,6 @@ int main(int argc, char * argv[]){
 		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
 		auto ab = txn.get_bucket_names();
 		mustela::Bucket zhu_bucket = txn.get_bucket(mustela::Val("zhu"));
-		uint8_t keybuf[32] = {};
-		for(unsigned i = 0; i != 1000000; ++i){
-        	auto ctx = blake2b_ctx{};
-        	auto ret = blake2b_init(&ctx, 32, nullptr, 0);
-        	blake2b_update(&ctx, &i, sizeof(i));
-        	blake2b_final(&ctx, &keybuf);
-			zhu_bucket.put(mustela::Val(keybuf,32), mustela::Val(keybuf, 32), false);
-		}
 		ab = txn.get_bucket_names();
 		mustela::Bucket large_bucket = txn.get_bucket(mustela::Val("large"));
 		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
@@ -227,7 +259,7 @@ int main(int argc, char * argv[]){
 		txn.check_database([](int progress){
 			std::cout << "Checking... " << progress << "%" << std::endl;
 		});
-		return 0;
+//		return 0;
 	}
 	interactive_test();
 	/*    txn.put(mustela::Val("A"), mustela::Val("AVAL"), true);

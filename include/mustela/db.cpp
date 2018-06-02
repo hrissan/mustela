@@ -25,6 +25,8 @@ DB::FD::~FD(){
 std::string DB::lib_version(){
 	return "0.01";
 }
+// TODO - db option META_SYNC
+// TODO - db option minimal c_mapping size
 
 DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(GOOD_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
 	if( fd.fd == -1)
@@ -40,35 +42,168 @@ DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(),
 		throw Exception("File size less than 1 meta page - corrupted by truncation");
 	grow_c_mappings();
 	page_size = readable_meta_page(0)->page_size;
-	Pid newest_index = 0, overwrite_index = 0;
+	const MetaPage * newest_meta = nullptr;
+	Pid oldest_index = 0;
 	Tid earliest_tid = 0;
-	if(page_size >= MIN_PAGE_SIZE && page_size <= MAX_PAGE_SIZE && (page_size & (page_size - 1)) == 0 &&
-		file_size >= META_PAGES_COUNT * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid)){
-		print_db();
-		return;
+	if(page_size < MIN_PAGE_SIZE || page_size > MAX_PAGE_SIZE || (page_size & (page_size - 1)) != 0 ||
+		!(newest_meta = get_newest_meta_page(&oldest_index, &earliest_tid, false))){
+		// If meta page 0 page_size is corrupted, will have to try all page sizes
+		for(page_size = MIN_PAGE_SIZE; page_size <= MAX_PAGE_SIZE; page_size *= 2)
+			if( (newest_meta = get_newest_meta_page(&oldest_index, &earliest_tid, false)) )
+				break;
+		if(page_size > MAX_PAGE_SIZE)
+			throw Exception("Failed to find valid meta page of any supported page size");
 	}
-	for(page_size = MIN_PAGE_SIZE; page_size <= MAX_PAGE_SIZE; page_size *= 2)
-		if( file_size >= META_PAGES_COUNT * page_size && get_meta_indices(&newest_index, &overwrite_index, &earliest_tid) ){
-			print_db();
-			return;
-		}
-	throw Exception("Failed to find valid meta page of any supported page size");
+	print_db();
+	if(newest_meta->version != OUR_VERSION)
+		throw Exception("Incompatible database version");
+	if(newest_meta->pid_size != NODE_PID_SIZE)
+		throw Exception("Incompatible pid size");
+	if( !get_newest_meta_page(&oldest_index, &earliest_tid, true))
+		throw Exception("Database corrupted (possibly truncated or meta pages are mismatched)");
 }
 DB::~DB(){
 	for(auto && ma : c_mappings)
 		ass(ma.ref_count == 0, "Some TX still exist while in DB::~DB");
 }
-void DB::print_db(){
-	std::cerr << "-+-- DB: page_size=" << page_size << " phys. page_size=" << physical_page_size << " file_size=" << file_size << std::endl;
-	for(int i = 0; i != META_PAGES_COUNT; ++i){
+const MetaPage * DB::readable_meta_page(Pid index)const {
+	ass(!c_mappings.empty() && (index + 1)*page_size <= c_mappings.at(0).end_addr, "writable_page out of range");
+	return (const MetaPage * )(c_mappings.at(0).addr + page_size * index);
+}
+MetaPage * DB::writable_meta_page(Pid index) {
+	ass(!wr_mappings.empty() && (index + 1)*page_size <= wr_mappings.at(0).end_addr, "writable_page out of range");
+	return (MetaPage * )(wr_mappings.at(0).addr + page_size * index);
+}
+bool DB::is_valid_meta(Pid index, const MetaPage * mp)const{
+	if((index + 1) * page_size > file_size )
+		return false;
+	if( mp->pid != index || mp->magic != META_MAGIC)
+		return false; // throw Exception("file is either not mustela DB or corrupted - wrong meta page");
+	if( mp->pid_size < 4 || mp->pid_size > 8 || mp->page_size != page_size || mp->page_count < 4 )
+		return false;
+	if( mp->crc32 != crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t)))
+		return false;
+	return true;
+}
+bool DB::is_valid_meta_strict(const MetaPage * mp)const{
+	if( mp->meta_bucket.root_page >= mp->page_count || mp->page_count * page_size > file_size )
+		return false;
+	if( mp->version != OUR_VERSION || mp->pid_size != NODE_PID_SIZE )
+		return false;
+	return true;
+}
+
+const MetaPage * DB::get_newest_meta_page(Pid * overwrite_index, Tid * earliest_tid, bool strict)const{
+	const MetaPage * newest_mp = nullptr;
+	const MetaPage * corrupted_mp = nullptr;
+	const MetaPage * oldest_mp = nullptr;
+	for(Pid i = 0; i != META_PAGES_COUNT; ++i){
 		const MetaPage * mp = readable_meta_page(i);
-		std::cerr << " +-- meta page " << i << ": ";
-		if( !is_valid_meta(mp) ){
-			std::cerr << "CORRUPTED" << std::endl;;
+		if( !is_valid_meta(i, mp) || (strict && !is_valid_meta_strict(mp)) ){
+			corrupted_mp = mp;
+			*overwrite_index = i;
 			continue;
 		}
-		std::cerr << "tid=" << mp->tid << " page_count=" << mp->page_count << std::endl;;
-		std::cerr << "  +- meta bucket: height=" << mp->meta_bucket.height << " items=" << mp->meta_bucket.count << " leafs=" << mp->meta_bucket.leaf_page_count << " nodes=" << mp->meta_bucket.node_page_count << " overflows=" << mp->meta_bucket.overflow_page_count << " root_page=" << mp->meta_bucket.root_page << std::endl;
+		if(!newest_mp || mp->tid > newest_mp->tid || (mp->tid == newest_mp->tid && mp->pid > newest_mp->pid)){
+			newest_mp = mp;
+		}
+		if(!oldest_mp || mp->tid < oldest_mp->tid || (mp->tid == oldest_mp->tid && mp->pid < oldest_mp->pid)){
+			oldest_mp = mp;
+			*earliest_tid = mp->tid;
+			if(!corrupted_mp)
+				*overwrite_index = i;
+		}
+	}
+	return newest_mp;
+}
+void DB::start_transaction(TX * tx){
+	ass(!wr_transaction || tx->read_only, "We can have only one write transaction");
+	ass(!c_mappings.empty(), "c_mappings should not be empty after db is open");
+	if(!tx->read_only){
+		grow_wr_mappings(false);
+		wr_transaction = tx;
+	}
+	tx->c_file_ptr = c_mappings.at(0).addr;
+	tx->wr_file_ptr = wr_mappings.empty() ? nullptr : wr_mappings.at(0).addr;
+	tx->file_page_count = file_size / page_size;
+	tx->used_mapping_size = c_mappings.at(0).end_addr;
+	c_mappings.at(0).ref_count += 1;
+	Pid oldest_meta_index = 0;
+	const MetaPage * newest_meta_page = get_newest_meta_page(&oldest_meta_index, &tx->oldest_reader_tid, true);
+	ass(newest_meta_page, "No meta found in start_transaction - hot corruption of DB");
+	tx->meta_page = *newest_meta_page;
+	tx->meta_page.pid = 0; // So we do not forget to set it before write
+	tx->meta_page.tid += 1;
+	ass(tx->meta_page.tid > tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
+}
+void DB::grow_transaction(TX * tx, Pid new_file_page_count){
+	ass(wr_transaction && tx == wr_transaction && !tx->read_only, "We can only grow write transaction");
+	ass(!c_mappings.empty() && !wr_mappings.empty(), "Mappings should not be empty in grow_transaction");
+	grow_wr_mappings(new_file_page_count);
+	tx->c_file_ptr = c_mappings.at(0).addr;
+	tx->wr_file_ptr = wr_mappings.at(0).addr;
+	tx->file_page_count = file_size / page_size;
+}
+void DB::commit_transaction(TX * tx, MetaPage meta_page){
+	ass(tx == wr_transaction, "We can only commit write transaction if it started");
+	msync(wr_mappings.at(0).addr, wr_mappings.at(0).end_addr, MS_SYNC);
+
+	Pid oldest_meta_index = 0;
+	const MetaPage * newest_meta_page = get_newest_meta_page(&oldest_meta_index, &tx->oldest_reader_tid, true);
+	ass(newest_meta_page, "No meta found in start_transaction - hot corruption of DB");
+	meta_page.pid = oldest_meta_index; // We usually save to different slot
+	meta_page.crc32 = crc32c(0, &meta_page, sizeof(MetaPage) - sizeof(uint32_t));
+	MetaPage * wr_meta = writable_meta_page(oldest_meta_index);
+	*wr_meta = meta_page;
+	// TODO - if NO_META_SYNC return
+	// We can only msync on phys page limits, find them
+	size_t low = oldest_meta_index * page_size;
+	size_t high = (oldest_meta_index + 1) * page_size;
+	low = ((low / physical_page_size)) * physical_page_size;
+	high = ((high + physical_page_size - 1) / physical_page_size) *	physical_page_size;
+	msync(wr_mappings.at(0).addr + low, high - low, MS_SYNC);
+
+	tx->meta_page.tid += 1; // We continue using tx meta_page
+	ass(tx->meta_page.tid > tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
+}
+void DB::finish_transaction(TX * tx){
+	ass(tx->read_only || tx == wr_transaction, "We can only finish write transaction if it started");
+	for(auto && ma : c_mappings)
+		if( (tx->read_only && ma.end_addr == tx->used_mapping_size) ||
+		 	(!tx->read_only && ma.end_addr >= tx->used_mapping_size)) {
+			ma.ref_count -= 1;
+		}
+	tx->c_file_ptr = nullptr;
+	tx->wr_file_ptr = nullptr;
+	tx->file_page_count = 0;
+	tx->used_mapping_size = 0;
+	while(c_mappings.size() > 1 && c_mappings.back().ref_count == 0) {
+		munmap(c_mappings.back().addr, c_mappings.back().end_addr);
+		c_mappings.pop_back();
+	}
+	if(tx->read_only)
+		return;
+	wr_transaction = nullptr;
+	while(wr_mappings.size() > 1) {
+//		msync(wr_mappings.back().addr, wr_mappings.back().end_addr, MS_SYNC);
+		munmap(wr_mappings.back().addr, wr_mappings.back().end_addr);
+		wr_mappings.pop_back();
+	}
+}
+
+void DB::print_db(){
+	std::cerr << "DB: page_size=" << page_size << " phys. page_size=" << physical_page_size << " file_size=" << file_size << std::endl;
+	for(Pid i = 0; i != META_PAGES_COUNT; ++i){
+		std::cerr << "  meta page " << i << ": ";
+		if((i + 1) * page_size > file_size ){
+			std::cerr << "(partially?) BEYOND END OF FILE" << std::endl;;
+			continue;
+		}
+		const MetaPage * mp = readable_meta_page(i);
+		bool crc_ok = mp->crc32 == crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t));
+		std::cerr << (is_valid_meta(i, mp) ? "GOOD" : crc_ok ? "BAD" : "WRONG CRC");
+		std::cerr << " pid=" << mp->pid << " tid=" << mp->tid << " page_count=" << mp->page_count << " ver=" << mp->version << " pid_size=" << mp->pid_size << std::endl;;
+		std::cerr << "    meta bucket: height=" << mp->meta_bucket.height << " items=" << mp->meta_bucket.count << " leafs=" << mp->meta_bucket.leaf_page_count << " nodes=" << mp->meta_bucket.node_page_count << " overflows=" << mp->meta_bucket.overflow_page_count << " root_page=" << mp->meta_bucket.root_page << std::endl;
 	}
 }
 size_t DB::max_key_size()const{
@@ -80,40 +215,6 @@ size_t DB::max_bucket_name_size()const{
 
 void DB::remove_db(const std::string & file_path){
     std::remove(file_path.c_str());
-}
-
-bool DB::is_valid_meta(const MetaPage * mp)const{
-	if( mp->magic != META_MAGIC || mp->version != OUR_VERSION)
-		return false; // throw Exception("file is either not mustela DB or corrupted - wrong meta page");
-	if( mp->pid_size > 8 || mp->page_size != page_size || mp->page_count < 4 || mp->meta_bucket.root_page >= mp->page_count || mp->page_count * page_size > file_size )
-		return false;
-	if( mp->crc32 != crc32c(0, mp, sizeof(MetaPage) - sizeof(uint32_t)))
-		return false;
-	return true;
-}
-
-bool DB::get_meta_indices(Pid * newest_index, Pid * overwrite_index, Tid * earliest_tid)const{
-	Tid newest_tid = 0;
-	*earliest_tid = std::numeric_limits<Tid>::max();
-	bool invalid_found = false;
-	for(int i = 0; i != META_PAGES_COUNT; ++i){
-		const MetaPage * mp = readable_meta_page(i);
-		if( !is_valid_meta(mp) ){
-			invalid_found = true;
-			*overwrite_index = i;
-			continue;
-		}
-		if(mp->tid > newest_tid){
-			newest_tid = mp->tid;
-			*newest_index = i;
-		}
-		if(mp->tid < *earliest_tid){
-			*earliest_tid = mp->tid;
-			if(!invalid_found)
-				*overwrite_index = i;
-		}
-	}
-	return *earliest_tid != std::numeric_limits<Tid>::max();
 }
 
 void DB::create_db(){
@@ -150,74 +251,32 @@ void DB::create_db(){
 void DB::grow_c_mappings() {
 	if( !c_mappings.empty() && c_mappings.back().end_addr >= file_size )
 		return;
-	uint64_t fs = read_only ? file_size : (file_size + 1024) * 3 / 2; // *1024*1024
+	uint64_t fs = read_only ? file_size : (file_size + 1024*1024) * 128 / 64; // x1.5
 	fs = std::max<uint64_t>(fs, META_PAGES_COUNT * MAX_PAGE_SIZE); // for initial meta discovery in open_db
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 	void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd.fd, 0);
 	if (cm == MAP_FAILED)
 		throw Exception("mmap PROT_READ failed");
-	c_mappings.push_back(Mapping(new_fs, (char *)cm));
+	c_mappings.insert(c_mappings.begin(), Mapping(new_fs, (char *)cm, wr_transaction ? 1 : 0));
 }
-const DataPage * DB::readable_page(Pid page, Pid count)const{ // TODO - optimize by moving back() into variables inside DB class
-	ass( !c_mappings.empty() && (page + count)*page_size <= c_mappings.back().end_addr, "readable_page out of range");
-	return (const DataPage * )(c_mappings.back().addr + page_size * page);
-}
-void DB::trim_old_c_mappings(size_t end_addr){
-	for(auto && ma : c_mappings)
-		if( ma.end_addr == end_addr ) {
-			ma.ref_count -= 1;
-			break;
-		}
-	while( c_mappings.size() > 1 && c_mappings.front().ref_count == 0) {
-		munmap(c_mappings.front().addr, c_mappings.front().end_addr);
-		c_mappings.erase(c_mappings.begin());
-	}
-}
-void DB::trim_old_mappings(){
-	if( mappings.empty() )
-		return;
-	for(size_t m = 0; m != mappings.size() - 1; ++m){
-		munmap(mappings[m].addr, mappings[m].end_addr);
-	}
-	mappings.erase(mappings.begin(), mappings.end() - 1);
-}
-
-// Mappings cannot be in chunks, because count pages could fall onto the edge between chunkcs
-DataPage * DB::writable_page(Pid page, Pid count){
-	if( mappings.empty() ){
-		uint64_t new_fs = grow_to_granularity(file_size, page_size, physical_page_size, additional_granularity);
-		if( new_fs > file_size ){
-			if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
-				throw Exception("file seek failed in writable_page");
-			if( write(fd.fd, "", 1) != 1 )
-				throw Exception("file write failed in writable_page");
-			file_size = lseek(fd.fd, 0, SEEK_END);
-			if( new_fs != file_size )
-				throw Exception("file failed to grow in writable_page");
-		}
-		void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd.fd, 0);
-		if (wm == MAP_FAILED)
-			throw Exception("mmap PROT_READ | PROT_WRITE failed");
-		mappings.push_back(Mapping(new_fs, (char *)wm));
-	}
-	ass( !mappings.empty() && (page + count) * page_size <= mappings.back().end_addr, "writable_page out of range");
-	return (DataPage *)(mappings.back().addr + page * page_size);
-}
-void DB::grow_file(Pid new_page_count){
-	if( new_page_count * page_size <= file_size )
-		return;
-	uint64_t fs = (file_size + 32 * page_size) * 5 / 4; // * 32 grow faster while file size is small
+void DB::grow_wr_mappings(Pid new_file_page_count){
+	uint64_t fs = new_file_page_count == 0 ? file_size : (std::max<uint64_t>(new_file_page_count * page_size, file_size) + 1024*1024) * 77 / 64; // x1.2
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
-	if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
-		throw Exception("file seek failed in grow_file");
-	if( write(fd.fd, "", 1) != 1 )
-		throw Exception("file write failed in grow_file");
-	file_size = lseek(fd.fd, 0, SEEK_END);
-	if( new_fs != file_size )
-		throw Exception("file failed to grow in grow_file");
+	if(new_fs != file_size){
+		if( ftruncate(fd.fd, new_fs) == -1)
+			throw Exception("failed to grow db file using ftruncate");
+//		if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
+//			throw Exception("file seek failed in grow_file");
+//		if( write(fd.fd, "", 1) != 1 )
+//			throw Exception("file write failed in grow_file");
+		file_size = lseek(fd.fd, 0, SEEK_END);
+		if( new_fs != file_size )
+			throw Exception("file failed to grow in grow_file");
+	}
 	void * wm = mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd.fd, 0);
 	if (wm == MAP_FAILED)
 		throw Exception("mmap PROT_READ | PROT_WRITE failed");
-	mappings.push_back(Mapping(new_fs, (char *)wm));
+	wr_mappings.insert(wr_mappings.begin(), Mapping(new_fs, (char *)wm, wr_transaction ? 1 : 0));
 	grow_c_mappings();
 }
+

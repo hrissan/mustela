@@ -11,46 +11,44 @@ static const bool BULK_LOADING = true;
 TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), read_only(read_only) {
 	if( !read_only && my_db.read_only)
 		throw Exception("Read-write transaction impossible on read-only DB");
-	start_transaction();
-}
-void TX::start_transaction(){
-	c_mappings_end_addr = my_db.c_mappings.back().end_addr;
-	my_db.c_mappings.back().ref_count += 1;
-	
-	Pid newest_page_index = 0;
-	ass(my_db.get_meta_indices(&newest_page_index, &meta_page_index, &oldest_reader_tid), "No meta found in start_transaction - hot corruption of DB");
-	meta_page = *(my_db.readable_meta_page(newest_page_index));
-	meta_page.tid += 1;
-	meta_page_dirty = false;
-	ass(meta_page.tid > oldest_reader_tid, "We should not be able to treat our own pages as free");
+	my_db.start_transaction(this);
 }
 
 TX::~TX(){
-	// rollback is nop
-	ass( my_cursors.empty(), "All cursors should be destroyed before transaction they are in"); // potential throw in destructor ahaha
-	my_db.trim_old_c_mappings(c_mappings_end_addr);
+	my_db.finish_transaction(this);
+	unlink_buckets_and_cursors();
 }
+const DataPage * TX::readable_page(Pid page, Pid count){
+	ass(page + count <= file_page_count, "Constant mapping should always cover the whole file");
+	return (const DataPage *)(c_file_ptr + page * page_size);
+}
+
+DataPage * TX::writable_page(Pid page, Pid count){
+	ass(page + count <= file_page_count, "Mapping should always cover the whole file");
+	return (DataPage *)(wr_file_ptr + page * page_size);
+}
+
 CLeafPtr TX::readable_leaf(Pid pa){
-	return CLeafPtr(page_size, (const LeafPage *)my_db.readable_page(pa, 1));
+	return CLeafPtr(page_size, (const LeafPage *)readable_page(pa, 1));
 }
 CNodePtr TX::readable_node(Pid pa){
-	return CNodePtr(page_size, (const NodePage *)my_db.readable_page(pa, 1));
+	return CNodePtr(page_size, (const NodePage *)readable_page(pa, 1));
 }
 LeafPtr TX::writable_leaf(Pid pa){
-	LeafPage * result = (LeafPage *)my_db.writable_page(pa, 1);
+	LeafPage * result = (LeafPage *)writable_page(pa, 1);
 	ass(result->tid == meta_page.tid, "writable_leaf is not from our transaction");
 	return LeafPtr(page_size, result);
 }
 NodePtr TX::writable_node(Pid pa){
-	NodePage * result = (NodePage *)my_db.writable_page(pa, 1);
+	NodePage * result = (NodePage *)writable_page(pa, 1);
 	ass(result->tid == meta_page.tid, "writable_node is not from our transaction");
 	return NodePtr(page_size, result);
 }
 const char * TX::readable_overflow(Pid pa, Pid count){
-	return (const char *)my_db.readable_page(pa, count);
+	return (const char *)readable_page(pa, count);
 }
 char * TX::writable_overflow(Pid pa, Pid count){
-	return (char *)my_db.writable_page(pa, count);
+	return (char *)writable_page(pa, count);
 }
 void TX::mark_free_in_future_page(Pid page, Pid contigous_count){
 	free_list.mark_free_in_future_page(page, contigous_count);
@@ -58,20 +56,22 @@ void TX::mark_free_in_future_page(Pid page, Pid contigous_count){
 Pid TX::get_free_page(Pid contigous_count){
 	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid);
 	if( !pa ){
-		my_db.grow_file(meta_page.page_count + contigous_count);
+		if(meta_page.page_count + contigous_count > file_page_count)
+			my_db.grow_transaction(this, meta_page.page_count + contigous_count);
+		ass(meta_page.page_count + contigous_count <= file_page_count, "grow_transaction failed to increase file size");
 		pa = meta_page.page_count;
 		meta_page.page_count += contigous_count;
 	}
-	DataPage * new_pa = my_db.writable_page(pa, contigous_count);
+	DataPage * new_pa = writable_page(pa, contigous_count);
 	new_pa->pid = pa;
 	new_pa->tid = meta_page.tid;
 	return pa;
 }
 DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	Pid old_page = cur.path.at(height).first;
-	const DataPage * dap = my_db.readable_page(old_page, 1);
+	const DataPage * dap = readable_page(old_page, 1);
 	if( dap->tid == meta_page.tid ){ // Reached already writable page
-		DataPage * wr_dap = my_db.writable_page(old_page, 1);
+		DataPage * wr_dap = writable_page(old_page, 1);
 		return wr_dap;
 	}
 	mark_free_in_future_page(old_page, 1);
@@ -79,7 +79,7 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	for(auto && c : my_cursors)
 		if( c->bucket_desc == cur.bucket_desc && c->path.at(height).first == old_page )
 			c->path.at(height).first = new_page;
-	DataPage * wr_dap = my_db.writable_page(new_page, 1);
+	DataPage * wr_dap = writable_page(new_page, 1);
 	memcpy(wr_dap, dap, page_size);
 	wr_dap->pid = new_page;
 	wr_dap->tid = meta_page.tid;
@@ -517,37 +517,24 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 	clear_tmp_copies();
 }
 void TX::commit(){
+	if(read_only)
+		return;
 	if( meta_page_dirty ) {
-		{
-			Bucket meta_bucket(this, &meta_page.meta_bucket);
-			for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
-				CLeafPtr dap = readable_leaf(tit.second.root_page);
-				if (dap.page->tid != meta_page.tid) // Table not dirty
-					continue;
-				std::string key = bucket_prefix + tit.first;
-				Val value(reinterpret_cast<const char *>(&tit.second), sizeof(BucketDesc));
-				ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
-			}
+		Bucket meta_bucket(this, &meta_page.meta_bucket);
+		for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
+			CLeafPtr dap = readable_leaf(tit.second.root_page);
+			if (dap.page->tid != meta_page.tid) // Table not dirty
+				continue;
+			std::string key = bucket_prefix + tit.first;
+			Val value(reinterpret_cast<const char *>(&tit.second), sizeof(BucketDesc));
+			ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
 		}
 		free_list.commit_free_pages(this, meta_page.tid);
-		meta_page_dirty = false;
-		meta_page.crc32 = crc32c(0, &meta_page, sizeof(MetaPage) - sizeof(uint32_t));
-		// First sync all our possible writes. We did not modified meta pages, so we can safely msync them also
-		my_db.trim_old_mappings(); // We do not need writable pages from previous mappings, so we will unmap (if system decides to msync them, no problem. We want that anyway)
-		for (size_t i = 0; i != my_db.mappings.size(); ++i) {
-			Mapping &ma = my_db.mappings[i];
-			msync(ma.addr, ma.end_addr, MS_SYNC);
-		}
-		// Now modify and sync our meta page
-		MetaPage *wr_meta = my_db.writable_meta_page(meta_page_index);
-		*wr_meta = meta_page;
-		size_t low = meta_page_index * page_size;
-		size_t high = (meta_page_index + 1) * page_size;
-		low = ((low / my_db.physical_page_size)) * my_db.physical_page_size; // find lowest physical page
-		high = ((high + my_db.physical_page_size - 1) / my_db.physical_page_size) *
-			my_db.physical_page_size; // find highest physical page
-		msync(my_db.mappings.at(0).addr + low, high - low, MS_SYNC);
+		my_db.commit_transaction(this, meta_page);
 	}
+	meta_page_dirty = false;
+}
+void TX::unlink_buckets_and_cursors(){
 	// Now invalidate all cursors and buckets
 	for(auto cit = my_cursors.begin(); cit != my_cursors.end(); cit = my_cursors.erase(cit)){
 		(*cit)->my_txn = nullptr;
@@ -557,10 +544,17 @@ void TX::commit(){
 		(*cit)->my_txn = nullptr;
 		(*cit)->bucket_desc = nullptr;
 	}
-	// Now start new transaction
-	my_db.trim_old_c_mappings(c_mappings_end_addr);
-	start_transaction();
 }
+
+void TX::rollback(){
+	if(read_only)
+		return;
+	meta_page_dirty = false;
+	my_db.finish_transaction(this);
+	unlink_buckets_and_cursors();
+	my_db.start_transaction(this);
+}
+
 //{'branch_pages': 1040L,
 //    'depth': 4L,
 //    'entries': 3761848L,

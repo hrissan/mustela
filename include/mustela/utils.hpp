@@ -140,7 +140,7 @@ namespace mustela {
 	typedef uint16_t PageOffset;
 	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
 
-	constexpr uint32_t OUR_VERSION = 1;
+	constexpr uint32_t OUR_VERSION = 2;
 	
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
 //	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;

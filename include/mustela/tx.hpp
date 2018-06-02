@@ -16,13 +16,19 @@ namespace mustela {
 		friend class Cursor;
 		friend class FreeList;
 		friend class Bucket;
+		friend class DB;
 
 		DB & my_db;
-		size_t c_mappings_end_addr = 0; // We keep c_mappings while TX is using it
+		const char * c_file_ptr = nullptr;
+		char * wr_file_ptr = nullptr;
+		Pid file_page_count = 0;
+		size_t used_mapping_size = 0; // r-tx uses 1 mapping, w-tx uses all mappings larger than this
+		Tid oldest_reader_tid = 0;
+		MetaPage meta_page;
+		bool meta_page_dirty = false;
+
 		std::set<Cursor *> my_cursors;
 		std::set<Bucket *> my_buckets;
-		Pid meta_page_index = 0;
-		Tid oldest_reader_tid = 0;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
 		NodePtr push_tmp_copy(const NodePage * other){ // TODO - get rid
 			tmp_pages.push_back(std::vector<char>(page_size, 0));
@@ -37,10 +43,9 @@ namespace mustela {
 		void clear_tmp_copies(){
 			tmp_pages.clear();
 		}
-		MetaPage meta_page;
-		bool meta_page_dirty = false;
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists);
+		
 		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
@@ -54,23 +59,26 @@ namespace mustela {
 		void new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2 = ValPid());
 		char * new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow);
 
+		const DataPage * readable_page(Pid page, Pid count);
+		DataPage * writable_page(Pid page, Pid count);
 		CLeafPtr readable_leaf(Pid pa);
-		CNodePtr readable_node(Pid pa);
-		const char * readable_overflow(Pid pa, Pid count);
 		LeafPtr writable_leaf(Pid pa);
+		CNodePtr readable_node(Pid pa);
 		NodePtr writable_node(Pid pa);
+		const char * readable_overflow(Pid pa, Pid count);
 		char * writable_overflow(Pid pa, Pid count);
-		
-		void start_transaction();
 
 		std::string print_db(const BucketDesc * bucket_desc);
 		std::string print_db(Pid pa, size_t height, bool parse_meta);
 
 	 	void check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages);
 	 	void check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_bucket_desc, Pid pa, size_t height, Val left_limit, Val right_limit, MergablePageCache * pages);
+
+		void unlink_buckets_and_cursors();
+
+		const bool read_only;
 	public:
 		const size_t page_size; // copy from my_db
-		const bool read_only;
 		
 		static const char bucket_prefix = 'b';
 		static const char freelist_prefix = 'f';
@@ -83,7 +91,11 @@ namespace mustela {
 		
 		void check_database(std::function<void(int percent)> on_progress);
 		
-		void commit(); // after commit, new transaction is started. in destructor we rollback last started transaction
+		// both rollback and commit of read-only transaction are nops
+		// commit of r/w transaction writes it to disk, everything remains valid
+		// rollback of r/w transaction invalidates buckets and cursors, restarts r/w transaction
+		void commit();
+		void rollback();
 
 		std::string print_meta_db();
 		void print_free_list(){ free_list.print_db(); }
