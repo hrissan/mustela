@@ -114,7 +114,7 @@ namespace {
 
             tx = nullptr;
             db = nullptr;
-            db = std::make_unique<mustela::DB>(db_path, false);
+            db = std::make_unique<mustela::DB>(db_path);
             tx = std::make_unique<mustela::TX>(*db, false);
         }
     };

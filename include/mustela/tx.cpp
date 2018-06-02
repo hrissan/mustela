@@ -9,7 +9,7 @@ static const bool BULK_LOADING = true;
 
 
 TX::TX(DB & my_db, bool read_only):my_db(my_db), page_size(my_db.page_size), read_only(read_only) {
-	if( !read_only && my_db.read_only)
+	if( !read_only && my_db.options.read_only)
 		throw Exception("Read-write transaction impossible on read-only DB");
 	my_db.start_transaction(this);
 }

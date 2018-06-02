@@ -22,19 +22,21 @@ static uint64_t grow_to_granularity(uint64_t value, uint64_t a, uint64_t b, uint
 DB::FD::~FD(){
 	close(fd); fd = -1;
 }
-std::string DB::lib_version(){
-	return "0.01";
-}
-// TODO - db option META_SYNC
-// TODO - db option minimal c_mapping size
 
-DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(MIN_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+std::string DB::lib_version(){
+	return "0.02";
+}
+
+DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str(), (options.read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), options(options), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+	if((options.new_db_page_size & (options.new_db_page_size - 1)) != 0)
+		throw Exception("new_db_page_size must be power of 2");
 	if( fd.fd == -1)
 		throw Exception("file open failed");
 	file_size = lseek(fd.fd, 0, SEEK_END);
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
 	if( file_size == 0 ){
+		page_size = options.new_db_page_size == 0 ? MIN_PAGE_SIZE : options.new_db_page_size;
 		create_db();
 		return;
 	}
@@ -155,16 +157,16 @@ void DB::commit_transaction(TX * tx, MetaPage meta_page){
 	meta_page.crc32 = crc32c(0, &meta_page, sizeof(MetaPage) - sizeof(uint32_t));
 	MetaPage * wr_meta = writable_meta_page(oldest_meta_index);
 	*wr_meta = meta_page;
-	// TODO - if NO_META_SYNC return
+	tx->meta_page.tid += 1; // We continue using tx meta_page
+	ass(tx->meta_page.tid > tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
+	if(!options.meta_sync)
+		return;
 	// We can only msync on phys page limits, find them
 	size_t low = oldest_meta_index * page_size;
 	size_t high = (oldest_meta_index + 1) * page_size;
 	low = ((low / physical_page_size)) * physical_page_size;
 	high = ((high + physical_page_size - 1) / physical_page_size) *	physical_page_size;
 	msync(wr_mappings.at(0).addr + low, high - low, MS_SYNC);
-
-	tx->meta_page.tid += 1; // We continue using tx meta_page
-	ass(tx->meta_page.tid > tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
 }
 void DB::finish_transaction(TX * tx){
 	ass(tx->read_only || tx == wr_transaction, "We can only finish write transaction if it started");
@@ -251,7 +253,9 @@ void DB::create_db(){
 void DB::grow_c_mappings() {
 	if( !c_mappings.empty() && c_mappings.back().end_addr >= file_size )
 		return;
-	uint64_t fs = read_only ? file_size : (file_size + 1024*1024) * 128 / 64; // x1.5
+	uint64_t fs = file_size;
+	if( !options.read_only )
+		fs = std::max<uint64_t>(fs, options.minimal_mapping_size) * 128 / 64; // x1.5
 	fs = std::max<uint64_t>(fs, META_PAGES_COUNT * MAX_PAGE_SIZE); // for initial meta discovery in open_db
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 	void * cm = mmap(0, new_fs, PROT_READ, MAP_SHARED, fd.fd, 0);
@@ -260,7 +264,9 @@ void DB::grow_c_mappings() {
 	c_mappings.insert(c_mappings.begin(), Mapping(new_fs, (char *)cm, wr_transaction ? 1 : 0));
 }
 void DB::grow_wr_mappings(Pid new_file_page_count){
-	uint64_t fs = new_file_page_count == 0 ? file_size : (std::max<uint64_t>(new_file_page_count * page_size, file_size) + 1024*1024) * 77 / 64; // x1.2
+	uint64_t fs = file_size;
+	if( new_file_page_count != 0 )
+	 	fs = std::max<uint64_t>(fs, std::max<uint64_t>(options.minimal_mapping_size, new_file_page_count * page_size)) * 77 / 64; // x1.2
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 	if(new_fs != file_size){
 		if( ftruncate(fd.fd, new_fs) == -1)

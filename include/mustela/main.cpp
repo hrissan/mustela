@@ -198,8 +198,10 @@ void interactive_test(){
 }
 
 void run_benchmark(const std::string & db_path){
+	mustela::DBOptions options;
+	options.new_db_page_size = 4096;
 	mustela::DB::remove_db(db_path);
-	mustela::DB db(db_path);
+	mustela::DB db(db_path, options);
 	const int TEST_COUNT = 1000000;
 
 	auto idea_start  = std::chrono::high_resolution_clock::now();
