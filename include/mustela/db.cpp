@@ -28,7 +28,7 @@ std::string DB::lib_version(){
 // TODO - db option META_SYNC
 // TODO - db option minimal c_mapping size
 
-DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(GOOD_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
+DB::DB(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR) | O_CREAT, (mode_t)0600)), read_only(read_only), page_size(MIN_PAGE_SIZE), physical_page_size(static_cast<decltype(physical_page_size)>(sysconf(_SC_PAGESIZE))){
 	if( fd.fd == -1)
 		throw Exception("file open failed");
 	file_size = lseek(fd.fd, 0, SEEK_END);

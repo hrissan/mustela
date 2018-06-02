@@ -68,7 +68,7 @@ Pid TX::get_free_page(Pid contigous_count){
 	return pa;
 }
 DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
-	Pid old_page = cur.path.at(height).first;
+	Pid old_page = cur.at(height).first;
 	const DataPage * dap = readable_page(old_page, 1);
 	if( dap->tid == meta_page.tid ){ // Reached already writable page
 		DataPage * wr_dap = writable_page(old_page, 1);
@@ -77,8 +77,8 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	mark_free_in_future_page(old_page, 1);
 	Pid new_page = get_free_page(1);
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
-		if( c->get_current()->bucket_desc == cur.bucket_desc && c->get_current()->path.at(height).first == old_page )
-			c->get_current()->path.at(height).first = new_page;
+		if( c->get_current()->bucket_desc == cur.bucket_desc && c->get_current()->at(height).first == old_page )
+			c->get_current()->at(height).first = new_page;
 	DataPage * wr_dap = writable_page(new_page, 1);
 	memcpy(wr_dap, dap, page_size);
 	wr_dap->pid = new_page;
@@ -88,7 +88,7 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 		return wr_dap;
 	}
 	NodePtr wr_parent(page_size, (NodePage *)make_pages_writable(cur, height + 1));
-	wr_parent.set_value(cur.path.at(height + 1).second, new_page);
+	wr_parent.set_value(cur.at(height + 1).second, new_page);
 	return wr_dap;
 }
 void TX::new_increase_height(Cursor & cur){
@@ -101,8 +101,10 @@ void TX::new_increase_height(Cursor & cur){
 	cur.bucket_desc->root_page = wr_root.page->pid;
 	cur.bucket_desc->height += 1;
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
-		if(c->get_current()->bucket_desc == cur.bucket_desc)
-			c->get_current()->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+		if(c->get_current()->bucket_desc == cur.bucket_desc){
+//			c->get_current()->push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+			c->get_current()->at(cur.bucket_desc->height) = std::make_pair(cur.bucket_desc->root_page, -1);
+		}
 }
 static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size1, size_t required_size2){
 	if(pos == insert_pos)
@@ -157,7 +159,7 @@ static void find_best_node_split(PageIndex & left_split, PageIndex & right_split
 	}
 }
 void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2){
-	auto path_el = cur.path.at(height);
+	auto path_el = cur.at(height);
 	NodePtr wr_dap = writable_node(path_el.first);
 	const size_t required_size1 = wr_dap.get_item_size(insert_kv1.key, insert_kv1.pid);
 	const size_t required_size2 = insert_kv2.key.data ? wr_dap.get_item_size(insert_kv2.key, insert_kv2.pid) : 0;
@@ -171,16 +173,16 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	ass(size_with_insert >= 3, "Cannot split node with <3 keys");
 	if(cur.bucket_desc->height == height)
 		new_increase_height(cur);
-	path_el = cur.path.at(height); // Could change in increase height
-	auto path_pa = cur.path.at(height + 1);
+	path_el = cur.at(height); // Could change in increase height
+	auto path_pa = cur.at(height + 1);
 	const PageIndex insert_index = path_el.second;
 	PageIndex left_split = 0, right_split = 0;
 	find_best_node_split(left_split, right_split, wr_dap, insert_index, required_size1, required_size2);
 	// We must leave at least 1 key to the left and to the right
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 		bool right_sibling = false; // No right sibling when inserting into root node
-		if( cur.path.size() > height + 1 ){
-			auto & path_pa = cur.path.at(height + 1);
+		if( cur.bucket_desc->height > height ){
+			auto & path_pa = cur.at(height + 1);
 			CNodePtr wr_parent = readable_node(path_pa.first);
 			right_sibling = path_pa.second + 1 < wr_parent.size();
 		}
@@ -200,7 +202,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	}
 	ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
 	wr_right.set_value(-1, split_kv.pid);
-	cur.path.at(height + 1).second = path_pa.second + 1; // original item
+	cur.at(height + 1).second = path_pa.second + 1; // original item
 	new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right.page->pid));
 	// split_kv will not be valid after code below
 	{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
@@ -226,7 +228,7 @@ static ValVal get_kv_with_insert(const LeafPtr & wr_dap, PageIndex pos, PageInde
 	return wr_dap.get_kv(pos, op);
 }
 char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow){
-	auto path_el = cur.path.at(0);
+	auto path_el = cur.at(0);
 	LeafPtr wr_dap = writable_leaf(path_el.first);
 	const size_t required_size = wr_dap.get_item_size(insert_key, insert_value_size, *overflow);
 	if( required_size <= wr_dap.free_capacity() ) {
@@ -234,8 +236,8 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	}
 	if(cur.bucket_desc->height == 0)
 		new_increase_height(cur);
-	path_el = cur.path.at(0); // Could change in increase height
-	auto path_pa = cur.path.at(1);
+	path_el = cur.at(0); // Could change in increase height
+	auto path_pa = cur.at(1);
 	size_t left_size = 0;
 	size_t right_size = 0;
 	const PageIndex size_with_insert = wr_dap.size() + 1;
@@ -262,8 +264,8 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	}
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 		bool right_sibling = false; // No right sibling when height == 0
-		if( cur.path.size() > 1 ){
-			auto & path_pa = cur.path.at(1);
+		if( cur.bucket_desc->height > 0 ){
+			auto & path_pa = cur.at(1);
 			CNodePtr wr_parent = readable_node(path_pa.first);
 			right_sibling = path_pa.second + 1 < wr_parent.size();
 		}
@@ -306,7 +308,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			else
 				wr_dap.append(get_kv_with_insert(my_copy, i, insert_index));
 	}
-	cur.path.at(1).second = path_pa.second + 1; // original item
+	cur.at(1).second = path_pa.second + 1; // original item
 	if(left_split + 1 == right_split){
 		new_insert2node(cur, 1, ValPid(wr_middle.get_key(0), wr_middle.page->pid), ValPid(wr_right.get_key(0), wr_right.page->pid));
 	}else{
@@ -327,11 +329,12 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		cur.bucket_desc->height -= 1;
 		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
 			if( c->get_current()->bucket_desc == cur.bucket_desc)
-				c->get_current()->path.pop_back();
+				c->get_current()->at(height) = std::make_pair(0, 0);
+//				c->get_current()->path.pop_back();
 		return;
 	}
-	auto path_el = cur.path.at(height);
-	auto path_pa = cur.path.at(height + 1);
+	auto path_el = cur.at(height);
+	auto path_pa = cur.at(height + 1);
 	NodePtr wr_parent = writable_node(path_pa.first);
 	ass(wr_parent.size() > 0, "Found parent node with 0 items");
 	ValPid my_kv;
@@ -379,8 +382,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		}
 		if(left_sib.page){
 			Cursor cur2(cur); // This cursor will be invalid below height
-			cur2.path.at(height + 1).second -= 1;
-			cur2.path.at(height) = std::make_pair(left_sib.page->pid, -1);
+			cur2.at(height + 1).second -= 1;
+			cur2.at(height) = std::make_pair(left_sib.page->pid, -1);
 			NodePtr wr_left(page_size, (NodePage *)make_pages_writable(cur2, height));
 
 			const size_t required_size1 = wr_dap.get_item_size(my_kv.key, my_kv.pid);
@@ -399,8 +402,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			wr_left.erase(left_split, wr_left.size());
 		}else{
 			Cursor cur2(cur); // This cursor will be invalid below height
-			cur2.path.at(height + 1).second += 1;
-			cur2.path.at(height) = std::make_pair(right_sib.page->pid, right_sib.size() - 1);
+			cur2.at(height + 1).second += 1;
+			cur2.at(height) = std::make_pair(right_sib.page->pid, right_sib.size() - 1);
 			NodePtr wr_right(page_size, (NodePage *)make_pages_writable(cur2, height));
 			
 			const size_t required_size1 = wr_dap.get_item_size(right_kv.key, right_kv.pid);
@@ -436,8 +439,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			c->get_current()->on_insert(cur.bucket_desc, height, path_el.first, -1, left_sib.size() + 1);
 			c->get_current()->on_merge(cur.bucket_desc, height, left_sib.page->pid, path_el.first, 0);
 		}
-		path_el = cur.path.at(height); // path_pa was modified by code above
-		path_pa = cur.path.at(height + 1); // path_pa was modified by code above
+		path_el = cur.at(height); // path_pa was modified by code above
+		path_pa = cur.at(height + 1); // path_pa was modified by code above
 	}
 	if( use_right_sib ){
 		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
@@ -459,8 +462,8 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 		return;
 	if(cur.bucket_desc->height == 0) // root is leaf, cannot merge anyway
 		return;
-	auto path_el = cur.path.at(0);
-	auto path_pa = cur.path.at(1);
+	auto path_el = cur.at(0);
+	auto path_pa = cur.at(1);
 	NodePtr wr_parent = writable_node(path_pa.first);
 	CLeafPtr left_sib;
 	CLeafPtr right_sib;
@@ -499,8 +502,8 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 			c->get_current()->on_insert(cur.bucket_desc, 0, path_el.first, 0, left_sib.size());
 			c->get_current()->on_merge(cur.bucket_desc, 0, left_sib.page->pid, path_el.first, 0);
 		}
-		path_el = cur.path.at(0); // path_pa was modified by code above
-		path_pa = cur.path.at(1); // path_pa was modified by code above
+		path_el = cur.at(0); // path_pa was modified by code above
+		path_pa = cur.at(1); // path_pa was modified by code above
 	}
 	if( right_sib.page ){
 		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
