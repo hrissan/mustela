@@ -76,9 +76,9 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	}
 	mark_free_in_future_page(old_page, 1);
 	Pid new_page = get_free_page(1);
-	for(auto && c : my_cursors)
-		if( c->bucket_desc == cur.bucket_desc && c->path.at(height).first == old_page )
-			c->path.at(height).first = new_page;
+	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
+		if( c->get_current()->bucket_desc == cur.bucket_desc && c->get_current()->path.at(height).first == old_page )
+			c->get_current()->path.at(height).first = new_page;
 	DataPage * wr_dap = writable_page(new_page, 1);
 	memcpy(wr_dap, dap, page_size);
 	wr_dap->pid = new_page;
@@ -100,9 +100,9 @@ void TX::new_increase_height(Cursor & cur){
 	//		wr_root.append(key, new_pid);
 	cur.bucket_desc->root_page = wr_root.page->pid;
 	cur.bucket_desc->height += 1;
-	for(auto && c : my_cursors)
-		if(c->bucket_desc == cur.bucket_desc)
-			c->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
+		if(c->get_current()->bucket_desc == cur.bucket_desc)
+			c->get_current()->path.push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
 }
 static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size1, size_t required_size2){
 	if(pos == insert_pos)
@@ -194,9 +194,9 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	wr_right.init_dirty(meta_page.tid);
 	for(PageIndex i = right_split; i != size_with_insert; ++i)
 		wr_right.append(get_kv_with_insert(wr_dap, i, insert_index, insert_kv1, insert_kv2));
-	for(auto && c : my_cursors){
-		c->on_insert(cur.bucket_desc, height + 1, path_pa.first, path_pa.second + 1);
-		c->on_split(cur.bucket_desc, height, path_el.first, wr_right.page->pid, right_split);
+	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+		c->get_current()->on_insert(cur.bucket_desc, height + 1, path_pa.first, path_pa.second + 1);
+		c->get_current()->on_split(cur.bucket_desc, height, path_el.first, wr_right.page->pid, right_split);
 	}
 	ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
 	wr_right.set_value(-1, split_kv.pid);
@@ -279,9 +279,9 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			result = wr_right.insert_at(wr_right.size(), insert_key, insert_value_size, *overflow);
 		else
 			wr_right.append(get_kv_with_insert(wr_dap, i, insert_index));
-	for(auto && c : my_cursors){
-		c->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
-		c->on_split(cur.bucket_desc, 0, path_el.first, wr_right.page->pid, right_split);
+	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+		c->get_current()->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
+		c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_right.page->pid, right_split);
 	}
 	LeafPtr wr_middle;
 	if(left_split + 1 == right_split){
@@ -292,9 +292,9 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			result = wr_middle.insert_at(wr_middle.size(), insert_key, insert_value_size, *overflow);
 		else
 			wr_middle.append(get_kv_with_insert(wr_dap, left_split, insert_index));
-		for(auto && c : my_cursors){
-			c->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
-			c->on_split(cur.bucket_desc, 0, path_el.first, wr_middle.page->pid, left_split);
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+			c->get_current()->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
+			c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_middle.page->pid, left_split);
 		}
 	}
 	{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
@@ -325,9 +325,9 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		cur.bucket_desc->node_page_count -= 1;
 		cur.bucket_desc->root_page = wr_dap.get_value(-1);
 		cur.bucket_desc->height -= 1;
-		for(auto && c : my_cursors)
-			if( c->bucket_desc == cur.bucket_desc)
-				c->path.pop_back();
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
+			if( c->get_current()->bucket_desc == cur.bucket_desc)
+				c->get_current()->path.pop_back();
 		return;
 	}
 	auto path_el = cur.path.at(height);
@@ -386,9 +386,9 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			const size_t required_size1 = wr_dap.get_item_size(my_kv.key, my_kv.pid);
 			PageIndex left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_left, wr_left.size(), required_size1, 0);
-			for(auto && c : my_cursors){
-				c->on_insert(cur.bucket_desc, height, path_el.first, -1, wr_left.size() - right_split + 1);
-				c->on_rotate_right(cur.bucket_desc, height, wr_left.page->pid, path_el.first, left_split);
+			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+				c->get_current()->on_insert(cur.bucket_desc, height, path_el.first, -1, wr_left.size() - right_split + 1);
+				c->get_current()->on_rotate_right(cur.bucket_desc, height, wr_left.page->pid, path_el.first, left_split);
 			}
 			wr_dap.insert_at(0, my_kv.key, wr_dap.get_value(-1)); // on_insert
 			wr_dap.insert_range(0, wr_left, right_split, wr_left.size()); // on_insert
@@ -406,9 +406,9 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			const size_t required_size1 = wr_dap.get_item_size(right_kv.key, right_kv.pid);
 			PageIndex left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_right, 0, required_size1, 0);
-			for(auto && c : my_cursors){
-				c->on_rotate_left(cur.bucket_desc, height, wr_right.page->pid, path_el.first, left_split - 1);
-				c->on_erase(cur.bucket_desc, height, wr_right.page->pid, -1, left_split);
+			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+				c->get_current()->on_rotate_left(cur.bucket_desc, height, wr_right.page->pid, path_el.first, left_split - 1);
+				c->get_current()->on_erase(cur.bucket_desc, height, wr_right.page->pid, -1, left_split);
 			}
 			wr_dap.insert_at(0, right_kv.key, wr_right.get_value(-1));
 			wr_dap.insert_range(1, wr_right, 0, left_split - 1);
@@ -431,18 +431,18 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		cur.bucket_desc->node_page_count -= 1;
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, wr_dap.page->pid);
-		for(auto && c : my_cursors){
-			c->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second - 1);
-			c->on_insert(cur.bucket_desc, height, path_el.first, -1, left_sib.size() + 1);
-			c->on_merge(cur.bucket_desc, height, left_sib.page->pid, path_el.first, 0);
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+			c->get_current()->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second - 1);
+			c->get_current()->on_insert(cur.bucket_desc, height, path_el.first, -1, left_sib.size() + 1);
+			c->get_current()->on_merge(cur.bucket_desc, height, left_sib.page->pid, path_el.first, 0);
 		}
 		path_el = cur.path.at(height); // path_pa was modified by code above
 		path_pa = cur.path.at(height + 1); // path_pa was modified by code above
 	}
 	if( use_right_sib ){
-		for(auto && c : my_cursors){
-			c->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second);
-			c->on_merge(cur.bucket_desc, height, right_sib.page->pid, path_el.first, wr_dap.size() + 1);
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+			c->get_current()->on_erase(cur.bucket_desc, height + 1, path_pa.first, path_pa.second);
+			c->get_current()->on_merge(cur.bucket_desc, height, right_sib.page->pid, path_el.first, wr_dap.size() + 1);
 		}
 		Pid spec_val = right_sib.get_value(-1);
 		wr_dap.append(right_kv.key, spec_val);
@@ -494,18 +494,18 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 		cur.bucket_desc->leaf_page_count -= 1;
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, path_el.first);
-		for(auto && c : my_cursors){
-			c->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second - 1);
-			c->on_insert(cur.bucket_desc, 0, path_el.first, 0, left_sib.size());
-			c->on_merge(cur.bucket_desc, 0, left_sib.page->pid, path_el.first, 0);
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+			c->get_current()->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second - 1);
+			c->get_current()->on_insert(cur.bucket_desc, 0, path_el.first, 0, left_sib.size());
+			c->get_current()->on_merge(cur.bucket_desc, 0, left_sib.page->pid, path_el.first, 0);
 		}
 		path_el = cur.path.at(0); // path_pa was modified by code above
 		path_pa = cur.path.at(1); // path_pa was modified by code above
 	}
 	if( right_sib.page ){
-		for(auto && c : my_cursors){
-			c->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second);
-			c->on_merge(cur.bucket_desc, 0, right_sib.page->pid, path_el.first, wr_dap.size());
+		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
+			c->get_current()->on_erase(cur.bucket_desc, 1, path_pa.first, path_pa.second);
+			c->get_current()->on_merge(cur.bucket_desc, 0, right_sib.page->pid, path_el.first, wr_dap.size());
 		}
 		wr_dap.append_range(right_sib, 0, right_sib.size());
 		mark_free_in_future_page(right_sib.page->pid, 1); // unlink right, remove its slot in parent
@@ -536,9 +536,11 @@ void TX::commit(){
 }
 void TX::unlink_buckets_and_cursors(){
 	// Now invalidate all cursors and buckets
-	for(auto cit = my_cursors.begin(); cit != my_cursors.end(); cit = my_cursors.erase(cit)){
-		(*cit)->my_txn = nullptr;
-		(*cit)->bucket_desc = nullptr;
+	while(!my_cursors.is_end()){
+		Cursor * c = my_cursors.get_current();
+		c->my_txn = nullptr;
+		c->bucket_desc = nullptr;
+		c->tx_cursors.unlink(&Cursor::tx_cursors);
 	}
 	for(auto cit = my_buckets.begin(); cit != my_buckets.end(); cit = my_buckets.erase(cit)){
 		(*cit)->my_txn = nullptr;
@@ -602,13 +604,15 @@ bool TX::drop_bucket(const Val & name){
 		ass(bucket_desc->leaf_page_count == 1 && bucket_desc->node_page_count == 0 && bucket_desc->overflow_page_count == 0 && bucket_desc->height == 0, "Bucket in wrong state after deleting all keys");
 		mark_free_in_future_page(bucket_desc->root_page, 1);
 	}
-	for(auto cit = my_cursors.begin(); cit != my_cursors.end();) // All cursor to that table become set to end
-		if( (*cit)->bucket_desc == bucket_desc ){
-			(*cit)->my_txn = nullptr;
-			(*cit)->bucket_desc = nullptr;
-			cit = my_cursors.erase(cit);
+	for(IntrusiveNode<Cursor> * cit = &my_cursors; !cit->is_end();){
+		Cursor * c = cit->get_current();
+		if( c->bucket_desc == bucket_desc ){
+			c->my_txn = nullptr;
+			c->bucket_desc = nullptr;
+			cit->unlink(&Cursor::tx_cursors);
 		}else
-			++cit;
+			cit = cit->get_next(&Cursor::tx_cursors);
+	}
 	for(auto cit = my_buckets.begin(); cit != my_buckets.end();) // All cursor to that table become set to end
 		if( (*cit)->bucket_desc == bucket_desc ){
 			(*cit)->my_txn = nullptr;

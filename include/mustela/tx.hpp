@@ -27,7 +27,7 @@ namespace mustela {
 		MetaPage meta_page;
 		bool meta_page_dirty = false;
 
-		std::set<Cursor *> my_cursors;
+		IntrusiveNode<Cursor> my_cursors;
 		std::set<Bucket *> my_buckets;
 		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
 		NodePtr push_tmp_copy(const NodePage * other){ // TODO - get rid

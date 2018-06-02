@@ -250,7 +250,10 @@ int main(int argc, char * argv[]){
 		auto ab = txn.get_bucket_names();
 		mustela::Bucket zhu_bucket = txn.get_bucket(mustela::Val("zhu"));
 		ab = txn.get_bucket_names();
+		
 		mustela::Bucket large_bucket = txn.get_bucket(mustela::Val("large"));
+		mustela::Cursor cur = large_bucket.get_cursor();
+		mustela::Cursor cur2 = cur;
 		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0xFF)), mustela::Val("uhu"), false);

@@ -5,7 +5,7 @@ using namespace mustela;
 	
 Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc){
 	ass(my_txn && bucket_desc, "get_cursor called on invalid bucket");
-	ass(my_txn->my_cursors.insert(this).second, "Double insert");
+    my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 	path.resize(bucket_desc->height + 1);
 	end();
 }
@@ -18,19 +18,18 @@ Cursor::~Cursor(){
 	unlink();
 }
 void Cursor::unlink(){
-	if(my_txn)
-		ass(my_txn->my_cursors.erase(this) == 1, "Double etase");
+//	if(my_txn)
+	tx_cursors.unlink(&Cursor::tx_cursors);
 	my_txn = nullptr;
 	bucket_desc = nullptr;
 }
 Cursor::Cursor(Cursor && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(std::move(other.path)){
 	if(my_txn)
-		ass(my_txn->my_cursors.insert(this).second, "Double insert");
-	other.unlink();
+    	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 }
 Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(other.path){
 	if(my_txn)
-		ass(my_txn->my_cursors.insert(this).second, "Double insert");
+    	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 }
 Cursor & Cursor::operator=(Cursor && other){
 	unlink();
@@ -38,8 +37,7 @@ Cursor & Cursor::operator=(Cursor && other){
 	bucket_desc = other.bucket_desc;
 	path = std::move(other.path);
 	if(my_txn)
-		ass(my_txn->my_cursors.insert(this).second, "Double insert");
-	other.unlink();
+    	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 	return *this;
 }
 Cursor & Cursor::operator=(const Cursor & other){
@@ -48,7 +46,7 @@ Cursor & Cursor::operator=(const Cursor & other){
 	bucket_desc = other.bucket_desc;
 	path = other.path;
 	if(my_txn)
-		ass(my_txn->my_cursors.insert(this).second, "Double insert");
+    	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 	return *this;
 }
 
@@ -169,8 +167,8 @@ bool Cursor::del(){
 		bucket_desc->overflow_page_count -= overflow_count;
 		my_txn->mark_free_in_future_page(overflow_page, overflow_count);
 	}
-	for(auto && c : my_txn->my_cursors)
-		c->on_erase(bucket_desc, 0, path_el.first, path_el.second);
+	for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
+		c->get_current()->on_erase(bucket_desc, 0, path_el.first, path_el.second);
 	my_txn->new_merge_leaf(*this, wr_dap);
 	bucket_desc->count -= 1;
 	return true;

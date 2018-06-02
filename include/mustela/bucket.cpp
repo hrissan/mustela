@@ -70,8 +70,8 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 			my_txn->mark_free_in_future_page(overflow_page, overflow_count);
 		}
 	}else{
-		for(auto && c : my_txn->my_cursors)
-			c->on_insert(bucket_desc, 0, path_el.first, path_el.second);
+		for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
+			c->get_current()->on_insert(bucket_desc, 0, path_el.first, path_el.second);
 		ass(main_cursor.path.at(0).second == path_el.second + 1, "Main cursor was unaffectet by on_insert");
 		main_cursor.path.at(0).second = path_el.second;
 	}

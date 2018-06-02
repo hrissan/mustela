@@ -15,6 +15,8 @@ namespace mustela {
 		friend class FreeList;
 		TX * my_txn = nullptr;
 		BucketDesc * bucket_desc = nullptr;
+		IntrusiveNode<Cursor> tx_cursors;
+
 		void unlink();
 		std::vector<std::pair<Pid, PageIndex>> path;
 		// All node indices are always [-1..node.size-1]

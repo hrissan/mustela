@@ -165,5 +165,38 @@ namespace mustela {
 		ValVal() {}
 		ValVal(Val key, Val value):key(key), value(value) {}
 	};
+	
+    template<class T>
+    class IntrusiveNode {
+    public:
+        IntrusiveNode():next(nullptr), prev(nullptr) {}
+        // list ops
+        void insert_after_this(T * node, IntrusiveNode<T> T::*Link){
+            (node->*Link).next = this->next;
+            (node->*Link).prev = this;
+            if( this->next )
+                (this->next->*Link).prev = &(node->*Link);
+            this->next = node;
+        }
+        void unlink(IntrusiveNode<T> T::*Link){
+            if( !prev )
+                return;
+            prev->next = next;
+            if( next )
+                (next->*Link).prev = prev;
+            next = nullptr;
+            prev = nullptr;
+        }
+        // iterator ops
+        T * get_current() { return next; }
+        IntrusiveNode<T> * get_next(IntrusiveNode<T> T::*Link) { return &(next->*Link); }
+        bool is_end()const { return next == nullptr; }
+    private:
+        T * next;
+        IntrusiveNode<T> * prev;
+
+        IntrusiveNode(const IntrusiveNode<T> &)=delete;
+        IntrusiveNode &operator=(const IntrusiveNode<T> &)=delete;
+    };
 }
 
