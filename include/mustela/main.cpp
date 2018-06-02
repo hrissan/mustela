@@ -65,7 +65,7 @@ void interactive_test(){
 	
 	std::map<std::string, Mirror> mirror;
 	
-	const int items_counter = 200;
+	const int items_counter = 100;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){
@@ -202,8 +202,11 @@ void run_benchmark(const std::string & db_path){
 	options.new_db_page_size = 4096;
 	mustela::DB::remove_db(db_path);
 	mustela::DB db(db_path, options);
+
+
 	const int TEST_COUNT = 1000000;
 
+	{
 	auto idea_start  = std::chrono::high_resolution_clock::now();
 	mustela::TX txn(db);
 	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
@@ -223,6 +226,25 @@ void run_benchmark(const std::string & db_path){
 		std::cout << "Checking... " << progress << "%" << std::endl;
 	});
 	std::cout << "DB passed all validity checks" << std::endl;
+	}
+	{
+	auto idea_start  = std::chrono::high_resolution_clock::now();
+	mustela::TX txn(db);
+	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	uint8_t keybuf[32] = {};
+	int found_counter = 0;
+	for(unsigned i = 0; i != TEST_COUNT; ++i){
+		auto ctx = blake2b_ctx{};
+		blake2b_init(&ctx, 32, nullptr, 0);
+		blake2b_update(&ctx, &i, sizeof(i));
+		blake2b_final(&ctx, &keybuf);
+		mustela::Val value;
+		found_counter += main_bucket.get(mustela::Val(keybuf,32), &value) ? 1 : 0;
+	}
+	auto idea_ms =
+	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+	std::cout << "Random lookup of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
 }
 
 int main(int argc, char * argv[]){

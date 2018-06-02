@@ -18,22 +18,11 @@ TX::~TX(){
 	my_db.finish_transaction(this);
 	unlink_buckets_and_cursors();
 }
-const DataPage * TX::readable_page(Pid page, Pid count){
-	ass(page + count <= file_page_count, "Constant mapping should always cover the whole file");
-	return (const DataPage *)(c_file_ptr + page * page_size);
-}
-
 DataPage * TX::writable_page(Pid page, Pid count){
 	ass(page + count <= file_page_count, "Mapping should always cover the whole file");
 	return (DataPage *)(wr_file_ptr + page * page_size);
 }
 
-CLeafPtr TX::readable_leaf(Pid pa){
-	return CLeafPtr(page_size, (const LeafPage *)readable_page(pa, 1));
-}
-CNodePtr TX::readable_node(Pid pa){
-	return CNodePtr(page_size, (const NodePage *)readable_page(pa, 1));
-}
 LeafPtr TX::writable_leaf(Pid pa){
 	LeafPage * result = (LeafPage *)writable_page(pa, 1);
 	ass(result->tid == meta_page.tid, "writable_leaf is not from our transaction");
@@ -43,9 +32,6 @@ NodePtr TX::writable_node(Pid pa){
 	NodePage * result = (NodePage *)writable_page(pa, 1);
 	ass(result->tid == meta_page.tid, "writable_node is not from our transaction");
 	return NodePtr(page_size, result);
-}
-const char * TX::readable_overflow(Pid pa, Pid count){
-	return (const char *)readable_page(pa, count);
 }
 char * TX::writable_overflow(Pid pa, Pid count){
 	return (char *)writable_page(pa, count);

@@ -59,13 +59,22 @@ namespace mustela {
 		void new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2 = ValPid());
 		char * new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_size, bool * overflow);
 
-		const DataPage * readable_page(Pid page, Pid count);
+		const DataPage * readable_page(Pid page, Pid count){
+			ass(page + count <= file_page_count, "Constant mapping should always cover the whole file");
+			return (const DataPage *)(c_file_ptr + page * page_size);
+		}
 		DataPage * writable_page(Pid page, Pid count);
-		CLeafPtr readable_leaf(Pid pa);
+		CLeafPtr readable_leaf(Pid pa){
+			return CLeafPtr(page_size, (const LeafPage *)readable_page(pa, 1));
+		}
 		LeafPtr writable_leaf(Pid pa);
-		CNodePtr readable_node(Pid pa);
+		CNodePtr readable_node(Pid pa){
+			return CNodePtr(page_size, (const NodePage *)readable_page(pa, 1));
+		}
 		NodePtr writable_node(Pid pa);
-		const char * readable_overflow(Pid pa, Pid count);
+		const char * readable_overflow(Pid pa, Pid count){
+			return (const char *)readable_page(pa, count);
+		}
 		char * writable_overflow(Pid pa, Pid count);
 
 		std::string print_db(const BucketDesc * bucket_desc);

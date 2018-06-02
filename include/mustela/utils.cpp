@@ -111,13 +111,6 @@ namespace mustela {
 		return ~crc;
 	}
 
-	int Val::compare(const Val & other)const{
-		size_t min_size = std::min(size, other.size);
-		int cmp = memcmp(data, other.data, min_size);
-		if( cmp != 0 )
-			return cmp;
-		return int(size) - int(other.size);
-	}
 //	size_t Val::encoded_size()const{
 //		return get_compact_size_sqlite4(size) + size;
 //	}
