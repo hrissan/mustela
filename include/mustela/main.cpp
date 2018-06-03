@@ -153,23 +153,28 @@ void interactive_test(){
 		  	std::string key = std::string(6 - std::to_string(j).length(), '0') + std::to_string(j);
 			//std::string key = std::to_string(j) + std::string(4, 'A');
 			std::string val = "value" + std::to_string(j);// + std::string(j % 128, '*');
+			if(i % 10 == 0)
+				val += std::string((j*j) % 512, '*');
 			mustela::Val got;
 //			if( (!add && i == 82 && j == 82)){
 //				got.size = 0;
 //				std::string json = main_bucket.print_db();
 //				std::cout << "Main table: " << json << std::endl;
 //			}
-			bool in_db = main_bucket.get(mustela::Val(key), &got) && got.to_string() == val;
+			bool in_db = main_bucket.get(mustela::Val(key), &got);
 			auto mit = mirror.find(key);
-			bool in_mirror = mit != mirror.end() && mit->second.value == val;
+			bool in_mirror = mit != mirror.end();
 			if( in_db != in_mirror )
 				std::cout << "BAD get" << std::endl;
+			if( in_mirror && in_db && mit->second.value != got.to_string() )
+				std::cout << "BAD get value" << std::endl;
 			if( add ){
 				if( !main_bucket.put(mustela::Val(key), mustela::Val(val), false) )
 					std::cout << "BAD put" << std::endl;
 				mustela::Cursor cur = main_bucket.get_cursor();
 				if( !cur.seek(mustela::Val(key)) )
 					std::cout << "BAD seek" << std::endl;
+				mirror.erase(key);
 				mirror.insert(std::make_pair(key, Mirror(val, cur)));
 			}else{
 				if( main_bucket.del(mustela::Val(key)) != in_mirror )
