@@ -50,7 +50,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	if( my_txn->read_only )
 		throw Exception("Attempt to modify read-only transaction");
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
-	if(key.size > CNodePtr::max_key_size(my_txn->page_size))
+	if(key.size > max_key_size(my_txn->page_size))
 		throw Exception("Key size too big in Bucket::put");
 	Cursor main_cursor(my_txn, bucket_desc);
 	bool same_key = main_cursor.seek(key);

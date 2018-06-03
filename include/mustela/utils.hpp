@@ -144,22 +144,7 @@ namespace mustela {
 	
 	typedef uint64_t Tid;
 	typedef uint64_t Pid;
-	typedef uint16_t PageOffset;
-	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
 
-	constexpr uint32_t OUR_VERSION = 2;
-	
-	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
-//	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
-	constexpr int META_PAGES_COUNT = 3; // We might end up using 2 like lmdb
-	constexpr int NODE_PID_SIZE = 5;
-	constexpr size_t MIN_PAGE_SIZE = 128;
-	constexpr size_t GOOD_PAGE_SIZE = 4096;
-	constexpr size_t MAX_PAGE_SIZE = 1 << 8*sizeof(PageOffset);
-	// 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pages
-	// TODO - move NODE_PID_SIZE into MetaPage
-	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
-	// fixed pid size allows simple logic when replacing page in node index
 	struct ValPid {
 		Val key;
 		Pid pid;

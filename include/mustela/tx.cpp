@@ -130,13 +130,13 @@ static void find_best_node_split(PageIndex & left_split, PageIndex & right_split
 	size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
 	size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
 	while(left_split + 1 != right_split){
-		if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
+		if( left_size + left_add <= node_capacity(wr_dap.page_size) && left_size + left_add <= right_size + right_add ){
 			left_split += 1;
 			left_size += left_add;
 			left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size1, required_size2);
 			continue;
 		}
-		if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
+		if( right_size + right_add <= node_capacity(wr_dap.page_size) && right_size + right_add <= left_size + left_add ){
 			right_split -= 1;
 			right_size += left_add;
 			right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
@@ -148,8 +148,8 @@ static void find_best_node_split(PageIndex & left_split, PageIndex & right_split
 void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid insert_kv2){
 	auto path_el = cur.at(height);
 	NodePtr wr_dap = writable_node(path_el.first);
-	const size_t required_size1 = wr_dap.get_item_size(insert_kv1.key, insert_kv1.pid);
-	const size_t required_size2 = insert_kv2.key.data ? wr_dap.get_item_size(insert_kv2.key, insert_kv2.pid) : 0;
+	const size_t required_size1 = get_item_size(page_size, insert_kv1.key, insert_kv1.pid);
+	const size_t required_size2 = insert_kv2.key.data ? get_item_size(page_size, insert_kv2.key, insert_kv2.pid) : 0;
 	if( wr_dap.free_capacity() >= required_size1 + required_size2 ){
 		wr_dap.insert_at(path_el.second, insert_kv1.key, insert_kv1.pid);
 		if(insert_kv2.key.data)
@@ -235,13 +235,13 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size);
 	size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
 	while(left_split != right_split){
-		if( left_size + left_add <= wr_dap.capacity() && left_size + left_add <= right_size + right_add ){
+		if( left_size + left_add <= leaf_capacity(page_size) && left_size + left_add <= right_size + right_add ){
 			left_split += 1;
 			left_size += left_add;
 			left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size);
 			continue;
 		}
-		if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
+		if( right_size + right_add <= leaf_capacity(page_size) && right_size + right_add <= left_size + left_add ){
 			right_split -= 1;
 			right_size += right_add;
 			right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
@@ -309,7 +309,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	return result;
 }
 void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
-	if( wr_dap.data_size() >= wr_dap.capacity()/2 )
+	if( wr_dap.data_size() >= node_capacity(page_size)/2 )
 		return;
 	if(height == cur.bucket_desc->height){ // merging root
 		if( wr_dap.size() != 0) // wait until only key at -1 offset remains, make it new root
@@ -345,14 +345,14 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		left_sib_pid = wr_parent.get_value(path_pa.second - 1);
 		left_sib = readable_node(left_sib_pid);
 		left_data_size = left_sib.data_size();
-		left_data_size += left_sib.get_item_size(my_kv.key, 0); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
+		left_data_size += get_item_size(page_size, my_kv.key, Pid{}); // will need to insert key from parent. Achtung - 0 works only when fixed-size pids are used
 		use_left_sib = left_data_size <= wr_dap.free_capacity();
 	}
 	if(path_pa.second + 1 < wr_parent.size()){
 		right_kv = wr_parent.get_kv(path_pa.second + 1);
 		right_sib = readable_node(right_kv.pid);
 		right_data_size = right_sib.data_size();
-		right_data_size += right_sib.get_item_size(right_kv.key, 0); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
+		right_data_size += get_item_size(page_size, right_kv.key, Pid{}); // will need to insert key from parent! Achtung - 0 works only when fixed-size pids are used
 		use_right_sib = right_data_size <= wr_dap.free_capacity();
 	}
 	if( use_left_sib && use_right_sib && wr_dap.free_capacity() < left_data_size + right_data_size ){ // If cannot merge both, select smallest
@@ -378,7 +378,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			NodePtr wr_left(page_size, (NodePage *)make_pages_writable(cur2, height));
 			const Pid wr_left_pid = cur2.at(height).first;
 
-			const size_t required_size1 = wr_dap.get_item_size(my_kv.key, my_kv.pid);
+			const size_t required_size1 = get_item_size(page_size, my_kv.key, my_kv.pid);
 			PageIndex left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_left, wr_left.size(), required_size1, 0);
 			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
@@ -399,7 +399,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			NodePtr wr_right(page_size, (NodePage *)make_pages_writable(cur2, height));
 			const Pid wr_right_pid = cur2.at(height).first;
 
-			const size_t required_size1 = wr_dap.get_item_size(right_kv.key, right_kv.pid);
+			const size_t required_size1 = get_item_size(page_size, right_kv.key, right_kv.pid);
 			PageIndex left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_right, 0, required_size1, 0);
 			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
@@ -451,7 +451,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		new_merge_node(cur, height + 1, wr_parent);
 }
 void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
-	if( wr_dap.data_size() >= wr_dap.capacity()/2 )
+	if( wr_dap.data_size() >= leaf_capacity(page_size)/2 )
 		return;
 	if(cur.bucket_desc->height == 0) // root is leaf, cannot merge anyway
 		return;

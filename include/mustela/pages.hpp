@@ -6,6 +6,23 @@
 
 namespace mustela {
 	
+	constexpr int MIN_KEY_COUNT = 2;
+	constexpr uint32_t OUR_VERSION = 2;
+	typedef uint16_t PageOffset;
+	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
+
+	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
+//	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
+	constexpr int META_PAGES_COUNT = 3; // We might end up using 2 like lmdb
+	constexpr int NODE_PID_SIZE = 5;
+	constexpr size_t MIN_PAGE_SIZE = 128;
+	constexpr size_t GOOD_PAGE_SIZE = 4096;
+	constexpr size_t MAX_PAGE_SIZE = 1 << 8*sizeof(PageOffset);
+	// 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pages
+	// TODO - move NODE_PID_SIZE into MetaPage
+	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
+	// fixed pid size allows simple logic when replacing page in node index
+
 #pragma pack(push, 1)
 	struct BucketDesc {
 		uint64_t root_page;
@@ -31,39 +48,47 @@ namespace mustela {
 	struct DataPage {
 //		Pid pid; /// for consistency debugging. Never written except in get_free_page
 		Tid tid; /// transaction which did write the page
-
-		PageIndex lower_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const;
-		PageIndex upper_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key)const;
-		MVal get_item_key(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item);
-		Val get_item_key(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item)const{
-			return const_cast<DataPage *>(this)->get_item_key(page_size, item_offsets, item_count, item);
-		}
-		void remove_simple(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex to_remove_item, size_t item_size);
-		MVal insert_at(size_t page_size, bool is_leaf, PageOffset * item_offsets, PageIndex & item_count, PageOffset & items_size, PageOffset & free_end_offset, PageIndex insert_index, Val key, size_t item_size);
 	};
-	struct NodePage : public DataPage {
-		//uint64_t total_item_count; // with child pages
+	struct KeysPage : public DataPage {
 		PageIndex item_count;
 		PageOffset items_size; // bytes keys+values + their sizes occupy. for branch pages instead of svalue we store pagenum
 		PageOffset free_end_offset; // we can have a bit of gaps, will compact when free middle space not enough to store new item
 		PageOffset item_offsets[1];
+
+		Val get_item_key(size_t page_size, PageIndex item)const;
+		MVal get_item_key(size_t page_size, PageIndex item);
+		PageIndex lower_bound_item(size_t page_size, Val key, bool * found)const;
+		PageIndex upper_bound_item(size_t page_size, Val key)const;
+		void erase_item(size_t page_size, PageIndex to_remove_item, size_t item_size);
+		MVal insert_item_at(size_t page_size, PageIndex insert_index, Val key, size_t item_size);
+	};
+
+	struct NodePage : public KeysPage {
 		// each NodePage has NODE_PID_SIZE bytes at the end, storing the -1 indexed link to child, which has no associated key
-		// Branch page // TODO insert total_item_count to each entry (including -1)
 		// header [io0, io1, io2] free_middle [skey2 page_be2, gap, skey0 page_be0, gap, skey1 page_be1] page_last
 	};
 	constexpr PageOffset NODE_HEADER_SIZE = sizeof(NodePage) - sizeof(PageOffset);
-	struct LeafPage : public DataPage {
-		PageIndex item_count;
-		PageOffset items_size; // bytes keys+values + their sizes occupy. for branch pages instead of svalue we store pagenum
-		PageOffset free_end_offset; // we can have a bit of gaps, will shift when free middle space not enough to store new item
-		PageOffset item_offsets[1];
+
+	inline PageOffset node_capacity(size_t page_size){
+		return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
+	}
+	inline PageOffset max_key_size(size_t page_size){
+		PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/MIN_KEY_COUNT - NODE_PID_SIZE - sizeof(PageOffset);
+		space -= get_compact_size_sqlite4(space);
+		return space;
+	}
+	PageOffset get_item_size(size_t page_size, Val key, Pid value);
+
+	struct LeafPage : public KeysPage {
 		// Leaf page
 		// header [io0, io1, io2] free_middle [skey2 svalue2, gap, skey0 svalue0, gap, skey1 svalue1]
 	};
 	constexpr PageOffset LEAF_HEADER_SIZE = sizeof(LeafPage) - sizeof(PageOffset);
+	inline PageOffset leaf_capacity(size_t page_size){
+		return page_size - LEAF_HEADER_SIZE;
+	}
 #pragma pack(pop)
 
-	constexpr int MIN_KEY_COUNT = 2;
 	static_assert(MIN_KEY_COUNT == 2, "Should be 2 for invariants, do not change");
 	static_assert(MIN_PAGE_SIZE >= sizeof(MetaPage), "Metapage does not fit into page size");
 	static_assert(MIN_PAGE_SIZE >= (NODE_PID_SIZE + 1 + sizeof(PageOffset))*MIN_KEY_COUNT + NODE_PID_SIZE + NODE_HEADER_SIZE, "Node page with min keys does not fit into page size");
@@ -78,28 +103,19 @@ namespace mustela {
 		{}
 		PageIndex size()const{ return page->item_count; }
 		Val get_key(PageIndex item)const{
-			return page->get_item_key(page_size, page->item_offsets, page->item_count, item);
+			return page->get_item_key(page_size, item);
 		}
 		Pid get_value(PageIndex item)const;
 		ValPid get_kv(PageIndex item)const;
 		size_t get_item_size(PageIndex item)const;
 		PageIndex lower_bound_item(Val key, bool * found = nullptr)const{
-			return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
+			return page->lower_bound_item(page_size, key, found);
 		}
 		PageIndex upper_bound_item(Val key)const{
-			return page->upper_bound_item(page_size, page->item_offsets, page->item_count, key);
-		}
-		PageOffset get_item_size(Val key, Pid value)const;
-		PageOffset capacity()const{
-			return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
-		}
-		static PageOffset max_key_size(size_t page_size){
-			PageOffset space = (page_size - NODE_HEADER_SIZE - NODE_PID_SIZE)/MIN_KEY_COUNT - NODE_PID_SIZE - sizeof(PageOffset);
-			space -= get_compact_size_sqlite4(space);
-			return space;
+			return page->upper_bound_item(page_size, key);
 		}
 		PageOffset free_capacity()const{
-			return capacity() - data_size();
+			return node_capacity(page_size) - data_size();
 		}
 		PageOffset data_size()const{
 			return page->items_size;
@@ -117,12 +133,12 @@ namespace mustela {
 			init_dirty(page->tid);
 		}
 		MVal get_key(PageIndex item){
-			return mpage()->get_item_key(page_size, page->item_offsets, page->item_count, item);
+			return mpage()->get_item_key(page_size, item);
 		}
 		void set_value(PageIndex item, Pid value);
 		void erase(PageIndex to_remove_item){
 			size_t item_size = get_item_size(to_remove_item);
-			mpage()->remove_simple(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item, item_size);
+			mpage()->erase_item(page_size, to_remove_item, item_size);
 			if( mpage()->item_count == 0)
 				mpage()->free_end_offset = page_size - NODE_PID_SIZE; // compact on last delete :)
 		}
@@ -142,10 +158,10 @@ namespace mustela {
 				ValPid left_kv = get_kv(insert_index - 1);
 				ass(left_kv.key < key, "Wrong insert order 2");
 			}
-			size_t item_size = get_item_size(key, value);
+			size_t item_size = mustela::get_item_size(page_size, key, value);
 			compact(item_size);
 			ass(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
-			MVal new_key = mpage()->insert_at(page_size, false, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, insert_index, key, item_size);
+			MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 			pack_uint_be((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
 		}
 		void append(Val key, Pid value){
@@ -177,7 +193,7 @@ namespace mustela {
 		{}
 		PageIndex size()const{ return page->item_count; }
 		Val get_key(PageIndex item)const{
-			return page->get_item_key(page_size, page->item_offsets, page->item_count, item);
+			return page->get_item_key(page_size, item);
 		}
 		ValVal get_kv(PageIndex item, Pid & overflow_page)const;
 		size_t get_item_size(PageIndex item, Pid & overflow_page, Pid & overflow_count)const;
@@ -185,14 +201,11 @@ namespace mustela {
 			Pid a; return get_item_size(item, a, a);
 		}
 		PageIndex lower_bound_item(Val key, bool * found = nullptr)const{
-			return page->lower_bound_item(page_size, page->item_offsets, page->item_count, key, found);
+			return page->lower_bound_item(page_size, key, found);
 		}
 		PageOffset get_item_size(Val key, size_t value_size, bool & overflow)const;
-		PageOffset capacity()const{
-			return page_size - LEAF_HEADER_SIZE;
-		}
 		PageOffset free_capacity()const{
-			return capacity() - data_size();
+			return leaf_capacity(page_size) - data_size();
 		}
 		PageOffset data_size()const{
 			return page->items_size;
@@ -210,11 +223,11 @@ namespace mustela {
 			init_dirty(page->tid);
 		}
 		MVal get_key(PageIndex item){
-			return mpage()->get_item_key(page_size, page->item_offsets, page->item_count, item);
+			return mpage()->get_item_key(page_size, item);
 		}
 		void erase(PageIndex to_remove_item, Pid & overflow_page, Pid & overflow_count){
 			size_t item_size = get_item_size(to_remove_item, overflow_page, overflow_count);
-			mpage()->remove_simple(page_size, true, mpage()->item_offsets, mpage()->item_count, mpage()->items_size, mpage()->free_end_offset, to_remove_item, item_size);
+			mpage()->erase_item(page_size, to_remove_item, item_size);
 			if( mpage()->item_count == 0)
 				mpage()->free_end_offset = page_size; // compact on last delete :)
 		}

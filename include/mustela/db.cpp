@@ -210,10 +210,10 @@ void DB::print_db(){
 	}
 }
 size_t DB::max_key_size()const{
-    return CNodePtr::max_key_size(page_size);
+    return mustela::max_key_size(page_size);
 }
 size_t DB::max_bucket_name_size()const{
-    return CNodePtr::max_key_size(page_size) - 1;
+    return mustela::max_key_size(page_size) - 1;
 }
 
 void DB::remove_db(const std::string & file_path){
