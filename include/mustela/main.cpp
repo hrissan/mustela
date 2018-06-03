@@ -245,6 +245,29 @@ void run_benchmark(const std::string & db_path){
 	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
 	std::cout << "Random lookup of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
+	{
+	auto idea_start  = std::chrono::high_resolution_clock::now();
+	mustela::TX txn(db);
+	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	uint8_t keybuf[32] = {};
+	int found_counter = 0;
+	for(unsigned i = 0; i != TEST_COUNT; ++i){
+		auto ctx = blake2b_ctx{};
+		blake2b_init(&ctx, 32, nullptr, 0);
+		blake2b_update(&ctx, &i, sizeof(i));
+		blake2b_final(&ctx, &keybuf);
+		mustela::Val value;
+		found_counter += main_bucket.del(mustela::Val(keybuf,32), false) ? 1 : 0;
+	}
+	txn.commit();
+	auto idea_ms =
+	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+	std::cout << "Random delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	txn.check_database([](int progress){
+		std::cout << "Checking... " << progress << "%" << std::endl;
+	});
+	std::cout << "DB passed all validity checks" << std::endl;
+	}
 }
 
 int main(int argc, char * argv[]){

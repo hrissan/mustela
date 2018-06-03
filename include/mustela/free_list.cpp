@@ -32,8 +32,8 @@ void MergablePageCache::remove_from_size_index(Pid page, Pid count){
 }
 
 void MergablePageCache::add_to_cache(Pid page, Pid count){
-	if( count == 255 )
-		std::cerr << "MergablePageCache::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
+//	if( count == 255 )
+//		std::cerr << "MergablePageCache::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
 	auto it = cache.lower_bound(page);
 	ass(it == cache.end() || it->first != page, "adding existing page to cache");
 	if(it != cache.end() && it->first == page + count){
