@@ -60,6 +60,9 @@ namespace mustela {
 		
 		void print_db();
 		static void test();
+
+		static Val fill_free_record_key(char * keybuf, Tid tid, uint64_t batch);
+		static bool parse_free_record_key(Val key, Tid * tid, uint64_t * batch);
 	};
 }
 

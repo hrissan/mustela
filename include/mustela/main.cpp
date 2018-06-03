@@ -65,7 +65,7 @@ void interactive_test(){
 	
 	std::map<std::string, Mirror> mirror;
 	
-	const int items_counter = 200;
+	const int items_counter = 2000;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){
@@ -98,11 +98,9 @@ void interactive_test(){
 			if( mirror != mirror2 )
 				std::cout << "Inconsistent forward/backward iteration " << mirror.size() << " " << mirror2.size() << std::endl;
 		}
-		//        std::string json = txn.print_db();
-		//        std::cout << json << std::endl;
-		std::cout << txn.get_meta_stats() << std::endl;
-		std::cout << main_bucket.get_stats() << std::endl;
-		std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards, f - print free list, c - check DB validity" << std::endl;
+//		std::cout << txn.get_meta_stats() << std::endl;
+//		std::cout << main_bucket.get_stats() << std::endl;
+		std::cout << "Enter command (h for help):" << std::endl;
 		std::string input;
 		if( !cmds.empty()){
 			input = cmds.at(0);
@@ -112,11 +110,20 @@ void interactive_test(){
 			getline(std::cin, input);
 		if( input == "q")
 			break;
+		if( input == "h"){
+			std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards, f - print free list, c - check DB validity, m - print metas" << std::endl;
+			continue;
+		}
 		if( input == "p"){
 			std::string json = txn.print_meta_db();
 			std::cout << "Meta table: " << json << std::endl;
 			json = main_bucket.print_db();
 			std::cout << "Main table: " << json << std::endl;
+			continue;
+		}
+		if( input == "m"){
+			std::cout << txn.get_meta_stats() << std::endl;
+			std::cout << main_bucket.get_stats() << std::endl;
 			continue;
 		}
 		if( input == "c"){
@@ -327,6 +334,9 @@ int main(int argc, char * argv[]){
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), char(0xFF))), mustela::Val("uhu"), false);
 		ab = txn.get_bucket_names();
+		txn.check_database([](int progress){
+			std::cout << "Checking... " << progress << "%" << std::endl;
+		});
 		txn.commit();
 		txn.check_database([](int progress){
 			std::cout << "Checking... " << progress << "%" << std::endl;

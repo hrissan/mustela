@@ -150,6 +150,22 @@ void MergablePageCache::merge_from(const MergablePageCache & other){
 	}
 }
 
+Val FreeList::fill_free_record_key(char * keybuf, Tid tid, uint64_t batch){
+	memcpy(keybuf, TX::freelist_prefix.data, TX::freelist_prefix.size);
+	size_t p1 = TX::freelist_prefix.size;
+	p1 += write_u64_sqlite4(tid, keybuf + p1);
+	p1 += write_u64_sqlite4(batch, keybuf + p1);
+	return Val(keybuf, p1);
+}
+bool FreeList::parse_free_record_key(Val key, Tid * tid, uint64_t * batch){
+	if(!key.has_prefix(TX::freelist_prefix))
+		return false;
+	size_t p1 = TX::freelist_prefix.size;
+	p1 += read_u64_sqlite4(*tid, key.data + p1);
+	p1 += read_u64_sqlite4(*batch, key.data + p1);
+	return p1 == key.size;
+}
+
 Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 	while( true ){
 		Pid pa = free_pages.get_free_page(contigous_count);
@@ -159,26 +175,18 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 		}
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
 			return 0;
-		char keybuf[20]={TX::freelist_prefix};
-		size_t p1 = 1;
-		p1 += write_u64_sqlite4(next_record_tid, keybuf + p1);
-		p1 += write_u64_sqlite4(next_record_batch, keybuf + p1);
-		Val key(keybuf, p1);
+		char keybuf[32];
+		Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 		Val value;
 		{
 			Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
 			main_cursor.seek(key);
-			if( !main_cursor.get(&key, &value) )
+			if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
+				next_record_tid = oldest_read_tid; // Fast subsequent checks
 				return 0;
+			}
 		}
-		if( key.size < 1 || key.data[0] != TX::freelist_prefix ) // Free list finished
-			return 0;
-		p1 = 1;
-		p1 += read_u64_sqlite4(next_record_tid, key.data + p1);
-		p1 += read_u64_sqlite4(next_record_batch, key.data + p1);
-		if( next_record_tid >= oldest_read_tid )
-			return 0;
-//		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
+		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 		records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 		next_record_batch += 1;
 		size_t rec = 0;
@@ -199,15 +207,14 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages){
 	pages->merge_from(free_pages);
 	pages->merge_from(future_pages);
 
-	char keybuf[20]={TX::freelist_prefix};
-	size_t p1 = 1;
-	p1 += write_u64_sqlite4(next_record_tid, keybuf + p1);
-	p1 += write_u64_sqlite4(next_record_batch, keybuf + p1);
-	Val free_key(keybuf, p1);
+	char keybuf[32];
+	Val free_key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val key, value;
 	Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
 	main_cursor.seek(free_key);
-	for(;main_cursor.get(&key, &value) && key.size >= 1 && key.data[0] == TX::freelist_prefix; main_cursor.next() ){
+	Tid tid;
+	uint64_t batch;
+	for(;main_cursor.get(&key, &value) && parse_free_record_key(key, &tid, &batch); main_cursor.next() ){
 		size_t rec = 0;
 		for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
 			Pid page;
@@ -236,18 +243,19 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
 	const size_t page_records = tx->page_size / RECORD_SIZE;
 	while(space_record_count < record_count){
-		char keybuf[20]={TX::freelist_prefix};
-		size_t p1 = 1;
-		p1 += write_u64_sqlite4(tid, keybuf + p1);
-		p1 += write_u64_sqlite4(batch, keybuf + p1);
-		size_t recs = std::min(page_records, record_count - space_record_count);
-//		std::cerr << "FreeList write recs=" << recs << " tid:batch=" << tid << ":" << batch << std::endl;
-		recs = page_records;
+		char keybuf[32];
+		Val key = fill_free_record_key(keybuf, tid, batch);
 		batch += 1;
-		char * raw_space = meta_bucket.put(Val(keybuf, p1), tx->page_size, true);
-		//        std::cerr << tx.print_db() << std::endl;
-		space.push_back(MVal(raw_space, recs * RECORD_SIZE));
-		space_record_count += recs;
+		char * raw_space = meta_bucket.put(key, tx->page_size, true);
+		if(raw_space)
+			std::cerr << "FreeList write " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
+		else{
+			std::cerr << "FreeList write conflict " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
+			// TODO - test case for this case
+			continue;
+		}
+		space.push_back(MVal(raw_space, page_records * RECORD_SIZE));
+		space_record_count += page_records;
 	}
 }
 void FreeList::commit_free_pages(TX * tx, Tid write_tid){
@@ -261,14 +269,11 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 	//        const size_t page_records = tx.page_size / RECORD_SIZE;
 	while(old_record_count < free_pages.get_record_count() || future_record_count < future_pages.get_record_count() || !records_to_delete.empty()){
 		while(!records_to_delete.empty()){
-			char keybuf[20]={TX::freelist_prefix};
-			size_t p1 = 1;
-			p1 += write_u64_sqlite4(records_to_delete.back().first, keybuf + p1);
-			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
-//			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
+			char keybuf[32];
+			Val key = fill_free_record_key(keybuf, records_to_delete.back().first, records_to_delete.back().second);
+			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
-			ass(meta_bucket.del(Val(keybuf, p1)), "Failed to delete free list records after reading");
-			//                std::cerr << tx.print_db() << std::endl;
+			ass(meta_bucket.del(key), "Failed to delete free list records after reading");
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages.get_record_count());
 		grow_record_space(tx, write_tid, future_batch, future_space, future_record_count, future_pages.get_record_count());

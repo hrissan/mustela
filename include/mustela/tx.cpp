@@ -7,6 +7,7 @@ using namespace mustela;
 
 static const bool BULK_LOADING = true;
 
+const Val TX::freelist_prefix("f");
 
 TX::TX(DB & my_db, bool read_only):my_db(my_db), read_only(read_only), page_size(my_db.page_size) {
 	if( !read_only && my_db.options.read_only)
@@ -732,17 +733,13 @@ void TX::check_database(std::function<void(int percent)> on_progress){
 	ass(remaining_pages == META_PAGES_COUNT, "There should be exactly meta pages count left after removing everything from database");
 }
 
-static std::string trim_key(const std::string & key, bool parse_meta){
-	if( parse_meta && !key.empty() && key[0] == TX::freelist_prefix ){
-		Tid next_record_tid;
-		uint64_t next_record_batch;
-		size_t p1 = 1;
-		p1 += read_u64_sqlite4(next_record_tid, key.data() + p1);
-		p1 += read_u64_sqlite4(next_record_batch, key.data() + p1);
+static std::string trim_key(const Val & key, bool parse_meta){
+	Tid next_record_tid;
+	uint64_t next_record_batch;
+	if( parse_meta && FreeList::parse_free_record_key(key, &next_record_tid, &next_record_batch) )
 		return "f" + std::to_string(next_record_tid) + ":" + std::to_string(next_record_batch);
-	}
 	std::string result;
-	for(auto && ch : key)
+	for(auto && ch : key.to_string())
 		if( std::isprint(ch) && ch != '"')
 			result += ch;
 		else
@@ -769,8 +766,8 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 				kv.value.data = readable_overflow(overflow_page, overflow_count);
 			}
 			//                std::cerr << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
-			std::cerr << trim_key(kv.key.to_string(), parse_meta) << "(" << kv.value.size << "), ";
-			result += "\"" + trim_key(kv.key.to_string(), parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +
+			std::cerr << trim_key(kv.key, parse_meta) << "(" << kv.value.size << "), ";
+			result += "\"" + trim_key(kv.key, parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +
 		}
 		std::cerr << "]" << std::endl;
 		return result + "]}";
@@ -782,8 +779,8 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 		if( i != 0)
 			result += ",";
 		ValPid va = nap.get_kv(i);
-		std::cerr << trim_key(va.key.to_string(), parse_meta) << ":" << va.pid << ", ";
-		result += "\"" + trim_key(va.key.to_string(), parse_meta) + ":" + std::to_string(va.pid) + "\"";
+		std::cerr << trim_key(va.key, parse_meta) << ":" << va.pid << ", ";
+		result += "\"" + trim_key(va.key, parse_meta) + ":" + std::to_string(va.pid) + "\"";
 	}
 	result += "],\"children\":[";
 	std::cerr << "]" << std::endl;
