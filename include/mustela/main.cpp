@@ -172,7 +172,7 @@ void interactive_test(){
 					std::cout << "BAD seek" << std::endl;
 				mirror.insert(std::make_pair(key, Mirror(val, cur)));
 			}else{
-				if( !main_bucket.del(mustela::Val(key), false) )
+				if( main_bucket.del(mustela::Val(key)) != in_mirror )
 					std::cout << "BAD del" << std::endl;
 				mirror.erase(key);
 			}
@@ -212,9 +212,10 @@ void run_benchmark(const std::string & db_path){
 	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
 	uint8_t keybuf[32] = {};
 	for(unsigned i = 0; i != TEST_COUNT; ++i){
+		unsigned hv = i * 2;
 		auto ctx = blake2b_ctx{};
 		blake2b_init(&ctx, 32, nullptr, 0);
-		blake2b_update(&ctx, &i, sizeof(i));
+		blake2b_update(&ctx, &hv, sizeof(hv));
 		blake2b_final(&ctx, &keybuf);
 		main_bucket.put(mustela::Val(keybuf,32), mustela::Val(keybuf, 32), false);
 	}
@@ -233,7 +234,7 @@ void run_benchmark(const std::string & db_path){
 	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
 	uint8_t keybuf[32] = {};
 	int found_counter = 0;
-	for(unsigned i = 0; i != TEST_COUNT; ++i){
+	for(unsigned i = 0; i != 2 * TEST_COUNT; ++i){
 		auto ctx = blake2b_ctx{};
 		blake2b_init(&ctx, 32, nullptr, 0);
 		blake2b_update(&ctx, &i, sizeof(i));
@@ -251,13 +252,13 @@ void run_benchmark(const std::string & db_path){
 	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
 	uint8_t keybuf[32] = {};
 	int found_counter = 0;
-	for(unsigned i = 0; i != TEST_COUNT; ++i){
+	for(unsigned i = 0; i != 2 * TEST_COUNT; ++i){
 		auto ctx = blake2b_ctx{};
 		blake2b_init(&ctx, 32, nullptr, 0);
 		blake2b_update(&ctx, &i, sizeof(i));
 		blake2b_final(&ctx, &keybuf);
 		mustela::Val value;
-		found_counter += main_bucket.del(mustela::Val(keybuf,32), false) ? 1 : 0;
+		found_counter += main_bucket.del(mustela::Val(keybuf,32)) ? 1 : 0;
 	}
 	txn.commit();
 	auto idea_ms =

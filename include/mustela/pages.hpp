@@ -22,7 +22,9 @@ namespace mustela {
 	// TODO - move NODE_PID_SIZE into MetaPage
 	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
 	// fixed pid size allows simple logic when replacing page in node index
-	constexpr bool CLEAR_FREE_SPACE = true;
+	
+	constexpr bool CLEAR_FREE_SPACE = false;
+	constexpr bool DEBUG_PAGES = false;
 
 #pragma pack(push, 1)
 	struct BucketDesc {
@@ -148,35 +150,38 @@ namespace mustela {
 				mpage()->free_end_offset = page_size - NODE_PID_SIZE; // compact on last delete :)
 		}
 		void erase(PageIndex begin, PageIndex end){
-			ass(begin <= end, "Invalid range at erase");
+			ass2(begin <= end, "Invalid range at erase", DEBUG_PAGES);
 			for(PageIndex it = end; it-- > begin; )
 				erase(it);
 		}
 		void compact(size_t item_size);
 		void insert_at(PageIndex insert_index, Val key, Pid value){
-			ass(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index");
+			ass2(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index", DEBUG_PAGES);
 			if(insert_index < mpage()->item_count){
 				ValPid right_kv = get_kv(insert_index);
-				ass(key < right_kv.key, "Wrong insert order 1");
+				ass2(key < right_kv.key, "Wrong insert order 1", DEBUG_PAGES);
 			}
 			if( insert_index > 0){
 				ValPid left_kv = get_kv(insert_index - 1);
-				ass(left_kv.key < key, "Wrong insert order 2");
+				ass2(left_kv.key < key, "Wrong insert order 2", DEBUG_PAGES);
 			}
 			size_t item_size = mustela::get_item_size(page_size, key, value);
 			compact(item_size);
-			ass(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
+			ass2(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
 			MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 			pack_uint_be((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
+		}
+		void insert_at(PageIndex insert_index, ValPid kv){
+			insert_at(insert_index, kv.key, kv.pid);
 		}
 		void append(Val key, Pid value){
 			insert_at(page->item_count, key, value);
 		}
 		void append(ValPid kv){
-			insert_at(page->item_count, kv.key, kv.pid);
+			append(kv.key, kv.pid);
 		}
 		void insert_range(PageIndex insert_index, const CNodePtr & other, PageIndex begin, PageIndex end){
-			ass(begin <= end, "Invalid range at insert_range");
+			ass2(begin <= end, "Invalid range at insert_range", DEBUG_PAGES);
 			// TODO - compact at start if needed midway, move all page offsets at once
 			for(;begin != end; ++begin){
 				auto kv = other.get_kv(begin);
@@ -239,6 +244,12 @@ namespace mustela {
 			if( mpage()->item_count == 0)
 				mpage()->free_end_offset = page_size; // compact on last delete :)
 		}
+		void erase(PageIndex begin, PageIndex end){
+			Pid overflow_page, overflow_count;
+			ass2(begin <= end, "Invalid range at erase", DEBUG_PAGES);
+			for(PageIndex it = end; it-- > begin; )
+				erase(it, overflow_page, overflow_count);
+		}
 		void compact(size_t item_size);
 		char * insert_at(PageIndex insert_index, Val key, size_t value_size, bool & overflow);
 		void insert_at(PageIndex insert_index, Val key, Val value){
@@ -253,7 +264,7 @@ namespace mustela {
 			insert_at(page->item_count, kv.key, kv.value);
 		}
 		void insert_range(PageIndex insert_index, const CLeafPtr & other, PageIndex begin, PageIndex end){
-			ass(begin <= end, "Invalid range at insert_range");
+			ass2(begin <= end, "Invalid range at insert_range", DEBUG_PAGES);
 			// TODO - compact at start if needed midway, move all page offsets at once
 			for(;begin != end; ++begin){
 				Pid overflow_page;

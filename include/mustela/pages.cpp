@@ -4,7 +4,7 @@
 
 using namespace mustela;
 	
-static unsigned read_key_size(const void * vptr){
+/*static unsigned read_key_size(const void * vptr){
 	unsigned result = 0;
 	memcpy(&result, vptr, sizeof(PageOffset));
 	return result;
@@ -12,15 +12,15 @@ static unsigned read_key_size(const void * vptr){
 
 static void write_key_size(unsigned ks, void * vptr){
 	memcpy(vptr, &ks, sizeof(PageOffset));
-}
+}*/
 
 MVal KeysPage::get_item_key(size_t page_size, PageIndex item){
-	ass(item < item_count, "get_item_key item too large");
+	ass2(item < item_count, "get_item_key item too large", DEBUG_PAGES);
 	char * raw_this = (char *)this;
 	PageOffset item_offset = item_offsets[item];
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
-	ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
+	ass2(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page", DEBUG_PAGES);
 	return MVal(raw_this + item_offset + keysizesize, keysize);
 }
 Val KeysPage::get_item_key_no_check(size_t page_size, PageIndex item)const{
@@ -137,7 +137,7 @@ void NodePtr::compact(size_t item_size){
 }
 
 size_t CNodePtr::get_item_size(PageIndex item)const{
-	ass(item >= 0 && item < page->item_count, "item_size item too large");
+	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
 	PageOffset item_offset = page->item_offsets[item];
 	uint64_t keysize;
@@ -194,10 +194,10 @@ void LeafPtr::compact(size_t item_size){
 	append_range(my_copy, 0, my_copy.size());
 }
 char * LeafPtr::insert_at(PageIndex insert_index, Val key, size_t value_size, bool & overflow){
-	ass(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index");
+	ass2(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index", DEBUG_PAGES);
 	size_t item_size = get_item_size(key, value_size, overflow);
 	compact(item_size);
-	ass(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node");
+	ass2(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
 	MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 	auto valuesizesize = write_u64_sqlite4(value_size, new_key.end());
 	return new_key.end() + valuesizesize;
@@ -213,7 +213,7 @@ PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)c
 	return kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
 }
 size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overflow_count)const{
-	ass(item >= 0 && item < page->item_count, "item_size item too large");
+	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
 	PageOffset item_offset = page->item_offsets[item];
 	uint64_t keysize;

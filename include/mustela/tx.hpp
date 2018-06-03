@@ -29,20 +29,7 @@ namespace mustela {
 
 		IntrusiveNode<Cursor> my_cursors;
 		std::set<Bucket *> my_buckets;
-		std::vector<std::vector<char>> tmp_pages; // We do not store it in stack. Sometimes we need more than one.
-		NodePtr push_tmp_copy(const NodePage * other){ // TODO - get rid
-			tmp_pages.push_back(std::vector<char>(page_size, 0));
-			memcpy(tmp_pages.back().data(), other, page_size);
-			return NodePtr(page_size, (NodePage * )tmp_pages.back().data());
-		}
-		LeafPtr push_tmp_copy(const LeafPage * other){ // TODO - get rid
-			tmp_pages.push_back(std::vector<char>(page_size, 0));
-			memcpy(tmp_pages.back().data(), other, page_size);
-			return LeafPtr(page_size, (LeafPage * )tmp_pages.back().data());
-		}
-		void clear_tmp_copies(){
-			tmp_pages.clear();
-		}
+
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists);
 		

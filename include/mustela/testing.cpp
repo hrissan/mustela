@@ -138,11 +138,13 @@ namespace {
             auto k = from_hex(get_nth_tok(tokens, 2));
             auto v = from_hex(get_nth_tok(tokens, 3));
             b.put(mustela::Val(k.data(), k.size()), mustela::Val(v.data(), v.size()), false);
+            // TODO - check result
         } else if (cmd == "del") {
             auto name = from_hex(get_nth_tok(tokens, 1));
             mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), false);
             auto k = from_hex(get_nth_tok(tokens, 2));
-            b.del(mustela::Val(k.data(), k.size()), true);
+            b.del(mustela::Val(k.data(), k.size()));
+            // TODO - check result
         } else if (cmd == "commit") {
             state.tx->commit();
         } else if (cmd == "rollback") {

@@ -267,7 +267,7 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 			p1 += write_u64_sqlite4(records_to_delete.back().second, keybuf + p1);
 //			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
-			ass(meta_bucket.del(Val(keybuf, p1), true), "Failed to delete free list records after reading");
+			ass(meta_bucket.del(Val(keybuf, p1)), "Failed to delete free list records after reading");
 			//                std::cerr << tx.print_db() << std::endl;
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages.get_record_count());

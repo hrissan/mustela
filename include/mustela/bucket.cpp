@@ -102,14 +102,14 @@ bool Bucket::get(const Val & key, Val * value)const{
 	Val c_key;
 	return main_cursor.get(&c_key, value);
 }
-bool Bucket::del(const Val & key, bool must_exist){
+bool Bucket::del(const Val & key){
 	if( my_txn->read_only )
 		throw Exception("Attempt to modify read-only transaction");
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	Cursor main_cursor(my_txn, bucket_desc);
 	if( !main_cursor.seek(key) )
-		return !must_exist;
-	main_cursor.del();
+		return false;
+	ass(main_cursor.del(), "Cursor del returned false after successfull seek");
 	return true;
 }
 std::string Bucket::print_db(){

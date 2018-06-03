@@ -193,12 +193,20 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	cur.at(height + 1).second = path_pa.second + 1; // original item
 	new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right_pid));
 	// split_kv will not be valid after code below
-	{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
-		NodePtr my_copy = push_tmp_copy(wr_dap.page);
-		wr_dap.clear();
-		for(PageIndex i = 0; i != left_split; ++i)
-			wr_dap.append(get_kv_with_insert(my_copy, i, insert_index, insert_kv1, insert_kv2));
-		wr_dap.set_value(-1, my_copy.get_value(-1));
+	{
+//		NodePtr my_copy = push_tmp_copy(wr_dap.page);
+//		wr_dap.clear();
+//		for(PageIndex i = 0; i != left_split; ++i)
+//			wr_dap.append(get_kv_with_insert(my_copy, i, insert_index, insert_kv1, insert_kv2));
+//		wr_dap.set_value(-1, my_copy.get_value(-1));
+		int insert_counter = (left_split > insert_index) ? 1 : 0;
+		if(insert_kv2.key.data)
+			insert_counter += (left_split > insert_index + 1) ? 1 : 0;
+		wr_dap.erase(left_split - insert_counter, wr_dap.size());
+		if(insert_counter > 0)
+			wr_dap.insert_at(insert_index, insert_kv1);
+		if(insert_counter > 1)
+			wr_dap.insert_at(insert_index + 1, insert_kv2);
 	}
 }
 static size_t get_item_size_with_insert(const LeafPtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size){
@@ -290,14 +298,20 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_middle_pid, left_split);
 		}
 	}
-	{ //if( split_index != wr_dap.size() ){ // TODO - optimize out nop
-		LeafPtr my_copy = push_tmp_copy(wr_dap.page);
-		wr_dap.clear();
-		for(PageIndex i = 0; i != left_split; ++i)
-			if( i == insert_index)
-				result = wr_dap.insert_at(wr_dap.size(), insert_key, insert_value_size, *overflow);
-			else
-				wr_dap.append(get_kv_with_insert(my_copy, i, insert_index));
+	{
+//		LeafPtr my_copy = push_tmp_copy(wr_dap.page);
+//		wr_dap.clear();
+//		for(PageIndex i = 0; i != left_split; ++i)
+//			if( i == insert_index)
+//				result = wr_dap.insert_at(wr_dap.size(), insert_key, insert_value_size, *overflow);
+//			else
+//				wr_dap.append(get_kv_with_insert(my_copy, i, insert_index));
+		if(insert_index >= left_split)
+			wr_dap.erase(left_split, wr_dap.size());
+		else{
+			wr_dap.erase(left_split - 1, wr_dap.size());
+			result = wr_dap.insert_at(insert_index, insert_key, insert_value_size, *overflow);
+		}
 	}
 	cur.at(1).second = path_pa.second + 1; // original item
 	if(left_split + 1 == right_split){
@@ -305,7 +319,6 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	}else{
 		new_insert2node(cur, 1, ValPid(wr_right.get_key(0), wr_right_pid));
 	}
-	clear_tmp_copies();
 	return result;
 }
 void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
@@ -512,7 +525,6 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 	}
 	if( left_sib.page || right_sib.page )
 		new_merge_node(cur, 1, wr_parent);
-	clear_tmp_copies();
 }
 void TX::commit(){
 	if(read_only)
@@ -620,7 +632,7 @@ bool TX::drop_bucket(const Val & name){
 			++cit;
 	std::string key = bucket_prefix + name.to_string();
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	ass(meta_bucket.del(Val(key), true), "Error while dropping table");
+	ass(meta_bucket.del(Val(key)), "Error while dropping table");
 	ass(bucket_descs.erase(name.to_string()) == 1, "bucket_desc not found during erase");
 	return true;
 }
