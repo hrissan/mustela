@@ -106,7 +106,7 @@ Pid MergablePageCache::defrag_end(Pid page_count){
 void MergablePageCache::print_db()const{
 	int counter = 0;
 	for(auto && it : cache){
-		if( counter++ % 10 == 0)
+		if( counter != 0 && counter++ % 10 == 0)
 			std::cerr << std::endl;
 		std::cerr << "[" << it.first << ":" << it.second << "] ";
 	}

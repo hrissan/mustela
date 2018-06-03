@@ -82,9 +82,9 @@ void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t ite
 		memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
 	if( item_offsets[to_remove_item] == free_end_offset )
 		free_end_offset += kv_size; // Luck, removed item is after free middle space
-	for(PageIndex pos = to_remove_item; pos != item_count - 1; ++pos)
-		item_offsets[pos] = item_offsets[pos+1];
-	// TODO - use memmove
+//	for(PageIndex pos = to_remove_item; pos != item_count - 1; ++pos)
+//		item_offsets[pos] = item_offsets[pos+1];
+	memmove(&item_offsets[to_remove_item], &item_offsets[to_remove_item + 1], (item_count - 1 - to_remove_item) * sizeof(PageOffset));
 	items_size -= item_size;
 	item_count -= 1;
 	if( CLEAR_FREE_SPACE )
@@ -94,8 +94,9 @@ void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t ite
 MVal KeysPage::insert_item_at(size_t page_size, PageIndex insert_index, Val key, size_t item_size){
 	char * raw_this = (char *)this;
 	auto kv_size = item_size - sizeof(PageOffset);
-	for(PageIndex pos = item_count; pos-- > insert_index;)
-		item_offsets[pos + 1] = item_offsets[pos];
+//	for(PageIndex pos = item_count; pos-- > insert_index;)
+//		item_offsets[pos + 1] = item_offsets[pos];
+	memmove(&item_offsets[insert_index + 1], &item_offsets[insert_index], (item_count - insert_index) * sizeof(PageOffset));
 	auto insert_offset = free_end_offset - kv_size;
 	item_offsets[insert_index] = insert_offset;
 	free_end_offset -= kv_size;
