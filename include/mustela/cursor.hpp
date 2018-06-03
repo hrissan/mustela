@@ -19,9 +19,8 @@ namespace mustela {
 		IntrusiveNode<Cursor> tx_cursors;
 
 		void unlink();
-		std::array<std::pair<Pid, PageIndex>, MAX_DEPTH> path{};
-		std::pair<Pid, PageIndex> & at(size_t height){ return path.at(height); }
-//		std::vector<std::pair<Pid, PageIndex>> path;
+		std::array<std::pair<Pid, int>, MAX_DEPTH> path{};
+		std::pair<Pid, int> & at(size_t height){ return path.at(height); }
 		// All node indices are always [-1..node.size-1]
 		// Leaf index is always [0..leaf.size], so can point to the "end" of leaf
 		// Cursor is at end() if it is set at last leaf end
@@ -31,37 +30,37 @@ namespace mustela {
 		bool fix_cursor_after_last_item(); // true if points to item
 		void set_at_direction(size_t height, Pid pa, int dir);
 
-		void on_insert(BucketDesc * desc, size_t height, Pid pa, PageIndex insert_index, PageIndex insert_count = 1){
+		void on_insert(BucketDesc * desc, size_t height, Pid pa, int insert_index, int insert_count = 1){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second >= insert_index ){
 				at(height).second += insert_count;
 			}
 		}
-		void on_erase(BucketDesc * desc, size_t height, Pid pa, PageIndex erase_index, PageIndex erase_count = 1){
+		void on_erase(BucketDesc * desc, size_t height, Pid pa, int erase_index, int erase_count = 1){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second > erase_index ){
 				at(height).second -= erase_count;
 			}
 		}
-		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
+		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second >= split_index ){
 				at(height).first = new_pa;
 				at(height).second -= split_index;
 				at(height + 1).second += 1;
 			}
 		}
-		void on_merge(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex new_index){
+		void on_merge(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int new_index){
 			if( bucket_desc == desc && at(height).first == pa){
 				at(height).first = new_pa;
 				at(height).second += new_index;
 			}
 		}
-		void on_rotate_right(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
+		void on_rotate_right(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second >= split_index ){
 				at(height).first = new_pa;
 				at(height).second -= split_index + 1;
 				at(height + 1).second += 1;
 			}
 		}
-		void on_rotate_left(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, PageIndex split_index){
+		void on_rotate_left(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second < split_index ){
 				at(height).first = new_pa;
 				at(height).second += 1;

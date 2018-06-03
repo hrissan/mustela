@@ -14,32 +14,32 @@ static void write_key_size(unsigned ks, void * vptr){
 	memcpy(vptr, &ks, sizeof(PageOffset));
 }*/
 
-MVal KeysPage::get_item_key(size_t page_size, PageIndex item){
+MVal KeysPage::get_item_key(size_t page_size, int item){
 	ass2(item < item_count, "get_item_key item too large", DEBUG_PAGES);
 	char * raw_this = (char *)this;
-	PageOffset item_offset = item_offsets[item];
+	size_t item_offset = item_offsets[item];
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
 	ass2(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page", DEBUG_PAGES);
 	return MVal(raw_this + item_offset + keysizesize, keysize);
 }
-Val KeysPage::get_item_key_no_check(size_t page_size, PageIndex item)const{
+Val KeysPage::get_item_key_no_check(size_t page_size, int item)const{
 	char * raw_this = (char *)this;
-	PageOffset item_offset = item_offsets[item];
+	size_t item_offset = item_offsets[item];
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
 	return MVal(raw_this + item_offset + keysizesize, keysize);
 }
 
-Val KeysPage::get_item_key(size_t page_size, PageIndex item)const{
+Val KeysPage::get_item_key(size_t page_size, int item)const{
 	return const_cast<KeysPage *>(this)->get_item_key(page_size, item);
 }
-PageIndex KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)const{
-	PageIndex first = 0;
-	PageIndex count = item_count;
+int KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)const{
+	int first = 0;
+	int count = item_count;
 	while (count > 0) {
-		PageIndex step = count / 2;
-		PageIndex it = first + step;
+		int step = count / 2;
+		int it = first + step;
 		Val itkey = get_item_key_no_check(page_size, it);
 		int cmp = itkey.compare(key);
 		if( cmp == 0){
@@ -59,12 +59,12 @@ PageIndex KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)con
 //			*found = Val(get_item_key_no_check(page_size, first)) == key;
 	return first;
 }
-PageIndex KeysPage::upper_bound_item(size_t page_size, Val key)const{
-	PageIndex first = 0;
-	PageIndex count = item_count;
+int KeysPage::upper_bound_item(size_t page_size, Val key)const{
+	int first = 0;
+	int count = item_count;
 	while (count > 0) {
-		PageIndex step = count / 2;
-		PageIndex it = first + step;
+		int step = count / 2;
+		int it = first + step;
 		Val itkey = get_item_key_no_check(page_size, it);
 		if (!(key < itkey)) {
 			first = it + 1;
@@ -75,14 +75,14 @@ PageIndex KeysPage::upper_bound_item(size_t page_size, Val key)const{
 	return first;
 }
 
-void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t item_size){
+void KeysPage::erase_item(size_t page_size, int to_remove_item, size_t item_size){
 	char * raw_this = (char *)this;
 	auto kv_size = item_size - sizeof(PageOffset);
 	if( CLEAR_FREE_SPACE )
 		memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
 	if( item_offsets[to_remove_item] == free_end_offset )
 		free_end_offset += kv_size; // Luck, removed item is after free middle space
-//	for(PageIndex pos = to_remove_item; pos != item_count - 1; ++pos)
+//	for(int pos = to_remove_item; pos != item_count - 1; ++pos)
 //		item_offsets[pos] = item_offsets[pos+1];
 	memmove(&item_offsets[to_remove_item], &item_offsets[to_remove_item + 1], (item_count - 1 - to_remove_item) * sizeof(PageOffset));
 	items_size -= item_size;
@@ -91,10 +91,10 @@ void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t ite
 		item_offsets[item_count] = 0; // clear unused part
 }
 
-MVal KeysPage::insert_item_at(size_t page_size, PageIndex insert_index, Val key, size_t item_size){
+MVal KeysPage::insert_item_at(size_t page_size, int insert_index, Val key, size_t item_size){
 	char * raw_this = (char *)this;
 	auto kv_size = item_size - sizeof(PageOffset);
-//	for(PageIndex pos = item_count; pos-- > insert_index;)
+//	for(int pos = item_count; pos-- > insert_index;)
 //		item_offsets[pos + 1] = item_offsets[pos];
 	memmove(&item_offsets[insert_index + 1], &item_offsets[insert_index], (item_count - insert_index) * sizeof(PageOffset));
 	auto insert_offset = free_end_offset - kv_size;
@@ -107,7 +107,7 @@ MVal KeysPage::insert_item_at(size_t page_size, PageIndex insert_index, Val key,
 	return MVal(raw_this + insert_offset + keysizesize, key.size);
 }
 
-PageOffset mustela::get_item_size(size_t page_size, Val key, Pid value){
+size_t mustela::get_item_size(size_t page_size, Val key, Pid value){
 	size_t item_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + NODE_PID_SIZE;
 	if( item_size <= node_capacity(page_size) )
 		return item_size;
@@ -136,16 +136,16 @@ void NodePtr::compact(size_t item_size){
 	append_range(my_copy, 0, my_copy.size());
 }
 
-size_t CNodePtr::get_item_size(PageIndex item)const{
+size_t CNodePtr::get_item_size(int item)const{
 	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
-	PageOffset item_offset = page->item_offsets[item];
+	size_t item_offset = page->item_offsets[item];
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
 	return sizeof(PageOffset) + keysizesize + keysize + NODE_PID_SIZE;
 }
 
-Pid CNodePtr::get_value(PageIndex item)const{
+Pid CNodePtr::get_value(int item)const{
 	Pid value;
 	if( item == -1 ){
 		const char * raw_page = (const char *)page;
@@ -156,13 +156,13 @@ Pid CNodePtr::get_value(PageIndex item)const{
 	unpack_uint_be(result.end(), NODE_PID_SIZE, value);
 	return value;
 }
-ValPid CNodePtr::get_kv(PageIndex item)const{
+ValPid CNodePtr::get_kv(int item)const{
 	ValPid result(get_key(item), 0);
 	unpack_uint_be(result.key.end(), NODE_PID_SIZE, result.pid);
 	return result;
 }
 
-void NodePtr::set_value(PageIndex item, Pid value){
+void NodePtr::set_value(int item, Pid value){
 	if( item == -1 ){
 		char * raw_page = (char *)mpage();
 		pack_uint_be(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
@@ -193,7 +193,7 @@ void LeafPtr::compact(size_t item_size){
 	clear();
 	append_range(my_copy, 0, my_copy.size());
 }
-char * LeafPtr::insert_at(PageIndex insert_index, Val key, size_t value_size, bool & overflow){
+char * LeafPtr::insert_at(int insert_index, Val key, size_t value_size, bool & overflow){
 	ass2(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index", DEBUG_PAGES);
 	size_t item_size = get_item_size(key, value_size, overflow);
 	compact(item_size);
@@ -203,7 +203,7 @@ char * LeafPtr::insert_at(PageIndex insert_index, Val key, size_t value_size, bo
 	return new_key.end() + valuesizesize;
 }
 
-PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const{
+size_t CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const{
 	size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size);
 	if( kvs_size + value_size <= capacity() ){
 		overflow = false;
@@ -212,10 +212,10 @@ PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)c
 	overflow = true;
 	return kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
 }
-size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overflow_count)const{
+size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_count)const{
 	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
-	PageOffset item_offset = page->item_offsets[item];
+	size_t item_offset = page->item_offsets[item];
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
 	uint64_t valuesize;
@@ -230,7 +230,7 @@ size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overfl
 	overflow_count = (valuesize + page_size - 1)/page_size;
 	return kvs_size + NODE_PID_SIZE;
 }
-ValVal CLeafPtr::get_kv(PageIndex item, Pid & overflow_page)const{
+ValVal CLeafPtr::get_kv(int item, Pid & overflow_page)const{
 	ValVal result;
 	result.key = get_key(item);
 	uint64_t valuesize;
@@ -256,7 +256,7 @@ void test_node_page(){
 		std::string key = "key" + std::to_string(rand() % 100);
 		Pid val = rand() % 100000;
 		bool same_key;
-		PageIndex existing_item = pa.lower_bound_item(Val(key), &same_key);
+		int existing_item = pa.lower_bound_item(Val(key), &same_key);
 		bool remove_existing = rand() % 2;
 		if( same_key ){
 			if( !remove_existing )
@@ -299,7 +299,7 @@ void mustela::test_data_pages(){
 		std::string key = "key" + std::to_string(rand() % 100);
 		std::string val = "value" + std::to_string(rand() % 100000);
 		bool same_key;
-		PageIndex existing_item = pa.lower_bound_item(Val(key), &same_key);
+		int existing_item = pa.lower_bound_item(Val(key), &same_key);
 		bool remove_existing = rand() % 2;
 		if( same_key ){
 			if( !remove_existing )

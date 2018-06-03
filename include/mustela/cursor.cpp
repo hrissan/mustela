@@ -70,12 +70,12 @@ bool Cursor::seek(const Val & key){
 		if( height == 0 ){
 			CLeafPtr dap = my_txn->readable_leaf(pa);
 			bool found;
-			PageIndex item = dap.lower_bound_item(key, &found);
+			int item = dap.lower_bound_item(key, &found);
 			at(height) = std::make_pair(pa, item);
 			return found;
 		}
 		CNodePtr nap = my_txn->readable_node(pa);
-		PageIndex nitem = nap.upper_bound_item(key) - 1;
+		int nitem = nap.upper_bound_item(key) - 1;
 		at(height) = std::make_pair(pa, nitem);
 		pa = nap.get_value(nitem);
 		height -= 1;
@@ -115,7 +115,7 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 			break;
 		}
 		CNodePtr nap = my_txn->readable_node(pa);
-		PageIndex nitem = dir > 0 ? nap.size() - 1 : -1;
+		int nitem = dir > 0 ? nap.size() - 1 : -1;
 		at(height) = std::make_pair(pa, nitem);
 		pa = nap.get_value(nitem);
 		height -= 1;

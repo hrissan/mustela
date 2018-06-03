@@ -93,7 +93,7 @@ void TX::new_increase_height(Cursor & cur){
 			c->get_current()->at(cur.bucket_desc->height) = std::make_pair(cur.bucket_desc->root_page, -1);
 		}
 }
-static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size1, size_t required_size2){
+static size_t get_item_size_with_insert(const NodePtr & wr_dap, int pos, int insert_pos, size_t required_size1, size_t required_size2){
 	if(pos == insert_pos)
 		return required_size1;
 	if(required_size2 != 0){
@@ -107,7 +107,7 @@ static size_t get_item_size_with_insert(const NodePtr & wr_dap, PageIndex pos, P
 	}
 	return wr_dap.get_item_size(pos);
 }
-static ValPid get_kv_with_insert(const NodePtr & wr_dap, PageIndex pos, PageIndex insert_pos, ValPid insert_kv1, ValPid insert_kv2){
+static ValPid get_kv_with_insert(const NodePtr & wr_dap, int pos, int insert_pos, ValPid insert_kv1, ValPid insert_kv2){
 	if(pos == insert_pos)
 		return insert_kv1;
 	if(insert_kv2.key.data){
@@ -121,8 +121,8 @@ static ValPid get_kv_with_insert(const NodePtr & wr_dap, PageIndex pos, PageInde
 	}
 	return wr_dap.get_kv(pos);
 }
-static void find_best_node_split(PageIndex & left_split, PageIndex & right_split, const NodePtr & wr_dap, PageIndex insert_index, size_t required_size1, size_t required_size2){
-	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
+static void find_best_node_split(int & left_split, int & right_split, const NodePtr & wr_dap, int insert_index, size_t required_size1, size_t required_size2){
+	const int size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
 	size_t left_size = get_item_size_with_insert(wr_dap, 0, insert_index, required_size1, required_size2);
 	size_t right_size = get_item_size_with_insert(wr_dap, size_with_insert - 1, insert_index, required_size1, required_size2);
 	left_split = 1;
@@ -156,14 +156,14 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 			wr_dap.insert_at(path_el.second + 1, insert_kv2.key, insert_kv2.pid);
 		return;
 	}
-	const PageIndex size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
+	const int size_with_insert = wr_dap.size() + 1 + (required_size2 != 0 ? 1 : 0);
 	ass(size_with_insert >= 3, "Cannot split node with <3 keys");
 	if(cur.bucket_desc->height == height)
 		new_increase_height(cur);
 	path_el = cur.at(height); // Could change in increase height
 	auto path_pa = cur.at(height + 1);
-	const PageIndex insert_index = path_el.second;
-	PageIndex left_split = 0, right_split = 0;
+	const int insert_index = path_el.second;
+	int left_split = 0, right_split = 0;
 	find_best_node_split(left_split, right_split, wr_dap, insert_index, required_size1, required_size2);
 	// We must leave at least 1 key to the left and to the right
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
@@ -182,7 +182,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	NodePtr wr_right = writable_node(wr_right_pid);
 	cur.bucket_desc->node_page_count += 1;
 	wr_right.init_dirty(meta_page.tid);
-	for(PageIndex i = right_split; i != size_with_insert; ++i)
+	for(int i = right_split; i != size_with_insert; ++i)
 		wr_right.append(get_kv_with_insert(wr_dap, i, insert_index, insert_kv1, insert_kv2));
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 		c->get_current()->on_insert(cur.bucket_desc, height + 1, path_pa.first, path_pa.second + 1);
@@ -196,7 +196,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	{
 //		NodePtr my_copy = push_tmp_copy(wr_dap.page);
 //		wr_dap.clear();
-//		for(PageIndex i = 0; i != left_split; ++i)
+//		for(int i = 0; i != left_split; ++i)
 //			wr_dap.append(get_kv_with_insert(my_copy, i, insert_index, insert_kv1, insert_kv2));
 //		wr_dap.set_value(-1, my_copy.get_value(-1));
 		int insert_counter = (left_split > insert_index) ? 1 : 0;
@@ -209,14 +209,14 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 			wr_dap.insert_at(insert_index + 1, insert_kv2);
 	}
 }
-static size_t get_item_size_with_insert(const LeafPtr & wr_dap, PageIndex pos, PageIndex insert_pos, size_t required_size){
+static size_t get_item_size_with_insert(const LeafPtr & wr_dap, int pos, int insert_pos, size_t required_size){
 	if(pos == insert_pos)
 		return required_size;
 	if(pos > insert_pos)
 		pos -= 1;
 	return wr_dap.get_item_size(pos);
 }
-static ValVal get_kv_with_insert(const LeafPtr & wr_dap, PageIndex pos, PageIndex insert_pos){
+static ValVal get_kv_with_insert(const LeafPtr & wr_dap, int pos, int insert_pos){
 	ass(pos != insert_pos, "Insert2Leaf does not have data for replace item");
 	if(pos > insert_pos)
 		pos -= 1;
@@ -236,10 +236,10 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	auto path_pa = cur.at(1);
 	size_t left_size = 0;
 	size_t right_size = 0;
-	const PageIndex size_with_insert = wr_dap.size() + 1;
-	const PageIndex insert_index = path_el.second;
-	PageIndex left_split = 0;
-	PageIndex right_split = size_with_insert;
+	const int size_with_insert = wr_dap.size() + 1;
+	const int insert_index = path_el.second;
+	int left_split = 0;
+	int right_split = size_with_insert;
 	size_t left_add = get_item_size_with_insert(wr_dap, left_split, insert_index, required_size);
 	size_t right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size);
 	while(left_split != right_split){
@@ -273,7 +273,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	cur.bucket_desc->leaf_page_count += 1;
 	wr_right.init_dirty(meta_page.tid);
 	char * result = nullptr;
-	for(PageIndex i = right_split; i != size_with_insert; ++i)
+	for(int i = right_split; i != size_with_insert; ++i)
 		if( i == insert_index)
 			result = wr_right.insert_at(wr_right.size(), insert_key, insert_value_size, *overflow);
 		else
@@ -301,7 +301,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	{
 //		LeafPtr my_copy = push_tmp_copy(wr_dap.page);
 //		wr_dap.clear();
-//		for(PageIndex i = 0; i != left_split; ++i)
+//		for(int i = 0; i != left_split; ++i)
 //			if( i == insert_index)
 //				result = wr_dap.insert_at(wr_dap.size(), insert_key, insert_value_size, *overflow);
 //			else
@@ -392,7 +392,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			const Pid wr_left_pid = cur2.at(height).first;
 
 			const size_t required_size1 = get_item_size(page_size, my_kv.key, my_kv.pid);
-			PageIndex left_split = 0, right_split = 0;
+			int left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_left, wr_left.size(), required_size1, 0);
 			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 				c->get_current()->on_insert(cur.bucket_desc, height, path_el.first, -1, wr_left.size() - right_split + 1);
@@ -413,7 +413,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			const Pid wr_right_pid = cur2.at(height).first;
 
 			const size_t required_size1 = get_item_size(page_size, right_kv.key, right_kv.pid);
-			PageIndex left_split = 0, right_split = 0;
+			int left_split = 0, right_split = 0;
 			find_best_node_split(left_split, right_split, wr_right, 0, required_size1, 0);
 			for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 				c->get_current()->on_rotate_left(cur.bucket_desc, height, wr_right_pid, path_el.first, left_split - 1);
@@ -684,7 +684,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 		ass(bucket_desc->height == 0 || dap.size() > 0, "leaf with 0 keys found");
 		stat_bucket_desc->count += dap.size();
 		Val prev_key;
-		for(PageIndex pi = 0; pi != dap.size(); ++pi){
+		for(int pi = 0; pi != dap.size(); ++pi){
 			Pid overflow_page = 0;
 			ValVal val = dap.get_kv(pi, overflow_page);
 			if( overflow_page != 0 ){
@@ -705,7 +705,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 	stat_bucket_desc->node_page_count += 1;
 	CNodePtr nap = readable_node(pa);
 	ass(nap.size() > 0, "node with 0 keys found");
-	for(PageIndex pi = -1; pi != nap.size(); ++pi){
+	for(int pi = -1; pi != nap.size(); ++pi){
 		Val prev_limit = (pi == -1) ? left_limit : nap.get_key(pi);
 		Val next_limit = (pi + 1 < nap.size()) ? nap.get_key(pi + 1) : right_limit;
 		ass(prev_limit < next_limit, "node with wrong keys order found");
