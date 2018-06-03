@@ -270,6 +270,7 @@ void run_benchmark(const std::string & db_path){
 	}
 }
 
+
 int main(int argc, char * argv[]){
 	std::string test;
 	std::string benchmark;

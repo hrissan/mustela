@@ -58,6 +58,7 @@ namespace mustela {
 
 		MVal get_item_key(size_t page_size, PageIndex item);
 		Val get_item_key(size_t page_size, PageIndex item)const;
+		Val get_item_key_no_check(size_t page_size, PageIndex item)const;
 		PageIndex lower_bound_item(size_t page_size, Val key, bool * found)const;
 		PageIndex upper_bound_item(size_t page_size, Val key)const;
 		void erase_item(size_t page_size, PageIndex to_remove_item, size_t item_size);
@@ -109,7 +110,7 @@ namespace mustela {
 		Pid get_value(PageIndex item)const;
 		ValPid get_kv(PageIndex item)const;
 		size_t get_item_size(PageIndex item)const;
-		PageIndex lower_bound_item(Val key, bool * found = nullptr)const{
+		PageIndex lower_bound_item(Val key, bool * found)const{
 			return page->lower_bound_item(page_size, key, found);
 		}
 		PageIndex upper_bound_item(Val key)const{
@@ -204,7 +205,7 @@ namespace mustela {
 		size_t get_item_size(PageIndex item)const{
 			Pid a; return get_item_size(item, a, a);
 		}
-		PageIndex lower_bound_item(Val key, bool * found = nullptr)const{
+		PageIndex lower_bound_item(Val key, bool * found)const{
 			return page->lower_bound_item(page_size, key, found);
 		}
 		PageOffset get_item_size(Val key, size_t value_size, bool & overflow)const;

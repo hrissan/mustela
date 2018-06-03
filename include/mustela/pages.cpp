@@ -4,34 +4,33 @@
 
 using namespace mustela;
 	
-//	bool MetaPage::check(uint32_t system_page_size, uint64_t file_size)const{
-//		return magic == META_MAGIC && version == OUR_VERSION && page_size == system_page_size && page_count * page_size <= file_size && meta_bucket.root_page < page_count;
-//	}
-static unsigned char read_our_sqlite4(uint64_t & val, const void * vptr){
-	const unsigned char * ptr = (const unsigned char * )vptr;
-	unsigned char a0 = *ptr;
-	if (a0 <= 240) {
-		val = a0;
-		return 1;
-	}
-	if(a0 <= 248) {
-		unsigned char a1 = *(ptr + 1);
-		val = 240 + 256 * (a0 - 241) + a1;
-		return 2;
-	}
-	const unsigned char * buf = ptr + 1;
-	val = 2288 + 256 * buf[0] + buf[1];
-	return 3;
+static unsigned read_key_size(const void * vptr){
+	unsigned result = 0;
+	memcpy(&result, vptr, sizeof(PageOffset));
+	return result;
 }
+
+static void write_key_size(unsigned ks, void * vptr){
+	memcpy(vptr, &ks, sizeof(PageOffset));
+}
+
 MVal KeysPage::get_item_key(size_t page_size, PageIndex item){
 	ass(item < item_count, "get_item_key item too large");
 	char * raw_this = (char *)this;
 	PageOffset item_offset = item_offsets[item];
 	uint64_t keysize;
-	auto keysizesize = read_our_sqlite4(keysize, raw_this + item_offset);
+	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
 	ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
 	return MVal(raw_this + item_offset + keysizesize, keysize);
 }
+Val KeysPage::get_item_key_no_check(size_t page_size, PageIndex item)const{
+	char * raw_this = (char *)this;
+	PageOffset item_offset = item_offsets[item];
+	uint64_t keysize;
+	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
+	return MVal(raw_this + item_offset + keysizesize, keysize);
+}
+
 Val KeysPage::get_item_key(size_t page_size, PageIndex item)const{
 	return const_cast<KeysPage *>(this)->get_item_key(page_size, item);
 }
@@ -41,20 +40,23 @@ PageIndex KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)con
 	while (count > 0) {
 		PageIndex step = count / 2;
 		PageIndex it = first + step;
-		Val itkey = get_item_key(page_size, it);
-		if (itkey < key) {
+		Val itkey = get_item_key_no_check(page_size, it);
+		int cmp = itkey.compare(key);
+		if( cmp == 0){
+			*found = true;
+			return it;
+		}
+		if (cmp < 0) {
 			first = it + 1;
 			count -= step + 1;
 		}
 		else
 			count = step;
 	}
-	if( found ){
-		if( first == item_count)
-			*found = false;
-		else // TODO - we can save get_item_key here 50% of time
-			*found = Val(get_item_key(page_size, first)) == key;
-	}
+	*found = false;
+//		if( first == item_count)
+//		else // TODO - we can save get_item_key here 50% of time
+//			*found = Val(get_item_key_no_check(page_size, first)) == key;
 	return first;
 }
 PageIndex KeysPage::upper_bound_item(size_t page_size, Val key)const{
@@ -63,7 +65,7 @@ PageIndex KeysPage::upper_bound_item(size_t page_size, Val key)const{
 	while (count > 0) {
 		PageIndex step = count / 2;
 		PageIndex it = first + step;
-		Val itkey = get_item_key(page_size, it);
+		Val itkey = get_item_key_no_check(page_size, it);
 		if (!(key < itkey)) {
 			first = it + 1;
 			count -= step + 1;

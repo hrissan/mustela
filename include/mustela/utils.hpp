@@ -106,18 +106,17 @@ namespace mustela {
 			return std::string(data, size);
 		}
 		int compare(const Val & other)const{
-//		int Val::compare(const Val & other)const{
-			size_t min_size = std::min(size, other.size);
+			size_t min_size = size < other.size ? size : other.size;
 			int cmp = memcmp(data, other.data, min_size);
 			if( cmp != 0 )
 				return cmp;
 			return int(size) - int(other.size);
 		}
 		bool operator==(const Val & other)const{
-			return compare(other) == 0;
+			return size == other.size && memcmp(data, other.data, size) == 0;
 		}
 		bool operator!=(const Val & other)const{
-			return compare(other) != 0;
+			return !(*this == other);
 		}
 		bool operator<(const Val & other)const{
 			return compare(other) < 0;
