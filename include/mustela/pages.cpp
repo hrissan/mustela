@@ -13,6 +13,24 @@ using namespace mustela;
 static void write_key_size(unsigned ks, void * vptr){
 	memcpy(vptr, &ks, sizeof(PageOffset));
 }*/
+void BucketDesc::unpack(const char * buf, size_t size){
+	ass(size == sizeof(BucketDesc), "Wrong size of BucketDesc in unpack");
+	buf += unpack_uint_le(buf, sizeof(root_page), root_page);
+	buf += unpack_uint_le(buf, sizeof(height), height);
+	buf += unpack_uint_le(buf, sizeof(count), count);
+	buf += unpack_uint_le(buf, sizeof(leaf_page_count), leaf_page_count);
+	buf += unpack_uint_le(buf, sizeof(node_page_count), node_page_count);
+	buf += unpack_uint_le(buf, sizeof(overflow_page_count), overflow_page_count);
+}
+void BucketDesc::pack(char * buf, size_t size){
+	ass(size == sizeof(BucketDesc), "Wrong size of BucketDesc in pack");
+	buf += pack_uint_le(buf, sizeof(root_page), root_page);
+	buf += pack_uint_le(buf, sizeof(height), height);
+	buf += pack_uint_le(buf, sizeof(count), count);
+	buf += pack_uint_le(buf, sizeof(leaf_page_count), leaf_page_count);
+	buf += pack_uint_le(buf, sizeof(node_page_count), node_page_count);
+	buf += pack_uint_le(buf, sizeof(overflow_page_count), overflow_page_count);
+}
 
 MVal KeysPage::get_item_key(size_t page_size, int item){
 	ass2(item < item_count, "get_item_key item too large", DEBUG_PAGES);
@@ -149,27 +167,27 @@ Pid CNodePtr::get_value(int item)const{
 	Pid value;
 	if( item == -1 ){
 		const char * raw_page = (const char *)page;
-		unpack_uint_be(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
+		unpack_uint_le(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
 		return value;
 	}
 	Val result = get_key(item);
-	unpack_uint_be(result.end(), NODE_PID_SIZE, value);
+	unpack_uint_le(result.end(), NODE_PID_SIZE, value);
 	return value;
 }
 ValPid CNodePtr::get_kv(int item)const{
 	ValPid result(get_key(item), 0);
-	unpack_uint_be(result.key.end(), NODE_PID_SIZE, result.pid);
+	unpack_uint_le(result.key.end(), NODE_PID_SIZE, result.pid);
 	return result;
 }
 
 void NodePtr::set_value(int item, Pid value){
 	if( item == -1 ){
 		char * raw_page = (char *)mpage();
-		pack_uint_be(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
+		pack_uint_le(raw_page + page_size - NODE_PID_SIZE, NODE_PID_SIZE, value);
 		return;
 	}
 	MVal result = get_key(item);
-	pack_uint_be(result.end(), NODE_PID_SIZE, value);
+	pack_uint_le(result.end(), NODE_PID_SIZE, value);
 }
 
 void LeafPtr::init_dirty(Tid new_tid){
@@ -226,7 +244,7 @@ size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_cou
 		overflow_count = 0;
 		return kvs_size + valuesize;
 	}
-	unpack_uint_be(raw_page + item_offset + keysizesize + keysize + valuesizesize, NODE_PID_SIZE, overflow_page);
+	unpack_uint_le(raw_page + item_offset + keysizesize + keysize + valuesizesize, NODE_PID_SIZE, overflow_page);
 	overflow_count = (valuesize + page_size - 1)/page_size;
 	return kvs_size + NODE_PID_SIZE;
 }
@@ -240,7 +258,7 @@ ValVal CLeafPtr::get_kv(int item, Pid & overflow_page)const{
 		overflow_page = 0;
 		result.value = Val(result.key.end() + valuesizesize, valuesize);
 	}else{
-		unpack_uint_be(result.key.end() + valuesizesize, NODE_PID_SIZE, overflow_page);
+		unpack_uint_le(result.key.end() + valuesizesize, NODE_PID_SIZE, overflow_page);
 		result.value = Val(result.key.end() + valuesizesize, valuesize);
 	}
 	return result;

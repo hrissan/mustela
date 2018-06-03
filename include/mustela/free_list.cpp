@@ -125,7 +125,7 @@ void MergablePageCache::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & 
 //				std::cerr << "Aha!" << std::endl;
 //			std::cerr << "FreeList fill " << pid << ":" << r_count << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
-			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
+			pack_uint_le(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
 			space.at(space_count).data[space_pos] = static_cast<char>(r_count); space_pos += 1;
 			ass( space_pos <= space.at(space_count).size, "Overshoot of space_pos while writing free list");
 			if( space_pos == space.at(space_count).size){
@@ -184,7 +184,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 		size_t rec = 0;
 		for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
 			Pid page;
-			unpack_uint_be(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
+			unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
 			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
 			if( count == 0) // Marker of unused space
 				break;
@@ -211,7 +211,7 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages){
 		size_t rec = 0;
 		for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
 			Pid page;
-			unpack_uint_be(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
+			unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
 			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
 			if( count == 0) // Marker of unused space
 				break;

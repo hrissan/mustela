@@ -7,7 +7,7 @@
 namespace mustela {
 	
 	constexpr int MIN_KEY_COUNT = 2;
-	constexpr uint32_t OUR_VERSION = 2;
+	constexpr uint32_t OUR_VERSION = 3;
 	typedef uint16_t PageOffset;
 	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
 
@@ -34,6 +34,8 @@ namespace mustela {
 		uint64_t leaf_page_count;
 		uint64_t node_page_count;
 		uint64_t overflow_page_count;
+		void unpack(const char * buf, size_t size);
+		void pack(char * buf, size_t size);
 	};
 	struct MetaPage { // We use uint64_t here independent of Page and PageOffset to make meta pages readable across platforms
 		uint64_t pid;
@@ -47,7 +49,6 @@ namespace mustela {
 		uint32_t crc32; // Must be last one
 	};
 	// TODO - detect hot copy made with "cp" utility
-	// TODO - get rid of pid in all pages (unneccessary?)
 	struct DataPage {
 //		Pid pid; /// for consistency debugging. Never written except in get_free_page
 		Tid tid; /// transaction which did write the page
@@ -169,7 +170,7 @@ namespace mustela {
 			compact(item_size);
 			ass2(NODE_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
 			MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
-			pack_uint_be((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
+			pack_uint_le((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
 		}
 		void insert_at(int insert_index, ValPid kv){
 			insert_at(insert_index, kv.key, kv.pid);

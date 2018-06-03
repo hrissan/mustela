@@ -273,6 +273,14 @@ void run_benchmark(const std::string & db_path){
 
 
 int main(int argc, char * argv[]){
+	for(size_t i = 0; i != 9; ++i){
+		unsigned char buf[8]{};
+		mustela::pack_uint_le(buf, i, 0x0123456789ABCDEF);
+		uint64_t result = 0;
+		mustela::unpack_uint_le(buf, i, result);
+		std::cout << "Aha " << std::hex << result << std::endl;
+	}
+
 	std::string test;
 	std::string benchmark;
 	std::string scenario;

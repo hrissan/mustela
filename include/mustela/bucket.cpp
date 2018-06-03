@@ -81,7 +81,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		Pid overflow_count = (value_size + my_txn->page_size - 1)/my_txn->page_size;
 		Pid opa = my_txn->get_free_page(overflow_count);
 		bucket_desc->overflow_page_count += overflow_count;
-		pack_uint_be(result, NODE_PID_SIZE, opa);
+		pack_uint_le(result, NODE_PID_SIZE, opa);
 		result = my_txn->writable_overflow(opa, overflow_count);
 	}
 	if( !same_key )

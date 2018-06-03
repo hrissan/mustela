@@ -11,7 +11,9 @@ namespace mustela {
 	template<class T>
 	void unpack_uint_be(const unsigned char * buf, size_t si, T & val){
 		T result = 0;
-		switch(si)
+		for(size_t i = 0; i != si; ++i)
+			result = (result << 8) + buf[i];
+/*		switch(si)
 		{
 			case 8:
 				result = buf[si - 8];
@@ -31,16 +33,8 @@ namespace mustela {
 				result = (result << 8) + buf[si - 1];
 			case 0:
 				break;
-		}
-		/*    for(unsigned i = 0; i != si; ++i ) {
-		 result <<= 8;
-		 result += buf[i];
-		 }*/
+		}*/
 		val = result;
-	}
-	template<class T>
-	void unpack_uint_be(const char * buf, size_t si, T & val){
-		return unpack_uint_be((const unsigned char *)buf, si, val);
 	}
 	template<class T>
 	void pack_uint_be(unsigned char * buf, size_t si, T val){
@@ -49,9 +43,30 @@ namespace mustela {
 			val >>= 8;
 		}
 	}
+
 	template<class T>
-	void pack_uint_be(char * buf, size_t si, T val){
-		return pack_uint_be((unsigned char *)buf, si, val);
+	size_t unpack_uint_le(const unsigned char * buf, size_t si, T & val){
+		T result = 0;
+		for(size_t i = si; i-- > 0; )
+			result = (result << 8) + buf[i];
+		val = result;
+		return si;
+	}
+	template<class T>
+	size_t unpack_uint_le(const char * buf, size_t si, T & val){
+		return unpack_uint_le((const unsigned char *)buf, si, val);
+	}
+	template<class T>
+	size_t pack_uint_le(unsigned char * buf, size_t si, T val){
+		for(size_t i = 0; i != si; ++i) {
+			buf[i] = static_cast<unsigned char>(val);
+			val >>= 8;
+		}
+		return si;
+	}
+	template<class T>
+	size_t pack_uint_le(char * buf, size_t si, T val){
+		return pack_uint_le((unsigned char *)buf, si, val);
 	}
 	size_t get_compact_size_sqlite4(uint64_t val);
 	size_t read_u64_sqlite4(uint64_t & val, const void * ptr);
@@ -101,6 +116,7 @@ namespace mustela {
 		Val(const MVal & mval):data(mval.data), size(mval.size) // allow conversion
 		{}
 		const char * end()const{ return data + size; }
+		const unsigned char * udata()const{ return (const unsigned char *)data; }
 		bool empty()const{ return size == 0; }
 		
 		std::string to_string()const{

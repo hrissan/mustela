@@ -536,7 +536,10 @@ void TX::commit(){
 			if (dap.page->tid != meta_page.tid) // Table not dirty
 				continue;
 			std::string key = bucket_prefix + tit.first;
-			Val value(reinterpret_cast<const char *>(&tit.second), sizeof(BucketDesc));
+			
+			char buf[sizeof(BucketDesc)];
+			Val value(buf, sizeof(BucketDesc));
+			tit.second.pack(buf, sizeof(BucketDesc));
 			ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
 		}
 		free_list.commit_free_pages(this, meta_page.tid);
@@ -649,8 +652,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	if( meta_bucket.get(Val(key), &value) ){
 		tit = bucket_descs.insert(std::make_pair(name.to_string(), BucketDesc{})).first;
 		*persistent_name = Val(tit->first);
-		ass(value.size == sizeof(BucketDesc), "BucketDesc size in DB is wrong");
-		memmove(&tit->second, value.data, value.size);
+		tit->second.unpack(value.data, value.size);
 		return &tit->second;
 	}
 	if(!create_if_not_exists)
@@ -663,7 +665,9 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	LeafPtr wr_root = writable_leaf(tit->second.root_page);
 	wr_root.init_dirty(meta_page.tid);
 	tit->second.leaf_page_count = 1;
-	value = Val(reinterpret_cast<const char *>(&tit->second), sizeof(BucketDesc));
+	char buf[sizeof(BucketDesc)];
+	value = Val(buf, sizeof(BucketDesc));
+	tit->second.pack(buf, sizeof(BucketDesc));
 	ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
 	return &tit->second;
 }
