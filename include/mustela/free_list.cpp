@@ -150,17 +150,19 @@ void MergablePageCache::merge_from(const MergablePageCache & other){
 	}
 }
 
+static const Val freelist_prefix("f", 1);
+
 Val FreeList::fill_free_record_key(char * keybuf, Tid tid, uint64_t batch){
-	memcpy(keybuf, TX::freelist_prefix.data, TX::freelist_prefix.size);
-	size_t p1 = TX::freelist_prefix.size;
+	memcpy(keybuf, freelist_prefix.data, freelist_prefix.size);
+	size_t p1 = freelist_prefix.size;
 	p1 += write_u64_sqlite4(tid, keybuf + p1);
 	p1 += write_u64_sqlite4(batch, keybuf + p1);
 	return Val(keybuf, p1);
 }
 bool FreeList::parse_free_record_key(Val key, Tid * tid, uint64_t * batch){
-	if(!key.has_prefix(TX::freelist_prefix))
+	if(!key.has_prefix(freelist_prefix))
 		return false;
-	size_t p1 = TX::freelist_prefix.size;
+	size_t p1 = freelist_prefix.size;
 	p1 += read_u64_sqlite4(*tid, key.data + p1);
 	p1 += read_u64_sqlite4(*batch, key.data + p1);
 	return p1 == key.size;

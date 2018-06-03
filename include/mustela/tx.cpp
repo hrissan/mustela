@@ -7,7 +7,7 @@ using namespace mustela;
 
 static const bool BULK_LOADING = true;
 
-const Val TX::freelist_prefix("f");
+static const char bucket_prefix = 'b';
 
 TX::TX(DB & my_db, bool read_only):my_db(my_db), read_only(read_only), page_size(my_db.page_size) {
 	if( !read_only && my_db.options.read_only)
@@ -581,8 +581,7 @@ std::vector<Val> TX::get_bucket_names(){
 	std::vector<Val> results;
 	Cursor cur(this, &meta_page.meta_bucket);
 	Val c_key, c_value, c_tail;
-	char ch = bucket_prefix;
-	const Val prefix(&ch, 1);
+	const Val prefix(&bucket_prefix, 1);
 	for(cur.seek(prefix); cur.get(&c_key, &c_value) && c_key.has_prefix(prefix, &c_tail); cur.next()){
 		Val persistent_name;
 		load_bucket_desc(c_tail, &persistent_name, false);

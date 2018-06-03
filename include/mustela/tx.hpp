@@ -75,10 +75,7 @@ namespace mustela {
 		const bool read_only;
 	public:
 		const size_t page_size; // copy from my_db
-		
-		static const char bucket_prefix = 'b';
-		static const Val freelist_prefix;
-		
+
 		explicit TX(DB & my_db, bool read_only = false);
 		~TX();
 		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
