@@ -32,7 +32,7 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 		throw Exception("new_db_page_size must be power of 2");
 	if( fd.fd == -1)
 		throw Exception("file open failed");
-	file_size = lseek(fd.fd, 0, SEEK_END);
+	file_size = static_cast<uint64_t>(lseek(fd.fd, 0, SEEK_END));
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
 	if( file_size == 0 ){
@@ -224,7 +224,7 @@ void DB::remove_db(const std::string & file_path){
 void DB::create_db(){
 	if( lseek(fd.fd, 0, SEEK_SET) == -1 )
 		throw Exception("file seek SEEK_SET failed");
-	char data_buf[page_size];
+	char data_buf[MAX_PAGE_SIZE]; // Variable-length arrays are C99 feature
 	memset(data_buf, 0, page_size); // C++ standard URODI "variable size object cannot be initialized"
 	MetaPage * mp = (MetaPage *)data_buf;
 	mp->magic = META_MAGIC;
@@ -246,7 +246,7 @@ void DB::create_db(){
 		throw Exception("file write failed in create_db");
 	if( fsync(fd.fd) == -1 )
 		throw Exception("fsync failed in create_db");
-	file_size = lseek(fd.fd, 0, SEEK_END);
+	file_size = static_cast<uint64_t>(lseek(fd.fd, 0, SEEK_END));
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
 	grow_c_mappings();
@@ -271,7 +271,7 @@ void DB::grow_wr_mappings(Pid new_file_page_count){
 	 	fs = std::max<uint64_t>(fs, std::max<uint64_t>(options.minimal_mapping_size, new_file_page_count * page_size)) * 77 / 64; // x1.2
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
 	if(new_fs != file_size){
-		if( ftruncate(fd.fd, new_fs) == -1)
+		if( ftruncate(fd.fd, static_cast<off_t>(new_fs)) == -1)
 			throw Exception("failed to grow db file using ftruncate");
 //		if( lseek(fd.fd, new_fs - 1, SEEK_SET) == -1 )
 //			throw Exception("file seek failed in grow_file");

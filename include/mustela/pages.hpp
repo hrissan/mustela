@@ -147,7 +147,7 @@ namespace mustela {
 			size_t item_size = get_item_size(to_remove_item);
 			mpage()->erase_item(page_size, to_remove_item, item_size);
 			if( mpage()->item_count == 0)
-				mpage()->free_end_offset = page_size - NODE_PID_SIZE; // compact on last delete :)
+				mpage()->free_end_offset = static_cast<PageOffset>(page_size - NODE_PID_SIZE); // compact on last delete :)
 		}
 		void erase(int begin, int end){
 			ass2(begin <= end, "Invalid range at erase", DEBUG_PAGES);
@@ -242,7 +242,7 @@ namespace mustela {
 			size_t item_size = get_item_size(to_remove_item, overflow_page, overflow_count);
 			mpage()->erase_item(page_size, to_remove_item, item_size);
 			if( mpage()->item_count == 0)
-				mpage()->free_end_offset = page_size; // compact on last delete :)
+				mpage()->free_end_offset = static_cast<PageOffset>(page_size); // compact on last delete :)
 		}
 		void erase(int begin, int end){
 			Pid overflow_page, overflow_count;

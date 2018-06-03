@@ -169,7 +169,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 		bool right_sibling = false; // No right sibling when inserting into root node
 		if( cur.bucket_desc->height > height ){
-			auto & path_pa = cur.at(height + 1);
+//			auto & path_pa = cur.at(height + 1);
 			CNodePtr wr_parent = readable_node(path_pa.first);
 			right_sibling = path_pa.second + 1 < wr_parent.size();
 		}
@@ -261,7 +261,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	if( BULK_LOADING && insert_index == wr_dap.size() ){ // Bulk loading?
 		bool right_sibling = false; // No right sibling when height == 0
 		if( cur.bucket_desc->height > 0 ){
-			auto & path_pa = cur.at(1);
+//			auto & path_pa = cur.at(1);
 			CNodePtr wr_parent = readable_node(path_pa.first);
 			right_sibling = path_pa.second + 1 < wr_parent.size();
 		}
