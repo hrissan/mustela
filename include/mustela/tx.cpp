@@ -25,12 +25,12 @@ DataPage * TX::writable_page(Pid page, Pid count){
 
 LeafPtr TX::writable_leaf(Pid pa){
 	LeafPage * result = (LeafPage *)writable_page(pa, 1);
-	ass(result->tid == meta_page.tid, "writable_leaf is not from our transaction");
+	ass(result->tid() == meta_page.tid, "writable_leaf is not from our transaction");
 	return LeafPtr(page_size, result);
 }
 NodePtr TX::writable_node(Pid pa){
 	NodePage * result = (NodePage *)writable_page(pa, 1);
-	ass(result->tid == meta_page.tid, "writable_node is not from our transaction");
+	ass(result->tid() == meta_page.tid, "writable_node is not from our transaction");
 	return NodePtr(page_size, result);
 }
 char * TX::writable_overflow(Pid pa, Pid count){
@@ -50,13 +50,13 @@ Pid TX::get_free_page(Pid contigous_count){
 	}
 	DataPage * new_pa = writable_page(pa, contigous_count);
 //	new_pa->pid = pa;
-	new_pa->tid = meta_page.tid;
+	new_pa->set_tid(meta_page.tid);
 	return pa;
 }
 DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	Pid old_page = cur.at(height).first;
 	const DataPage * dap = readable_page(old_page, 1);
-	if( dap->tid == meta_page.tid ){ // Reached already writable page
+	if( dap->tid() == meta_page.tid ){ // Reached already writable page
 		DataPage * wr_dap = writable_page(old_page, 1);
 		return wr_dap;
 	}
@@ -68,7 +68,7 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	DataPage * wr_dap = writable_page(new_page, 1);
 	memcpy(wr_dap, dap, page_size);
 //	wr_dap->pid = new_page;
-	wr_dap->tid = meta_page.tid;
+	wr_dap->set_tid(meta_page.tid);
 	if(height == cur.bucket_desc->height){ // node is root
 		cur.bucket_desc->root_page = new_page;
 		return wr_dap;
@@ -533,7 +533,7 @@ void TX::commit(){
 		Bucket meta_bucket(this, &meta_page.meta_bucket);
 		for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
 			CLeafPtr dap = readable_leaf(tit.second.root_page);
-			if (dap.page->tid != meta_page.tid) // Table not dirty
+			if (dap.page->tid() != meta_page.tid) // Table not dirty
 				continue;
 			std::string key = bucket_prefix + tit.first;
 			

@@ -33,9 +33,9 @@ void BucketDesc::pack(char * buf, size_t size){
 }
 
 MVal KeysPage::get_item_key(size_t page_size, int item){
-	ass2(item < item_count, "get_item_key item too large", DEBUG_PAGES);
+	ass2(item < item_count(), "get_item_key item too large", DEBUG_PAGES);
 	char * raw_this = (char *)this;
-	size_t item_offset = item_offsets[item];
+	size_t item_offset = item_offsets(item);
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
 	ass2(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page", DEBUG_PAGES);
@@ -43,7 +43,7 @@ MVal KeysPage::get_item_key(size_t page_size, int item){
 }
 Val KeysPage::get_item_key_no_check(size_t page_size, int item)const{
 	char * raw_this = (char *)this;
-	size_t item_offset = item_offsets[item];
+	size_t item_offset = item_offsets(item);
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_this + item_offset);
 	return MVal(raw_this + item_offset + keysizesize, keysize);
@@ -54,7 +54,7 @@ Val KeysPage::get_item_key(size_t page_size, int item)const{
 }
 int KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)const{
 	int first = 0;
-	int count = item_count;
+	int count = item_count();
 	while (count > 0) {
 		int step = count / 2;
 		int it = first + step;
@@ -79,7 +79,7 @@ int KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)const{
 }
 int KeysPage::upper_bound_item(size_t page_size, Val key)const{
 	int first = 0;
-	int count = item_count;
+	int count = item_count();
 	while (count > 0) {
 		int step = count / 2;
 		int it = first + step;
@@ -97,16 +97,16 @@ void KeysPage::erase_item(size_t page_size, int to_remove_item, size_t item_size
 	char * raw_this = (char *)this;
 	auto kv_size = item_size - sizeof(PageOffset);
 	if( CLEAR_FREE_SPACE )
-		memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
-	if( item_offsets[to_remove_item] == free_end_offset )
-		free_end_offset += kv_size; // Luck, removed item is after free middle space
+		memset(raw_this + item_offsets(to_remove_item), 0, kv_size); // clear unused part
+	if( item_offsets(to_remove_item) == free_end_offset() )
+		set_free_end_offset( free_end_offset() + kv_size); // Luck, removed item is after free middle space
 //	for(int pos = to_remove_item; pos != item_count - 1; ++pos)
 //		item_offsets[pos] = item_offsets[pos+1];
-	memmove(&item_offsets[to_remove_item], &item_offsets[to_remove_item + 1], static_cast<size_t>(item_count - 1 - to_remove_item) * sizeof(PageOffset));
-	items_size -= item_size;
-	item_count -= 1;
+	memmove(s_item_offsets + sizeof(PageOffset) * to_remove_item, s_item_offsets + sizeof(PageOffset) * (to_remove_item + 1), static_cast<size_t>(item_count() - 1 - to_remove_item) * sizeof(PageOffset));
+	set_items_size( items_size() - item_size);
+	set_item_count( item_count() - 1);
 	if( CLEAR_FREE_SPACE )
-		item_offsets[item_count] = 0; // clear unused part
+		set_item_offsets(item_count(), 0); // clear unused part
 }
 
 MVal KeysPage::insert_item_at(size_t page_size, int insert_index, Val key, size_t item_size){
@@ -114,12 +114,12 @@ MVal KeysPage::insert_item_at(size_t page_size, int insert_index, Val key, size_
 	auto kv_size = item_size - sizeof(PageOffset);
 //	for(int pos = item_count; pos-- > insert_index;)
 //		item_offsets[pos + 1] = item_offsets[pos];
-	memmove(&item_offsets[insert_index + 1], &item_offsets[insert_index], static_cast<size_t>(item_count - insert_index) * sizeof(PageOffset));
-	auto insert_offset = free_end_offset - kv_size;
-	item_offsets[insert_index] = static_cast<PageOffset>(insert_offset);
-	free_end_offset -= kv_size;
-	items_size += item_size;
-	item_count += 1;
+	memmove(s_item_offsets + sizeof(PageOffset)*(insert_index + 1), s_item_offsets + sizeof(PageOffset)*insert_index, static_cast<size_t>(item_count() - insert_index) * sizeof(PageOffset));
+	auto insert_offset = free_end_offset() - kv_size;
+	set_item_offsets(insert_index, insert_offset);
+	set_free_end_offset( free_end_offset() - kv_size);
+	set_items_size( items_size() + item_size);
+	set_item_count( item_count() + 1);
 	auto keysizesize = write_u64_sqlite4(key.size, raw_this + insert_offset);
 	memcpy(raw_this + insert_offset + keysizesize, key.data, key.size);
 	return MVal(raw_this + insert_offset + keysizesize, key.size);
@@ -137,27 +137,27 @@ void NodePtr::init_dirty(Tid new_tid){
 	if( CLEAR_FREE_SPACE )
 		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
 	else{
-		mpage()->item_count = 0;
-		mpage()->items_size = 0;
+		mpage()->set_item_count(0);
+		mpage()->set_items_size(0);
 	}
-	mpage()->tid = new_tid;
-	mpage()->free_end_offset = static_cast<PageOffset>(page_size - NODE_PID_SIZE);
+	mpage()->set_tid(new_tid);
+	mpage()->set_free_end_offset(page_size - NODE_PID_SIZE);
 }
 void NodePtr::compact(size_t item_size){
-	if(NODE_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset)
+	if(NODE_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count()) + item_size <= page->free_end_offset())
 		return;
 	char buf[MAX_PAGE_SIZE]; // This fun is always last call in recursion, so not a problem, variable-length arrays are C99 feature
 	memcpy(buf, page, page_size);
 	CNodePtr my_copy(page_size, (NodePage *)buf);
-	clear();
+	init_dirty(page->tid());
 	set_value(-1, my_copy.get_value(-1));
 	append_range(my_copy, 0, my_copy.size());
 }
 
 size_t CNodePtr::get_item_size(int item)const{
-	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
+	ass2(item >= 0 && item < page->item_count(), "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
-	size_t item_offset = page->item_offsets[item];
+	size_t item_offset = page->item_offsets(item);
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
 	return sizeof(PageOffset) + keysizesize + keysize + NODE_PID_SIZE;
@@ -195,27 +195,27 @@ void LeafPtr::init_dirty(Tid new_tid){
 	if( CLEAR_FREE_SPACE )
 		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
 	else{
-		mpage()->item_count = 0;
-		mpage()->items_size = 0;
+		mpage()->set_item_count(0);
+		mpage()->set_items_size(0);
 	}
-	mpage()->tid = new_tid;
-	mpage()->free_end_offset = static_cast<PageOffset>(page_size);
+	mpage()->set_tid(new_tid);
+	mpage()->set_free_end_offset(page_size);
 }
 
 void LeafPtr::compact(size_t item_size){
-	if(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset)
+	if(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count()) + item_size <= page->free_end_offset())
 		return;
 	char buf[MAX_PAGE_SIZE]; // This fun is always last call in recursion, so not a problem, variable-length arrays are C99 feature
 	memcpy(buf, page, page_size);
 	CLeafPtr my_copy(page_size, (LeafPage *)buf);
-	clear();
+	init_dirty(page->tid());
 	append_range(my_copy, 0, my_copy.size());
 }
 char * LeafPtr::insert_at(int insert_index, Val key, size_t value_size, bool & overflow){
-	ass2(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index", DEBUG_PAGES);
+	ass2(insert_index >= 0 && insert_index <= mpage()->item_count(), "Cannot insert at this index", DEBUG_PAGES);
 	size_t item_size = get_item_size(key, value_size, overflow);
 	compact(item_size);
-	ass2(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
+	ass2(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count()) + item_size <= page->free_end_offset(), "No space to insert in node", DEBUG_PAGES);
 	MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 	auto valuesizesize = write_u64_sqlite4(value_size, new_key.end());
 	return new_key.end() + valuesizesize;
@@ -231,9 +231,9 @@ size_t CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const
 	return kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
 }
 size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_count)const{
-	ass2(item >= 0 && item < page->item_count, "item_size item too large", DEBUG_PAGES);
+	ass2(item >= 0 && item < page->item_count(), "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
-	size_t item_offset = page->item_offsets[item];
+	size_t item_offset = page->item_offsets(item);
 	uint64_t keysize;
 	auto keysizesize = read_u64_sqlite4(keysize, raw_page + item_offset);
 	uint64_t valuesize;
