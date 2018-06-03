@@ -134,6 +134,7 @@ void DB::start_transaction(TX * tx){
 	Pid oldest_meta_index = 0;
 	const MetaPage * newest_meta_page = get_newest_meta_page(&oldest_meta_index, &tx->oldest_reader_tid, true);
 	ass(newest_meta_page, "No meta found in start_transaction - hot corruption of DB");
+	tx->oldest_reader_tid = newest_meta_page->tid; // No other readers yet, TODO - get from reader table
 	tx->meta_page = *newest_meta_page;
 	tx->meta_page.pid = 0; // So we do not forget to set it before write
 	tx->meta_page.tid += 1;
