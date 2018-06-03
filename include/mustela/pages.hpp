@@ -22,6 +22,7 @@ namespace mustela {
 	// TODO - move NODE_PID_SIZE into MetaPage
 	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
 	// fixed pid size allows simple logic when replacing page in node index
+	constexpr bool CLEAR_FREE_SPACE = true;
 
 #pragma pack(push, 1)
 	struct BucketDesc {
@@ -55,8 +56,8 @@ namespace mustela {
 		PageOffset free_end_offset; // we can have a bit of gaps, will compact when free middle space not enough to store new item
 		PageOffset item_offsets[1];
 
-		Val get_item_key(size_t page_size, PageIndex item)const;
 		MVal get_item_key(size_t page_size, PageIndex item);
+		Val get_item_key(size_t page_size, PageIndex item)const;
 		PageIndex lower_bound_item(size_t page_size, Val key, bool * found)const;
 		PageIndex upper_bound_item(size_t page_size, Val key)const;
 		void erase_item(size_t page_size, PageIndex to_remove_item, size_t item_size);
@@ -114,8 +115,11 @@ namespace mustela {
 		PageIndex upper_bound_item(Val key)const{
 			return page->upper_bound_item(page_size, key);
 		}
+	 	PageOffset capacity()const{
+	 		return node_capacity(page_size);
+	 	}
 		PageOffset free_capacity()const{
-			return node_capacity(page_size) - data_size();
+			return capacity() - data_size();
 		}
 		PageOffset data_size()const{
 			return page->items_size;
@@ -204,8 +208,11 @@ namespace mustela {
 			return page->lower_bound_item(page_size, key, found);
 		}
 		PageOffset get_item_size(Val key, size_t value_size, bool & overflow)const;
+		PageOffset capacity()const{
+			return leaf_capacity(page_size);
+		}
 		PageOffset free_capacity()const{
-			return leaf_capacity(page_size) - data_size();
+			return capacity() - data_size();
 		}
 		PageOffset data_size()const{
 			return page->items_size;

@@ -296,7 +296,7 @@ int main(int argc, char * argv[]){
 	}
 	
 //	mustela::FreeList::test();
-//	mustela::test_data_pages();
+	mustela::test_data_pages();
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);

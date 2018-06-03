@@ -23,9 +23,6 @@ static unsigned char read_our_sqlite4(uint64_t & val, const void * vptr){
 	val = 2288 + 256 * buf[0] + buf[1];
 	return 3;
 }
-Val KeysPage::get_item_key(size_t page_size, PageIndex item)const{
-	return const_cast<KeysPage *>(this)->get_item_key(page_size, item);
-}
 MVal KeysPage::get_item_key(size_t page_size, PageIndex item){
 	ass(item < item_count, "get_item_key item too large");
 	char * raw_this = (char *)this;
@@ -34,6 +31,9 @@ MVal KeysPage::get_item_key(size_t page_size, PageIndex item){
 	auto keysizesize = read_our_sqlite4(keysize, raw_this + item_offset);
 	ass(item_offset + keysizesize + keysize <= page_size, "get_item_key key spills over page");
 	return MVal(raw_this + item_offset + keysizesize, keysize);
+}
+Val KeysPage::get_item_key(size_t page_size, PageIndex item)const{
+	return const_cast<KeysPage *>(this)->get_item_key(page_size, item);
 }
 PageIndex KeysPage::lower_bound_item(size_t page_size, Val key, bool * found)const{
 	PageIndex first = 0;
@@ -76,7 +76,8 @@ PageIndex KeysPage::upper_bound_item(size_t page_size, Val key)const{
 void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t item_size){
 	char * raw_this = (char *)this;
 	auto kv_size = item_size - sizeof(PageOffset);
-	memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
+	if( CLEAR_FREE_SPACE )
+		memset(raw_this + item_offsets[to_remove_item], 0, kv_size); // clear unused part
 	if( item_offsets[to_remove_item] == free_end_offset )
 		free_end_offset += kv_size; // Luck, removed item is after free middle space
 	for(PageIndex pos = to_remove_item; pos != item_count - 1; ++pos)
@@ -84,7 +85,8 @@ void KeysPage::erase_item(size_t page_size, PageIndex to_remove_item, size_t ite
 	// TODO - use memmove
 	items_size -= item_size;
 	item_count -= 1;
-	item_offsets[item_count] = 0; // clear unused part
+	if( CLEAR_FREE_SPACE )
+		item_offsets[item_count] = 0; // clear unused part
 }
 
 MVal KeysPage::insert_item_at(size_t page_size, PageIndex insert_index, Val key, size_t item_size){
@@ -111,7 +113,12 @@ PageOffset mustela::get_item_size(size_t page_size, Val key, Pid value){
 
 void NodePtr::init_dirty(Tid new_tid){
 	char * raw_page = (char *)page;
-	memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
+	if( CLEAR_FREE_SPACE )
+		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
+	else{
+		mpage()->item_count = 0;
+		mpage()->items_size = 0;
+	}
 	mpage()->tid = new_tid;
 	mpage()->free_end_offset = page_size - NODE_PID_SIZE;
 }
@@ -164,7 +171,12 @@ void NodePtr::set_value(PageIndex item, Pid value){
 
 void LeafPtr::init_dirty(Tid new_tid){
 	char * raw_page = (char *)mpage();
-	memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
+	if( CLEAR_FREE_SPACE )
+		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
+	else{
+		mpage()->item_count = 0;
+		mpage()->items_size = 0;
+	}
 	mpage()->tid = new_tid;
 	mpage()->free_end_offset = page_size;
 }
@@ -190,7 +202,7 @@ char * LeafPtr::insert_at(PageIndex insert_index, Val key, size_t value_size, bo
 
 PageOffset CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const{
 	size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(key.size) + key.size + get_compact_size_sqlite4(value_size);
-	if( kvs_size + value_size <= leaf_capacity(page_size) ){
+	if( kvs_size + value_size <= capacity() ){
 		overflow = false;
 		return kvs_size + value_size;
 	}
@@ -206,7 +218,7 @@ size_t CLeafPtr::get_item_size(PageIndex item, Pid & overflow_page, Pid & overfl
 	uint64_t valuesize;
 	auto valuesizesize = read_u64_sqlite4(valuesize, raw_page + item_offset + keysizesize + keysize);
 	size_t kvs_size = sizeof(PageOffset) + keysizesize + keysize + valuesizesize;
-	if( kvs_size + valuesize <= leaf_capacity(page_size) ){
+	if( kvs_size + valuesize <= capacity() ){
 		overflow_page = 0;
 		overflow_count = 0;
 		return kvs_size + valuesize;
@@ -221,7 +233,7 @@ ValVal CLeafPtr::get_kv(PageIndex item, Pid & overflow_page)const{
 	uint64_t valuesize;
 	auto valuesizesize = read_u64_sqlite4(valuesize, result.key.end());
 	size_t kvs_size = sizeof(PageOffset) + get_compact_size_sqlite4(result.key.size) + result.key.size + valuesizesize;
-	if( kvs_size + valuesize <= leaf_capacity(page_size) ){
+	if( kvs_size + valuesize <= capacity() ){
 		overflow_page = 0;
 		result.value = Val(result.key.end() + valuesizesize, valuesize);
 	}else{
@@ -274,7 +286,7 @@ void test_node_page(){
 			pa.insert_at(1, Val(key2), 0);
 		}
 }
-void test_data_pages(){
+void mustela::test_data_pages(){
 	test_node_page();
 	const size_t page_size = 256;
 	LeafPtr pa(page_size, (LeafPage *)malloc(page_size));
