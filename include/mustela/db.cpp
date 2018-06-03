@@ -277,7 +277,7 @@ void DB::grow_wr_mappings(Pid new_file_page_count){
 //			throw Exception("file seek failed in grow_file");
 //		if( write(fd.fd, "", 1) != 1 )
 //			throw Exception("file write failed in grow_file");
-		file_size = lseek(fd.fd, 0, SEEK_END);
+		file_size = static_cast<uint64_t>(lseek(fd.fd, 0, SEEK_END));
 		if( new_fs != file_size )
 			throw Exception("file failed to grow in grow_file");
 	}

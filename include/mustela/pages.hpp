@@ -167,7 +167,7 @@ namespace mustela {
 			}
 			size_t item_size = mustela::get_item_size(page_size, key, value);
 			compact(item_size);
-			ass2(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
+			ass2(NODE_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
 			MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 			pack_uint_be((unsigned char *)new_key.end(), NODE_PID_SIZE, value);
 		}

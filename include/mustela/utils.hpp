@@ -9,7 +9,7 @@ namespace mustela {
 
 	// TODO - use LE by default
 	template<class T>
-	void unpack_uint_be(const unsigned char * buf, unsigned si, T & val){
+	void unpack_uint_be(const unsigned char * buf, size_t si, T & val){
 		T result = 0;
 		switch(si)
 		{
@@ -39,23 +39,23 @@ namespace mustela {
 		val = result;
 	}
 	template<class T>
-	void unpack_uint_be(const char * buf, unsigned si, T & val){
+	void unpack_uint_be(const char * buf, size_t si, T & val){
 		return unpack_uint_be((const unsigned char *)buf, si, val);
 	}
 	template<class T>
-	void pack_uint_be(unsigned char * buf, unsigned si, T val){
-		for(unsigned i = si; i-- > 0; ) {
+	void pack_uint_be(unsigned char * buf, size_t si, T val){
+		for(size_t i = si; i-- > 0; ) {
 			buf[i] = static_cast<unsigned char>(val);
 			val >>= 8;
 		}
 	}
 	template<class T>
-	void pack_uint_be(char * buf, unsigned si, T val){
+	void pack_uint_be(char * buf, size_t si, T val){
 		return pack_uint_be((unsigned char *)buf, si, val);
 	}
-	unsigned char get_compact_size_sqlite4(uint64_t val);
-	unsigned char read_u64_sqlite4(uint64_t & val, const void * ptr);
-	unsigned char write_u64_sqlite4(uint64_t val, void * ptr);
+	size_t get_compact_size_sqlite4(uint64_t val);
+	size_t read_u64_sqlite4(uint64_t & val, const void * ptr);
+	size_t write_u64_sqlite4(uint64_t val, void * ptr);
 
 	uint32_t crc32c(uint32_t crc, const unsigned char *buf, size_t len);
 	inline uint32_t crc32c(uint32_t crc, const void *buf, size_t len){

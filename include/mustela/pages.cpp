@@ -84,7 +84,7 @@ void KeysPage::erase_item(size_t page_size, int to_remove_item, size_t item_size
 		free_end_offset += kv_size; // Luck, removed item is after free middle space
 //	for(int pos = to_remove_item; pos != item_count - 1; ++pos)
 //		item_offsets[pos] = item_offsets[pos+1];
-	memmove(&item_offsets[to_remove_item], &item_offsets[to_remove_item + 1], (item_count - 1 - to_remove_item) * sizeof(PageOffset));
+	memmove(&item_offsets[to_remove_item], &item_offsets[to_remove_item + 1], static_cast<size_t>(item_count - 1 - to_remove_item) * sizeof(PageOffset));
 	items_size -= item_size;
 	item_count -= 1;
 	if( CLEAR_FREE_SPACE )
@@ -96,9 +96,9 @@ MVal KeysPage::insert_item_at(size_t page_size, int insert_index, Val key, size_
 	auto kv_size = item_size - sizeof(PageOffset);
 //	for(int pos = item_count; pos-- > insert_index;)
 //		item_offsets[pos + 1] = item_offsets[pos];
-	memmove(&item_offsets[insert_index + 1], &item_offsets[insert_index], (item_count - insert_index) * sizeof(PageOffset));
+	memmove(&item_offsets[insert_index + 1], &item_offsets[insert_index], static_cast<size_t>(item_count - insert_index) * sizeof(PageOffset));
 	auto insert_offset = free_end_offset - kv_size;
-	item_offsets[insert_index] = insert_offset;
+	item_offsets[insert_index] = static_cast<PageOffset>(insert_offset);
 	free_end_offset -= kv_size;
 	items_size += item_size;
 	item_count += 1;
@@ -123,10 +123,10 @@ void NodePtr::init_dirty(Tid new_tid){
 		mpage()->items_size = 0;
 	}
 	mpage()->tid = new_tid;
-	mpage()->free_end_offset = page_size - NODE_PID_SIZE;
+	mpage()->free_end_offset = static_cast<PageOffset>(page_size - NODE_PID_SIZE);
 }
 void NodePtr::compact(size_t item_size){
-	if(NODE_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
+	if(NODE_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset)
 		return;
 	char buf[MAX_PAGE_SIZE]; // This fun is always last call in recursion, so not a problem, variable-length arrays are C99 feature
 	memcpy(buf, page, page_size);
@@ -181,11 +181,11 @@ void LeafPtr::init_dirty(Tid new_tid){
 		mpage()->items_size = 0;
 	}
 	mpage()->tid = new_tid;
-	mpage()->free_end_offset = page_size;
+	mpage()->free_end_offset = static_cast<PageOffset>(page_size);
 }
 
 void LeafPtr::compact(size_t item_size){
-	if(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset)
+	if(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset)
 		return;
 	char buf[MAX_PAGE_SIZE]; // This fun is always last call in recursion, so not a problem, variable-length arrays are C99 feature
 	memcpy(buf, page, page_size);
@@ -197,7 +197,7 @@ char * LeafPtr::insert_at(int insert_index, Val key, size_t value_size, bool & o
 	ass2(insert_index >= 0 && insert_index <= mpage()->item_count, "Cannot insert at this index", DEBUG_PAGES);
 	size_t item_size = get_item_size(key, value_size, overflow);
 	compact(item_size);
-	ass2(LEAF_HEADER_SIZE + sizeof(PageOffset)*page->item_count + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
+	ass2(LEAF_HEADER_SIZE + sizeof(PageOffset)*static_cast<size_t>(page->item_count) + item_size <= page->free_end_offset, "No space to insert in node", DEBUG_PAGES);
 	MVal new_key = mpage()->insert_item_at(page_size, insert_index, key, item_size);
 	auto valuesizesize = write_u64_sqlite4(value_size, new_key.end());
 	return new_key.end() + valuesizesize;
@@ -280,10 +280,10 @@ void test_node_page(){
 		ValPid va = pa.get_kv(i);
 		std::cerr << va.key.to_string() << ":" << va.pid << std::endl;
 	}
-	for(int i = -5; i != 0; ++i)
-		for(int j = -5; j != 0; ++j){
-			std::string key1 = std::string(max_key_size(page_size) + i, 'A');
-			std::string key2 = std::string(max_key_size(page_size) + j, 'B');
+	for(size_t i = 0; i != 5; ++i)
+		for(size_t j = 0; j != 5; ++j){
+			std::string key1 = std::string(max_key_size(page_size) - i, 'A');
+			std::string key2 = std::string(max_key_size(page_size) - j, 'B');
 			pa.init_dirty(10);
 			pa.insert_at(0, Val(key1), 0);
 			pa.insert_at(1, Val(key2), 0);

@@ -1,7 +1,7 @@
 #include "utils.hpp"
 
 namespace mustela {
-	unsigned char get_compact_size_sqlite4(uint64_t val){
+	size_t get_compact_size_sqlite4(uint64_t val){
 		if (val <= 240)
 			return 1;
 		if (val <= 2287)
@@ -20,7 +20,7 @@ namespace mustela {
 			return 8;
 		return 9;
 	}
-	unsigned char read_u64_sqlite4(uint64_t & val, const void * vptr){
+	size_t read_u64_sqlite4(uint64_t & val, const void * vptr){
 		const unsigned char * ptr = (const unsigned char * )vptr;
 		unsigned char a0 = *ptr;
 		if (a0 <= 240) {
@@ -38,26 +38,26 @@ namespace mustela {
 			return 3;
 		}
 		const unsigned char * buf = ptr + 1;
-		int bytes = 3 + a0 - 250;
+		size_t bytes = 3 + a0 - 250;
 		//if( bytes > 4 )
 		//    throw std::runtime_error("read_u32_sqlite4 value does not fit");
 		unpack_uint_be<uint64_t>(buf, bytes, val);
 		return 1 + bytes;
 	}
-	unsigned char write_u64_sqlite4(uint64_t val, void * vptr){
+	size_t write_u64_sqlite4(uint64_t val, void * vptr){
 		unsigned char * ptr = (unsigned char *)vptr;
 		if (val <= 240) {
 			*ptr = static_cast<unsigned char>(val);
 			return 1;
 		}
 		if (val <= 2287) {
-			*ptr = (val - 240)/256 + 241;
+			*ptr = static_cast<unsigned char>((val - 240)/256 + 241);
 			*(ptr + 1) = static_cast<unsigned char>(val - 240);
 			return 2;
 		}
 		if (val <= 67823) {
 			*ptr = 249;
-			*(ptr + 1) = (val - 2288)/256;
+			*(ptr + 1) = static_cast<unsigned char>((val - 2288)/256);
 			*(ptr + 2) = static_cast<unsigned char>(val - 2288);
 			return 3;
 		}

@@ -312,7 +312,7 @@ int main(int argc, char * argv[]){
 		mustela::Cursor cur2 = cur;
 		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
 		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
-		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0xFF)), mustela::Val("uhu"), false);
+		large_bucket.put(mustela::Val(std::string(db.max_key_size(), char(0xFF))), mustela::Val("uhu"), false);
 		ab = txn.get_bucket_names();
 		txn.commit();
 		txn.check_database([](int progress){

@@ -126,7 +126,7 @@ void MergablePageCache::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & 
 //			std::cerr << "FreeList fill " << pid << ":" << r_count << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
 			pack_uint_be(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
-			space.at(space_count).data[space_pos] = r_count; space_pos += 1;
+			space.at(space_count).data[space_pos] = static_cast<char>(r_count); space_pos += 1;
 			ass( space_pos <= space.at(space_count).size, "Overshoot of space_pos while writing free list");
 			if( space_pos == space.at(space_count).size){
 				space_pos = 0;

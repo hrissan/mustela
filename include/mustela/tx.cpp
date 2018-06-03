@@ -671,7 +671,7 @@ void TX::check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages){
 	Pid pa = bucket_desc->root_page;
 	size_t height = bucket_desc->height;
 	BucketDesc stat_bucket_desc{};
-	std::string largest_element(my_db.max_key_size(), 0xFF);
+	std::string largest_element(my_db.max_key_size(), char(0xFF));
 	check_bucket_page(bucket_desc, &stat_bucket_desc, pa, height, Val(), Val(largest_element), pages);
 	ass(stat_bucket_desc.count == bucket_desc->count && stat_bucket_desc.leaf_page_count == bucket_desc->leaf_page_count &&
 		stat_bucket_desc.node_page_count == bucket_desc->node_page_count && stat_bucket_desc.overflow_page_count == bucket_desc->overflow_page_count, "Bucket stats differ");
@@ -682,7 +682,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 		stat_bucket_desc->leaf_page_count += 1;
 		CLeafPtr dap = readable_leaf(pa);
 		ass(bucket_desc->height == 0 || dap.size() > 0, "leaf with 0 keys found");
-		stat_bucket_desc->count += dap.size();
+		stat_bucket_desc->count += static_cast<size_t>(dap.size());
 		Val prev_key;
 		for(int pi = 0; pi != dap.size(); ++pi){
 			Pid overflow_page = 0;
