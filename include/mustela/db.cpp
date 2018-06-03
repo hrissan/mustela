@@ -239,7 +239,7 @@ void DB::create_db(){
 			throw Exception("file write failed in create_db");
 	}
 	LeafPtr wr_dap(page_size, (LeafPage *)data_buf);
-	wr_dap.mpage()->pid = META_PAGES_COUNT;
+//	wr_dap.mpage()->pid = META_PAGES_COUNT;
 	wr_dap.init_dirty(0);
 	if( write(fd.fd, data_buf, page_size) == -1)
 		throw Exception("file write failed in create_db");

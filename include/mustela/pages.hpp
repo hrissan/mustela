@@ -29,9 +29,9 @@ namespace mustela {
 	// TODO - detect hot copy made with "cp" utility
 	// TODO - get rid of pid in all pages (unneccessary?)
 	struct DataPage {
-		Pid pid; /// for consistency debugging. Never written except in get_free_page
+//		Pid pid; /// for consistency debugging. Never written except in get_free_page
 		Tid tid; /// transaction which did write the page
-		
+
 		PageIndex lower_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key, bool * found)const;
 		PageIndex upper_bound_item(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, Val key)const;
 		MVal get_item_key(size_t page_size, const PageOffset * item_offsets, PageIndex item_count, PageIndex item);
