@@ -575,6 +575,7 @@ void TX::unlink_buckets_and_cursors(){
 		(*cit)->my_txn = nullptr;
 		(*cit)->bucket_desc = nullptr;
 	}
+	bucket_descs.clear();
 }
 
 void TX::rollback(){
