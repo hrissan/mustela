@@ -299,7 +299,7 @@ void DB::create_db(){
 }
 
 void DB::grow_c_mappings() {
-	if( !c_mappings.empty() && c_mappings.back().end_addr >= file_size )
+	if( !c_mappings.empty() && c_mappings.at(0).end_addr >= file_size )
 		return;
 	uint64_t fs = file_size;
 	if( !options.read_only )
@@ -316,6 +316,9 @@ void DB::grow_wr_mappings(Pid new_file_page_count){
 	if( new_file_page_count != 0 )
 	 	fs = std::max<uint64_t>(fs, std::max<uint64_t>(options.minimal_mapping_size, new_file_page_count * page_size)) * 77 / 64; // x1.2
 	uint64_t new_fs = grow_to_granularity(fs, page_size, physical_page_size, additional_granularity);
+	ass(wr_mappings.empty() || wr_mappings.at(0).end_addr == file_size, "latest wr mapping should be exactly at the size of file");
+	if(!wr_mappings.empty() && new_fs == file_size && wr_mappings.at(0).end_addr == new_fs)
+		return;
 	if(new_fs != file_size){
 		if( ftruncate(fd.fd, static_cast<off_t>(new_fs)) == -1)
 			throw Exception("failed to grow db file using ftruncate");

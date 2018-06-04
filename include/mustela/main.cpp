@@ -28,7 +28,6 @@ void interactive_test(){
 	//	    mustela::DB db("/Users/hrissan/Documents/devbox/mustela/bin/test.mustella");
 	//	    mustela::DB db("/Users/user/Desktop/devbox/mustela/bin/test.mustella");
 	mustela::DB db("test.mustella");
-	mustela::TX txn(db);
 	mustela::Val main_bucket_name("main");
 	
 	{
@@ -37,8 +36,8 @@ void interactive_test(){
 //		std::cout << "Meta table: " << json << std::endl;
 	}
 	
-	for(auto && tt : txn.get_bucket_names() )
-		std::cout << "Table: " << tt.to_string() << std::endl;
+//	for(auto && tt : txn.get_bucket_names() )
+//		std::cout << "Table: " << tt.to_string() << std::endl;
 	
 /*	{
 		if( !txn.drop_bucket(mustela::Val()) ) {
@@ -74,6 +73,7 @@ void interactive_test(){
 	//    }
 	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "d", "dr", "a", "dr", "dr", "ar"};
 	while(true){
+		mustela::TX txn(db);
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
 		mustela::Bucket main_bucket = txn.get_bucket(main_bucket_name);
 		{
@@ -159,6 +159,8 @@ void interactive_test(){
 			continue;
 		}
 		for(int i = 0; i != items_counter; ++i){
+			if( i == items_counter / 2)
+				txn.commit();
 			int j = ran ? dist(e) : back ? items_counter - 1 - i : i;
 			if( new_range )
 				j += items_counter;

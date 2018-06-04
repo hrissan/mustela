@@ -24,7 +24,7 @@ namespace mustela {
 		bool read_only = false;
 		bool meta_sync = true;
 		size_t new_db_page_size = 0; // 0 - select automatically. Used only when creating file
-		size_t minimal_mapping_size = 1024*1024;
+		size_t minimal_mapping_size = 1024; // Good for test, TODO - set to larger value closer to release
 	};
 	class TX;
 	//{'branch_pages': 1040L,
