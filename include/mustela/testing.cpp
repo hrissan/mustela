@@ -175,7 +175,7 @@ namespace {
             } else if (cmd == "put") {
                 obtain_bucket(b, false).put(mustela::Val(k), mustela::Val(v), false);
                 obtain_cursor(b).seek(mustela::Val(k));
-            } else if (cmd == "put-many") {
+            } else if (cmd == "put-n") {
                 auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
                 for (uint8_t i = 0; i < n; i++) {
                     auto k_ = bytes(k);
@@ -184,7 +184,7 @@ namespace {
                     v_.push_back(i);
                     obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
                 }
-            } else if (cmd == "put-many-rev") {
+            } else if (cmd == "put-n-rev") {
                 auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
                 for (int i = n - 1; i >= 0; i--) {
                     auto k_ = bytes(k);
@@ -200,12 +200,15 @@ namespace {
                 } else {
                     obtain_cursor(b).del();
                 }
-            } else if (cmd == "del-n") {
+            } else if (cmd == "del-n" || cmd == "del-n-rev") {
                 auto n = v.at(0);
                 auto& c = obtain_cursor(b);
                 c.seek(mustela::Val(k));
                 for (uint8_t i = 0; i < n; i++) {
                     c.del();
+                    if (cmd == "del-n-rev") {
+                        c.prev();
+                    }
                 }
             } else if (cmd == "commit") {
                 commit();

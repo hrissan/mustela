@@ -100,26 +100,26 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.roundtrip('put', bucket, k, v)
 
     @precondition(lambda self: self.db)
-    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), total=st.integers(min_value=0, max_value=255))
-    def put_many(self, data, k_prefix, v_prefix, total):
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
+    def put_n(self, data, k_prefix, v_prefix, n):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
-        for i in range(total):
+        for i in range(n):
             p = i.to_bytes(length=1, byteorder='big')
             k = k_prefix + p
             v = v_prefix + p
             self.db[bucket][k] = v
-        self.roundtrip('put-many', bucket, k_prefix, v_prefix, total.to_bytes(length=1, byteorder='big'))
+        self.roundtrip('put-n', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: self.db)
-    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), total=st.integers(min_value=0, max_value=255))
-    def put_many_rev(self, data, k_prefix, v_prefix, total):
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
+    def put_n_rev(self, data, k_prefix, v_prefix, n):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
-        for i in reversed(range(total)):
+        for i in reversed(range(n)):
             p = i.to_bytes(length=1, byteorder='big')
             k = k_prefix + p
             v = v_prefix + p
             self.db[bucket][k] = v
-        self.roundtrip('put-many-rev', bucket, k_prefix, v_prefix, total.to_bytes(length=1, byteorder='big'))
+        self.roundtrip('put-n-rev', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), v=st.binary())
@@ -148,6 +148,19 @@ class MustelaTestMachine(RuleBasedStateMachine):
                 break
             del self.db[bucket][k]
         self.roundtrip('del-n', bucket, key, n.to_bytes(length=1, byteorder='big'))
+
+    @precondition(lambda self: any(self.db.values()))
+    @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
+    def del_n_rev(self, data, n):
+        bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
+        keys = list(self.db[bucket])
+        key = data.draw(st.sampled_from(keys), 'key')
+        n = min(n, keys.index(key) + 1)  # TODO: get rid of cyclic mustela cursor semantics
+        for i, k in enumerate(reversed(keys[:keys.index(key)+1])):
+            if i == n:
+                break
+            del self.db[bucket][k]
+        self.roundtrip('del-n-rev', bucket, key, n.to_bytes(length=1, byteorder='big'))
 
 
 with settings(max_examples=100, stateful_step_count=100):
