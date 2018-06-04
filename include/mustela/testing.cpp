@@ -220,11 +220,14 @@ namespace {
                 rollback();
                 reset();
             } else if (cmd == "kill") {
+//                rollback();
                 raise(SIGKILL);
             } else if (cmd == "noop") {
                 return db_hash(*tx);
             } else if (cmd == "ensure-hash") {
-                assert(db_hash(*tx) == get_nth_tok(tokens, 1));
+            	std::string s1 = db_hash(*tx);
+            	std::string s2 = get_nth_tok(tokens, 1);
+                assert(s1 == s2);
             } else {
                 std::cerr << "unknown command:" << cmd << std::endl;
             }
