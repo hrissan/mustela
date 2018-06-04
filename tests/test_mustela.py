@@ -65,49 +65,50 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.mustela.wait()
         self.dir.cleanup()
 
-    def roundtrip(self, cmd: str, *args):
+    def send(self, cmd: str, *args):
         input_ = cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args)
         self.mustela.stdin.write(input_ + '\n')
-        h = self.mustela.stdout.readline().strip()
-        assert binascii.hexlify(db_hash(self.db)) == h.encode('ascii')
+
+    @invariant()
+    def same_hash(self):
+        self.send('ensure-hash', db_hash(self.db))
 
     @rule()
     def kill(self):
         self.db = clone_db(self.committed)
-        self.mustela.stdin.write('kill\n')
+        self.send('kill')
         self.mustela = self.open_db()
-        self.roundtrip('noop')
 
     @rule(bucket=gen_bucket())
     def create_bucket(self, bucket):
         if bucket in self.db:
             return
         self.db[bucket] = SortedDict()
-        self.roundtrip('create-bucket', bucket)
+        self.send('create-bucket', bucket)
 
     @precondition(lambda self: self.db)
     @rule(data=st.data())
     def drop_bucket(self, data):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
         del self.db[bucket]
-        self.roundtrip('drop-bucket', bucket)
+        self.send('drop-bucket', bucket)
 
     @rule(reset=st.booleans())
     def commit(self, reset):
         self.committed = clone_db(self.db)
-        self.roundtrip('commit-reset' if reset else 'commit')
+        self.send('commit-reset' if reset else 'commit')
 
     @rule(reset=st.booleans())
     def rollback(self, reset):
         self.db = clone_db(self.committed)
-        self.roundtrip('rollback-reset' if reset else 'rollback')
+        self.send('rollback-reset' if reset else 'rollback')
 
     @precondition(lambda self: self.db)
     @rule(data=st.data(), k=gen_key(), v=st.binary())
     def put(self, data, k, v):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
         self.db[bucket][k] = v
-        self.roundtrip('put', bucket, k, v)
+        self.send('put', bucket, k, v)
 
     @precondition(lambda self: self.db)
     @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
@@ -118,7 +119,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
             k = k_prefix + p
             v = v_prefix + p
             self.db[bucket][k] = v
-        self.roundtrip('put-n', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
+        self.send('put-n', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: self.db)
     @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
@@ -129,7 +130,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
             k = k_prefix + p
             v = v_prefix + p
             self.db[bucket][k] = v
-        self.roundtrip('put-n-rev', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
+        self.send('put-n-rev', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), v=st.binary())
@@ -137,7 +138,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
         bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
         k = data.draw(st.sampled_from(list(self.db[bucket])), 'key')
         self.db[bucket][k] = v
-        self.roundtrip('put', bucket, k, v)
+        self.send('put', bucket, k, v)
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), cursor=st.booleans())
@@ -145,7 +146,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
         bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
         k = data.draw(st.sampled_from(list(self.db[bucket])), 'key')
         del self.db[bucket][k]
-        self.roundtrip('del-cursor' if cursor else 'del', bucket, k)
+        self.send('del-cursor' if cursor else 'del', bucket, k)
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
@@ -157,7 +158,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
             if i == n:
                 break
             del self.db[bucket][k]
-        self.roundtrip('del-n', bucket, key, n.to_bytes(length=1, byteorder='big'))
+        self.send('del-n', bucket, key, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
@@ -170,7 +171,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
             if i == n:
                 break
             del self.db[bucket][k]
-        self.roundtrip('del-n-rev', bucket, key, n.to_bytes(length=1, byteorder='big'))
+        self.send('del-n-rev', bucket, key, n.to_bytes(length=1, byteorder='big'))
 
 
 with settings(max_examples=100, stateful_step_count=100):
