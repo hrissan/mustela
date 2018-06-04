@@ -232,6 +232,8 @@ namespace {
                 std::cerr << "unknown command:" << cmd << std::endl;
             }
 
+            tx->check_database(nullptr, false);
+
             return "ok";
         }
     };

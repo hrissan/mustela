@@ -94,7 +94,7 @@ namespace mustela {
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		std::vector<Val> get_bucket_names(); // sorted
 		
-		void check_database(std::function<void(int percent)> on_progress);
+		void check_database(std::function<void(int percent)> on_progress, bool verbose);
 		
 		// both rollback and commit of read-only transaction are nops
 		// commit of r/w transaction writes it to disk, everything remains valid for next commit, etc
