@@ -104,7 +104,6 @@ namespace {
         std::map<bytes, mustela::Cursor> cursors;
 
         explicit test_state(std::string db_path) : db_path(std::move(db_path)) {
-            mustela::DB::remove_db(this->db_path);
             reset();
         }
 
