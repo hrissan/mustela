@@ -134,7 +134,7 @@ void interactive_test(){
 			std::cout << "Checking DB: " << std::endl;
 			txn.check_database([](int progress){
 				std::cout << "Checking... " << progress << "%" << std::endl;
-			});
+			}, true);
 			continue;
 		}
 		if( input == "f"){
@@ -246,7 +246,7 @@ void run_benchmark(const std::string & db_path){
 	std::cout << "Random insert of " << TEST_COUNT << " hashes, seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	txn.check_database([](int progress){
 		std::cout << "Checking... " << progress << "%" << std::endl;
-	});
+	}, true);
 	std::cout << "DB passed all validity checks" << std::endl;
 	}
 	{
@@ -287,7 +287,7 @@ void run_benchmark(const std::string & db_path){
 	std::cout << "Random delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	txn.check_database([](int progress){
 		std::cout << "Checking... " << progress << "%" << std::endl;
-	});
+	}, true);
 	std::cout << "DB passed all validity checks" << std::endl;
 	}
 }
@@ -345,11 +345,11 @@ int main(int argc, char * argv[]){
 		ab = txn.get_bucket_names();
 		txn.check_database([](int progress){
 			std::cout << "Checking... " << progress << "%" << std::endl;
-		});
+		}, true);
 		txn.commit();
 		txn.check_database([](int progress){
 			std::cout << "Checking... " << progress << "%" << std::endl;
-		});
+		}, true);
 //		return 0;
 	}
 	interactive_test();

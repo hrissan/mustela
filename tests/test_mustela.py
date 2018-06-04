@@ -1,3 +1,4 @@
+import sys
 import hashlib
 import subprocess
 import tempfile
@@ -52,6 +53,7 @@ def db_hash(db):
 class MustelaTestMachine(RuleBasedStateMachine):
     def __init__(self):
         super().__init__()
+        sys.stderr.write('-' * 30 + ' test run start ' + '-' * 30 + '\n')
         self.dir = tempfile.TemporaryDirectory()
         self.mustela = self.open_db()
         self.committed = SortedDict()
@@ -68,6 +70,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
     def send(self, cmd: str, *args):
         input_ = cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args)
         self.mustela.stdin.write(input_ + '\n')
+        self.mustela.stdout.readline()
 
     @invariant()
     def same_hash(self):

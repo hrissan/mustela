@@ -734,30 +734,38 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 		check_bucket_page(bucket_desc, stat_bucket_desc, nap.get_value(pi), height - 1, prev_limit, next_limit, pages);
 	}
 }
-void TX::check_database(std::function<void(int percent)> on_progress){
+void TX::check_database(std::function<void(int percent)> on_progress, bool verbose){
 	MergablePageCache pages(false);
 	free_list.get_all_free_pages(this, &pages);
-	std::cerr << "Free Pages" << std::endl;
-	pages.print_db();
+	if (verbose) {
+		std::cerr << "Free Pages" << std::endl;
+		pages.print_db();
+	}
 
 	MergablePageCache meta_pages(false);
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	check_bucket(meta_bucket.bucket_desc, &meta_pages);
-	
-	std::cerr << "Meta pages " << std::endl;
-	meta_pages.print_db();
+
+	if (verbose) {
+        std::cerr << "Meta pages " << std::endl;
+        meta_pages.print_db();
+	}
 	pages.merge_from(meta_pages);
 	
 	for(auto bname : get_bucket_names()){
 		MergablePageCache busy_pages(false);
 		Bucket bucket = get_bucket(bname);
 		check_bucket(bucket.bucket_desc, &busy_pages);
-		std::cerr << "Pages from " << bname.to_string() << std::endl;
-		busy_pages.print_db();
+		if (verbose) {
+            std::cerr << "Pages from " << bname.to_string() << std::endl;
+            busy_pages.print_db();
+		}
 		pages.merge_from(busy_pages);
 	}
-	std::cerr << "All pages " << std::endl;
-	pages.print_db();
+	if (verbose) {
+        std::cerr << "All pages " << std::endl;
+        pages.print_db();
+	}
 	Pid remaining_pages = meta_page.page_count - pages.defrag_end(meta_page.page_count);
 	ass(pages.empty(), "After defrag free pages left");
 	ass(remaining_pages == META_PAGES_COUNT, "There should be exactly meta pages count left after removing everything from database");
