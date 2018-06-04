@@ -68,6 +68,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
     def send(self, cmd: str, *args):
         input_ = cmd + ',' + ','.join(binascii.hexlify(arg).decode('ascii') for arg in args)
         self.mustela.stdin.write(input_ + '\n')
+        self.mustela.stdout.readline()
 
     @invariant()
     def same_hash(self):
