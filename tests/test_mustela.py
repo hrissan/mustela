@@ -14,11 +14,15 @@ MUSTELA_DB = 'db.mustela'
 
 
 def gen_bucket():
-    return st.binary(max_size=41)
+    return st.binary(max_size=45)
 
 
 def gen_key():
-    return st.binary(max_size=42)
+    return st.binary(max_size=46)
+
+
+def gen_key_prefix():
+    return st.binary(max_size=46-1)
 
 
 def clone_db(db):
@@ -78,12 +82,44 @@ class MustelaTestMachine(RuleBasedStateMachine):
         del self.db[bucket]
         self.roundtrip('drop-bucket', bucket)
 
+    @rule(reset=st.booleans())
+    def commit(self, reset):
+        self.committed = clone_db(self.db)
+        self.roundtrip('commit-reset' if reset else 'commit')
+
+    @rule(reset=st.booleans())
+    def rollback(self, reset):
+        self.db = clone_db(self.committed)
+        self.roundtrip('rollback-reset' if reset else 'rollback')
+
     @precondition(lambda self: self.db)
     @rule(data=st.data(), k=gen_key(), v=st.binary())
     def put(self, data, k, v):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
         self.db[bucket][k] = v
         self.roundtrip('put', bucket, k, v)
+
+    @precondition(lambda self: self.db)
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
+    def put_n(self, data, k_prefix, v_prefix, n):
+        bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
+        for i in range(n):
+            p = i.to_bytes(length=1, byteorder='big')
+            k = k_prefix + p
+            v = v_prefix + p
+            self.db[bucket][k] = v
+        self.roundtrip('put-n', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
+
+    @precondition(lambda self: self.db)
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), n=st.integers(min_value=0, max_value=255))
+    def put_n_rev(self, data, k_prefix, v_prefix, n):
+        bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
+        for i in reversed(range(n)):
+            p = i.to_bytes(length=1, byteorder='big')
+            k = k_prefix + p
+            v = v_prefix + p
+            self.db[bucket][k] = v
+        self.roundtrip('put-n-rev', bucket, k_prefix, v_prefix, n.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), v=st.binary())
@@ -94,22 +130,37 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.roundtrip('put', bucket, k, v)
 
     @precondition(lambda self: any(self.db.values()))
-    @rule(data=st.data())
-    def del_(self, data):
+    @rule(data=st.data(), cursor=st.booleans())
+    def del_(self, data, cursor):
         bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
         k = data.draw(st.sampled_from(list(self.db[bucket])), 'key')
         del self.db[bucket][k]
-        self.roundtrip('del', bucket, k)
+        self.roundtrip('del-cursor' if cursor else 'del', bucket, k)
 
-    @rule(reset=st.booleans())
-    def commit(self, reset):
-        self.committed = clone_db(self.db)
-        self.roundtrip('commit-reset' if reset else 'commit')
+    @precondition(lambda self: any(self.db.values()))
+    @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
+    def del_n(self, data, n):
+        bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
+        keys = list(self.db[bucket])
+        key = data.draw(st.sampled_from(keys), 'key')
+        for i, k in enumerate(keys[keys.index(key):]):
+            if i == n:
+                break
+            del self.db[bucket][k]
+        self.roundtrip('del-n', bucket, key, n.to_bytes(length=1, byteorder='big'))
 
-    @rule(reset=st.booleans())
-    def rollback(self, reset):
-        self.db = clone_db(self.committed)
-        self.roundtrip('rollback-reset' if reset else 'rollback')
+    @precondition(lambda self: any(self.db.values()))
+    @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
+    def del_n_rev(self, data, n):
+        bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
+        keys = list(self.db[bucket])
+        key = data.draw(st.sampled_from(keys), 'key')
+        n = min(n, keys.index(key) + 1)  # TODO: get rid of cyclic mustela cursor semantics
+        for i, k in enumerate(reversed(keys[:keys.index(key)+1])):
+            if i == n:
+                break
+            del self.db[bucket][k]
+        self.roundtrip('del-n-rev', bucket, key, n.to_bytes(length=1, byteorder='big'))
 
 
 with settings(max_examples=100, stateful_step_count=100):

@@ -4,6 +4,7 @@
 #include <string>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
 namespace mustela {
 
@@ -85,7 +86,6 @@ namespace mustela {
 
 #define ass(expr, what) do_assert(expr, __FILE__, __LINE__, what)
 #define ass2(expr, what, expr2) do_assert(!(expr2) || (expr), __FILE__, __LINE__, what)
-// do not use std::string for what - will be constructed every time, even when expr is true
 	inline void do_assert(bool expr, const char* file, int line, const char * what){
 		if( !expr ) {
 			std::cerr << file << ":" << line << ": " << what << std::endl;
@@ -112,6 +112,8 @@ namespace mustela {
 		explicit Val(const char * data):data(data), size(strlen(data))
 		{}
 		explicit Val(const std::string & str):data(str.data()), size(str.size())
+		{}
+		explicit Val(const std::vector<uint8_t> & buf):data(reinterpret_cast<const char*>(buf.data())), size(buf.size())
 		{}
 		Val(const MVal & mval):data(mval.data), size(mval.size) // allow conversion
 		{}

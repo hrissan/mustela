@@ -13,6 +13,8 @@ extern "C" {
 }
 
 namespace {
+    typedef std::vector<uint8_t> bytes;
+
     auto hex_alphabet = "0123456789abcdef";
 
     std::string to_hex(void const* data, size_t size) {
@@ -27,11 +29,11 @@ namespace {
         return out;
     }
 
-    std::vector<uint8_t> from_hex(std::string const& data) {
+    bytes from_hex(std::string const& data) {
         auto sz = data.size();
         assert(sz % 2 == 0);
 
-        auto out = std::vector<uint8_t>{};
+        auto out = bytes{};
         out.reserve(sz / 2);
 
         for (size_t i = 0; i < sz; i += 2) {
@@ -49,8 +51,8 @@ namespace {
         return out;
     }
 
-    std::vector<uint8_t> encode_nulls(uint8_t tag, mustela::Val const &val) {
-        auto r = std::vector<uint8_t>{};
+    bytes encode_nulls(uint8_t tag, mustela::Val const &val) {
+        auto r = bytes{};
         r.reserve(val.size + 2);
 
         r.push_back(tag);
@@ -97,74 +99,139 @@ namespace {
         std::string db_path;
         std::unique_ptr<mustela::DB> db;
         std::unique_ptr<mustela::TX> tx;
+        std::map<bytes, mustela::Bucket> buckets;
+        std::map<bytes, mustela::Cursor> cursors;
 
-        explicit test_state(std::string db_path): db_path(std::move(db_path)) {
-            reset(false);
+        explicit test_state(std::string db_path) : db_path(std::move(db_path)) {
+            mustela::DB::remove_db(db_path);
+            reset();
+        }
+
+        void commit() {
+            cursors.clear();
+            buckets.clear();
+            if (tx) {
+                tx->commit();
+            }
         }
 
         void rollback() {
-            tx = nullptr;
-            tx = std::make_unique<mustela::TX>(*db, false);
+            cursors.clear();
+            buckets.clear();
+            if (tx) {
+                tx = nullptr;
+                tx = std::make_unique<mustela::TX>(*db, false);
+            }
         }
 
-        void reset(bool commit) {
-            if (tx && commit) {
-                tx->commit();
-            }
-
+        void reset() {
             tx = nullptr;
             db = nullptr;
             db = std::make_unique<mustela::DB>(db_path);
             tx = std::make_unique<mustela::TX>(*db, false);
         }
-    };
 
-    std::string get_nth_tok(std::vector<std::string> const& tokens, size_t n) {
-        return tokens.size() > n ? tokens[n] : std::string{};
-    }
-
-    std::string handle_test_command(test_state& state, std::vector<std::string> const& tokens) {
-        auto cmd = get_nth_tok(tokens, 0);
-
-        if (cmd == "create-bucket") {
-            auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), true);
-        } else if (cmd == "drop-bucket") {
-            auto name = from_hex(get_nth_tok(tokens, 1));
-            state.tx->drop_bucket(mustela::Val(name.data(), name.size()));
-        } else if (cmd == "put") {
-            auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), false);
-            auto k = from_hex(get_nth_tok(tokens, 2));
-            auto v = from_hex(get_nth_tok(tokens, 3));
-            b.put(mustela::Val(k.data(), k.size()), mustela::Val(v.data(), v.size()), false);
-            // TODO - check result
-        } else if (cmd == "del") {
-            auto name = from_hex(get_nth_tok(tokens, 1));
-            mustela::Bucket b = state.tx->get_bucket(mustela::Val(name.data(), name.size()), false);
-            auto k = from_hex(get_nth_tok(tokens, 2));
-            b.del(mustela::Val(k.data(), k.size()));
-            // TODO - check result
-        } else if (cmd == "commit") {
-            state.tx->commit();
-        } else if (cmd == "rollback") {
-            state.rollback();
-        } else if (cmd == "commit-reset") {
-            state.reset(true);
-        } else if (cmd == "rollback-reset") {
-            state.reset(false);
-        } else {
-            std::cerr << "unknown command:" << cmd << std::endl;
+        static std::string get_nth_tok(std::vector<std::string> const &tokens, size_t n) {
+            return tokens.size() > n ? tokens[n] : std::string{};
         }
 
-        return db_hash(*state.tx);
-    }
+        mustela::Bucket& obtain_bucket(bytes const& name, bool create) {
+            auto it = buckets.find(name);
+            if (create) {
+                assert(it == buckets.end());
+            }
+            if (it == buckets.end()) {
+                auto r = buckets.emplace(name, tx->get_bucket(mustela::Val(name), create));
+                it = r.first;
+            }
+            return (*it).second;
+        }
+
+        void drop_bucket(bytes const& name) {
+            cursors.erase(name);
+            buckets.erase(name);
+            tx->drop_bucket(mustela::Val(name));
+        }
+
+        mustela::Cursor& obtain_cursor(bytes const& name) {
+            auto it = cursors.find(name);
+            if (it == cursors.end()) {
+                auto r = cursors.emplace(name, obtain_bucket(name, false).get_cursor());
+                it = r.first;
+            }
+            return (*it).second;
+        }
+
+        std::string handle_test_command(std::vector<std::string> const &tokens) {
+            auto cmd = get_nth_tok(tokens, 0);
+            auto b = from_hex(get_nth_tok(tokens, 1));
+            auto k = from_hex(get_nth_tok(tokens, 2));
+            auto v = from_hex(get_nth_tok(tokens, 3));
+
+            if (cmd == "create-bucket") {
+                obtain_bucket(b, true);
+            } else if (cmd == "drop-bucket") {
+                drop_bucket(b);
+            } else if (cmd == "put") {
+                obtain_bucket(b, false).put(mustela::Val(k), mustela::Val(v), false);
+                obtain_cursor(b).seek(mustela::Val(k));
+            } else if (cmd == "put-n") {
+                auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
+                for (uint8_t i = 0; i < n; i++) {
+                    auto k_ = bytes(k);
+                    auto v_ = bytes(v);
+                    k_.push_back(i);
+                    v_.push_back(i);
+                    obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
+                }
+            } else if (cmd == "put-n-rev") {
+                auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
+                for (int i = n - 1; i >= 0; i--) {
+                    auto k_ = bytes(k);
+                    auto v_ = bytes(v);
+                    k_.push_back(static_cast<uint8_t>(i));
+                    v_.push_back(static_cast<uint8_t>(i));
+                    obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
+                }
+            } else if (cmd == "del" || cmd == "del-cursor") {
+                obtain_cursor(b).seek(mustela::Val(k));
+                if (cmd == "del") {
+                    obtain_bucket(b, false).del(mustela::Val(k));
+                } else {
+                    obtain_cursor(b).del();
+                }
+            } else if (cmd == "del-n" || cmd == "del-n-rev") {
+                auto n = v.at(0);
+                auto& c = obtain_cursor(b);
+                c.seek(mustela::Val(k));
+                for (uint8_t i = 0; i < n; i++) {
+                    c.del();
+                    if (cmd == "del-n-rev") {
+                        c.prev();
+                    }
+                }
+            } else if (cmd == "commit") {
+                commit();
+            } else if (cmd == "rollback") {
+                rollback();
+            } else if (cmd == "commit-reset") {
+                commit();
+                reset();
+            } else if (cmd == "rollback-reset") {
+                rollback();
+                reset();
+            } else {
+                std::cerr << "unknown command:" << cmd << std::endl;
+            }
+
+            return db_hash(*tx);
+        }
+    };
 }
 
 void run_test_driver(std::string const& db_path, std::istream& scenario) {
-    std::cerr << ">>>" << std::endl;
-    mustela::DB::remove_db(db_path);
     auto state = test_state(db_path);
+    std::cerr << ">>> " << state.db->max_bucket_name_size() << " >>> " << state.db->max_key_size() <<  " >>>" << std::endl;
 
     for (std::string line; std::getline(scenario, line, '\n');) {
         std::cerr << ">>> " << line << std::endl;
@@ -175,6 +242,6 @@ void run_test_driver(std::string const& db_path, std::istream& scenario) {
             tokens.push_back(tok);
         }
 
-        std::cout << handle_test_command(state, tokens) << "\n";
+        std::cout << state.handle_test_command(tokens) << "\n";
     }
 }
