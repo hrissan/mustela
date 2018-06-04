@@ -65,7 +65,7 @@ void interactive_test(){
 	
 	std::map<std::string, Mirror> mirror;
 	
-	const int items_counter = 2000;
+	const int items_counter = 500;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, items_counter - 1);
 	//    for(int i = 0; i != items_counter * 4; ++i){
@@ -111,13 +111,16 @@ void interactive_test(){
 		if( input == "q")
 			break;
 		if( input == "h"){
-			std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards, f - print free list, c - check DB validity, m - print metas" << std::endl;
+			std::cout << "q - quit, p - print, a - add 1M values, d - delete 1M values, ar - add 1M random values, dr - delete 1M random values, ab - add 1M values backwards, db - delete 1M values backwards, f - print free list, c - check DB validity, m - print metas, add 1 to limit operation to single key-value" << std::endl;
+			continue;
+		}
+		if( input == "pp"){
+			std::string json = txn.print_meta_db();
+			std::cout << "Meta table: " << json << std::endl;
 			continue;
 		}
 		if( input == "p"){
-			std::string json = txn.print_meta_db();
-			std::cout << "Meta table: " << json << std::endl;
-			json = main_bucket.print_db();
+			std::string json = main_bucket.print_db();
 			std::cout << "Main table: " << json << std::endl;
 			continue;
 		}
@@ -142,6 +145,7 @@ void interactive_test(){
 		bool add = input.find("a") != std::string::npos;
 		bool ran = input.find("r") != std::string::npos;
 		bool back = input.find("b") != std::string::npos;
+		bool one = input.find("1") != std::string::npos;
 		std::cout << "add=" << int(add) << " ran=" << int(ran) << " back=" << int(back) << std::endl;
 		if( input == "t"){
 /*			int j = dist(e);
@@ -193,17 +197,19 @@ void interactive_test(){
 //				std::string json = main_bucket.print_db();
 //				std::cout << "Main table: " << json << std::endl;
 //			}
-		for(auto && ma : mirror){
-			mustela::Val value, c_key, c_value;
-			bool result = main_bucket.get(mustela::Val(ma.first), &value);
-			bool c_result = ma.second.cursor.get(&c_key, &c_value);
-			if( !result || !c_result || ma.second.value != value.to_string() || c_key.to_string() != ma.first || c_value.to_string() != ma.second.value ){
-				std::cerr << "Bad check ma=" << ma.first << std::endl;
-				std::string json = main_bucket.print_db();
-				std::cerr << "Main table: " << json << std::endl;
-//				result = main_bucket.get(mustela::Val(ma.first), value);
+			for(auto && ma : mirror){
+				mustela::Val value, c_key, c_value;
+				bool result = main_bucket.get(mustela::Val(ma.first), &value);
+				bool c_result = ma.second.cursor.get(&c_key, &c_value);
+				if( !result || !c_result || ma.second.value != value.to_string() || c_key.to_string() != ma.first || c_value.to_string() != ma.second.value ){
+					std::cerr << "Bad check ma=" << ma.first << std::endl;
+					std::string json = main_bucket.print_db();
+					std::cerr << "Main table: " << json << std::endl;
+	//				result = main_bucket.get(mustela::Val(ma.first), value);
+				}
 			}
-		}
+			if(one)
+				break;
 		}
 		txn.commit();
 	}

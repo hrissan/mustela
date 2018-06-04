@@ -228,9 +228,9 @@ size_t CLeafPtr::get_item_size(Val key, size_t value_size, bool & overflow)const
 		return kvs_size + value_size;
 	}
 	overflow = true;
-	return kvs_size + NODE_PID_SIZE;// std::runtime_error("Item does not fit in leaf");
+	return kvs_size + NODE_PID_SIZE + sizeof(Tid);// std::runtime_error("Item does not fit in leaf");
 }
-size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_count)const{
+size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_count, Tid & overflow_tid)const{
 	ass2(item >= 0 && item < page->item_count(), "item_size item too large", DEBUG_PAGES);
 	const char * raw_page = (const char *)page;
 	size_t item_offset = page->item_offsets(item);
@@ -244,9 +244,11 @@ size_t CLeafPtr::get_item_size(int item, Pid & overflow_page, Pid & overflow_cou
 		overflow_count = 0;
 		return kvs_size + valuesize;
 	}
-	unpack_uint_le(raw_page + item_offset + keysizesize + keysize + valuesizesize, NODE_PID_SIZE, overflow_page);
+	const char * value_ptr = raw_page + item_offset + keysizesize + keysize + valuesizesize;
+	unpack_uint_le(value_ptr, NODE_PID_SIZE, overflow_page);
+	unpack_uint_le(value_ptr + NODE_PID_SIZE, sizeof(Tid), overflow_tid);
 	overflow_count = (valuesize + page_size - 1)/page_size;
-	return kvs_size + NODE_PID_SIZE;
+	return kvs_size + NODE_PID_SIZE + sizeof(Tid);
 }
 ValVal CLeafPtr::get_kv(int item, Pid & overflow_page)const{
 	ValVal result;
@@ -323,7 +325,8 @@ void mustela::test_data_pages(){
 			if( !remove_existing )
 				continue;
 			Pid overflow_page, overflow_count;
-			pa.erase(existing_item, overflow_page, overflow_count);
+			Tid overflow_tid;
+			pa.erase(existing_item, overflow_page, overflow_count, overflow_tid);
 			ass(overflow_page == 0, "This test should not use overflow");
 			mirror.erase(key);
 		}

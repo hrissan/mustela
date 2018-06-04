@@ -229,9 +229,9 @@ namespace mustela {
 			return page->get_item_key(page_size, item);
 		}
 		ValVal get_kv(int item, Pid & overflow_page)const;
-		size_t get_item_size(int item, Pid & overflow_page, Pid & overflow_count)const;
+		size_t get_item_size(int item, Pid & overflow_page, Pid & overflow_count, Tid & overflow_tid)const;
 		size_t get_item_size(int item)const{
-			Pid a; return get_item_size(item, a, a);
+			Pid a; Tid b; return get_item_size(item, a, a, b);
 		}
 		int lower_bound_item(Val key, bool * found)const{
 			return page->lower_bound_item(page_size, key, found);
@@ -258,24 +258,25 @@ namespace mustela {
 		MVal get_key(int item){
 			return mpage()->get_item_key(page_size, item);
 		}
-		void erase(int to_remove_item, Pid & overflow_page, Pid & overflow_count){
-			size_t item_size = get_item_size(to_remove_item, overflow_page, overflow_count);
+		void erase(int to_remove_item, Pid & overflow_page, Pid & overflow_count, Tid & overflow_tid){
+			size_t item_size = get_item_size(to_remove_item, overflow_page, overflow_count, overflow_tid);
 			mpage()->erase_item(page_size, to_remove_item, item_size);
 			if( mpage()->item_count() == 0)
 				mpage()->set_free_end_offset(page_size); // compact on last delete :)
 		}
 		void erase(int begin, int end){
 			Pid overflow_page, overflow_count;
+			Tid overflow_tid;
 			ass2(begin <= end, "Invalid range at erase", DEBUG_PAGES);
 			for(int it = end; it-- > begin; )
-				erase(it, overflow_page, overflow_count);
+				erase(it, overflow_page, overflow_count, overflow_tid);
 		}
 		void compact(size_t item_size);
 		char * insert_at(int insert_index, Val key, size_t value_size, bool & overflow);
 		void insert_at(int insert_index, Val key, Val value){
 			bool overflow = false;
 			char * dst = insert_at(insert_index, key, value.size, overflow);
-			memcpy(dst, value.data, overflow ? NODE_PID_SIZE : value.size);
+			memcpy(dst, value.data, overflow ? NODE_PID_SIZE + sizeof(Tid) : value.size);
 		}
 		void append(Val key, Val value){
 			insert_at(page->item_count(), key, value);

@@ -168,44 +168,57 @@ bool FreeList::parse_free_record_key(Val key, Tid * tid, uint64_t * batch){
 	return p1 == key.size;
 }
 
+void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
+	char keybuf[32];
+	Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
+	Val value;
+	{
+		Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
+		main_cursor.seek(key);
+		if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
+			next_record_tid = oldest_read_tid; // Fast subsequent checks
+			return;
+		}
+	}
+	std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
+	records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
+	next_record_batch += 1;
+	size_t rec = 0;
+	for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
+		Pid page;
+		unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
+		Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
+		if( count == 0) // Marker of unused space
+			break;
+		ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading"); // TODO - constant
+		free_pages.add_to_cache(page, count);
+	}
+	Pid defrag = free_pages.defrag_end(tx->meta_page.page_count);
+	tx->meta_page.page_count -= defrag;
+	if(defrag != 0)
+		std::cerr << "FreeList defrag " << defrag << " pages, now meta.page_count=" << tx->meta_page.page_count << std::endl;
+}
+
+void FreeList::load_all_free_pages(TX * tx, Tid oldest_read_tid){
+	while( next_record_tid < oldest_read_tid )
+		read_record_space(tx, oldest_read_tid);
+	std::cerr << "FreeList meta.page_count=" << tx->meta_page.page_count << std::endl;
+}
+
 Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
 	while( true ){
 		Pid pa = free_pages.get_free_page(contigous_count);
 		if( pa != 0){
-			back_from_future_pages.insert(pa);
+			ass(back_from_future_pages.insert(pa).second, "Back from Future double addition");
 			return pa;
 		}
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
 			return 0;
-		char keybuf[32];
-		Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
-		Val value;
-		{
-			Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
-			main_cursor.seek(key);
-			if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
-				next_record_tid = oldest_read_tid; // Fast subsequent checks
-				return 0;
-			}
-		}
-		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
-		records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
-		next_record_batch += 1;
-		size_t rec = 0;
-		for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
-			Pid page;
-			unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
-			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
-			if( count == 0) // Marker of unused space
-				break;
-			ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading"); // TODO - constant
-			free_pages.add_to_cache(page, count);
-		}
-		tx->meta_page.page_count -= free_pages.defrag_end(tx->meta_page.page_count);
+		read_record_space(tx, oldest_read_tid);
 	}
 }
 
-void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages){
+void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 	pages->merge_from(free_pages);
 	pages->merge_from(future_pages);
 
@@ -230,11 +243,16 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages){
 	}
 }
 
-void FreeList::mark_free_in_future_page(Pid page, Pid count){
+void FreeList::add_to_future_from_end_of_file(Pid page){
+	ass(back_from_future_pages.insert(page).second, "Back from Future double addition from end of file");
+}
+
+void FreeList::mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid){
 	ass(page >= META_PAGES_COUNT, "Adding meta to freelist"); // TODO - constant
 	auto bfit = back_from_future_pages.find(page);
+	ass((bfit != back_from_future_pages.end()) == (tx->tid() == page_tid), "back from future failed to detect");
 	if( bfit != back_from_future_pages.end()){
-		back_from_future_pages.erase(bfit);
+		bfit = back_from_future_pages.erase(bfit);
 		free_pages.add_to_cache(page, count);
 		return;
 	}
@@ -260,7 +278,7 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		space_record_count += page_records;
 	}
 }
-void FreeList::commit_free_pages(TX * tx, Tid write_tid){
+void FreeList::commit_free_pages(TX * tx){
 	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
 	uint32_t old_batch = 0;
 	size_t old_record_count = 0;
@@ -278,12 +296,12 @@ void FreeList::commit_free_pages(TX * tx, Tid write_tid){
 			ass(meta_bucket.del(key), "Failed to delete free list records after reading");
 		}
 		grow_record_space(tx, 0, old_batch, old_space, old_record_count, free_pages.get_record_count());
-		grow_record_space(tx, write_tid, future_batch, future_space, future_record_count, future_pages.get_record_count());
+		grow_record_space(tx, tx->tid(), future_batch, future_space, future_record_count, future_pages.get_record_count());
 	}
 	//        std::cerr << tx.print_db() << std::endl;
 	free_pages.fill_record_space(tx, 0, old_space);
 	//        std::cerr << tx.print_db() << std::endl;
-	future_pages.fill_record_space(tx, write_tid, future_space);
+	future_pages.fill_record_space(tx, tx->tid(), future_space);
 	//        std::cerr << tx.print_db() << std::endl;
 	back_from_future_pages.clear();
 	free_pages.clear();
@@ -297,13 +315,13 @@ void FreeList::print_db(){
 	std::cerr << "FreeList free pages:";
 	free_pages.print_db();
 }
-void FreeList::test(){
-	FreeList list;
-	list.mark_free_in_future_page(4, 2);
-	list.mark_free_in_future_page(10, 4);
-	list.mark_free_in_future_page(7, 2);
-	list.mark_free_in_future_page(6, 1);
-	list.mark_free_in_future_page(9, 1);
-	list.print_db();
-}
+//void FreeList::test(){
+//	FreeList list;
+//	list.mark_free_in_future_page(4, 2);
+//	list.mark_free_in_future_page(10, 4);
+//	list.mark_free_in_future_page(7, 2);
+//	list.mark_free_in_future_page(6, 1);
+//	list.mark_free_in_future_page(9, 1);
+//	list.print_db();
+//}
 

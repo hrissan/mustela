@@ -35,7 +35,7 @@ namespace mustela {
 		
 		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
-		void mark_free_in_future_page(Pid page, Pid contigous_count); // associated with our tx, will be available after no read tx can ever use our tid
+		void mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid); // associated with our tx, will be available after no read tx can ever use our tid
 		
 		DataPage * make_pages_writable(Cursor & cur, size_t height);
 		
@@ -78,6 +78,7 @@ namespace mustela {
 
 		explicit TX(DB & my_db, bool read_only = false);
 		~TX();
+		
 		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
 		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
 		std::vector<Val> get_bucket_names(); // sorted
@@ -85,13 +86,17 @@ namespace mustela {
 		void check_database(std::function<void(int percent)> on_progress);
 		
 		// both rollback and commit of read-only transaction are nops
-		// commit of r/w transaction writes it to disk, everything remains valid
+		// commit of r/w transaction writes it to disk, everything remains valid for next commit, etc
 		// rollback of r/w transaction invalidates buckets and cursors, restarts r/w transaction
 		void commit();
 		void rollback();
+		Tid tid()const{ return meta_page.tid; }
 
 		std::string print_meta_db();
-		void print_free_list(){ free_list.print_db(); }
+		void print_free_list(){
+			free_list.load_all_free_pages(this, oldest_reader_tid);
+			free_list.print_db();
+		}
 		std::string get_meta_stats();
 	};
 }

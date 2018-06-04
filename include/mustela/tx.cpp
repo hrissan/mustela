@@ -37,8 +37,8 @@ NodePtr TX::writable_node(Pid pa){
 char * TX::writable_overflow(Pid pa, Pid count){
 	return (char *)writable_page(pa, count);
 }
-void TX::mark_free_in_future_page(Pid page, Pid contigous_count){
-	free_list.mark_free_in_future_page(page, contigous_count);
+void TX::mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid){
+	free_list.mark_free_in_future_page(this, page, contigous_count, page_tid);
 }
 Pid TX::get_free_page(Pid contigous_count){
 	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid);
@@ -48,6 +48,7 @@ Pid TX::get_free_page(Pid contigous_count){
 		ass(meta_page.page_count + contigous_count <= file_page_count, "grow_transaction failed to increase file size");
 		pa = meta_page.page_count;
 		meta_page.page_count += contigous_count;
+		free_list.add_to_future_from_end_of_file(pa);
 	}
 	DataPage * new_pa = writable_page(pa, contigous_count);
 //	new_pa->pid = pa;
@@ -61,7 +62,7 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 		DataPage * wr_dap = writable_page(old_page, 1);
 		return wr_dap;
 	}
-	mark_free_in_future_page(old_page, 1);
+	mark_free_in_future_page(old_page, 1, dap->tid());
 	Pid new_page = get_free_page(1);
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
 		if( c->get_current()->bucket_desc == cur.bucket_desc && c->get_current()->at(height).first == old_page )
@@ -328,7 +329,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	if(height == cur.bucket_desc->height){ // merging root
 		if( wr_dap.size() != 0) // wait until only key at -1 offset remains, make it new root
 			return;
-		mark_free_in_future_page(cur.bucket_desc->root_page, 1);
+		const DataPage * dap = readable_page(cur.bucket_desc->root_page, 1);
+		mark_free_in_future_page(cur.bucket_desc->root_page, 1, dap->tid());
 		cur.bucket_desc->node_page_count -= 1;
 		cur.bucket_desc->root_page = wr_dap.get_value(-1);
 		cur.bucket_desc->height -= 1;
@@ -437,7 +439,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		wr_dap.insert_at(0, my_kv.key, spec_val);
 		wr_dap.set_value(-1, left_sib.get_value(-1));
 		wr_dap.insert_range(0, left_sib, 0, left_sib.size());
-		mark_free_in_future_page(left_sib_pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
+		mark_free_in_future_page(left_sib_pid, 1, left_sib.page->tid()); // unlink left, point its slot in parent to us, remove our slot in parent
 		cur.bucket_desc->node_page_count -= 1;
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, path_el.first);
@@ -457,7 +459,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		Pid spec_val = right_sib.get_value(-1);
 		wr_dap.append(right_kv.key, spec_val);
 		wr_dap.append_range(right_sib, 0, right_sib.size());
-		mark_free_in_future_page(right_kv.pid, 1); // unlink right, remove its slot in parent
+		mark_free_in_future_page(right_kv.pid, 1, right_sib.page->tid()); // unlink right, remove its slot in parent
 		cur.bucket_desc->node_page_count -= 1;
 		wr_parent.erase(path_pa.second + 1);
 	}
@@ -502,7 +504,7 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 		std::cerr << "3-way merge" << std::endl;
 	if( left_sib.page ){
 		wr_dap.insert_range(0, left_sib, 0, left_sib.size());
-		mark_free_in_future_page(left_sib_pid, 1); // unlink left, point its slot in parent to us, remove our slot in parent
+		mark_free_in_future_page(left_sib_pid, 1, left_sib.page->tid()); // unlink left, point its slot in parent to us, remove our slot in parent
 		cur.bucket_desc->leaf_page_count -= 1;
 		wr_parent.erase(path_pa.second);
 		wr_parent.set_value(path_pa.second - 1, path_el.first);
@@ -520,7 +522,7 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 			c->get_current()->on_merge(cur.bucket_desc, 0, right_sib_pid, path_el.first, wr_dap.size());
 		}
 		wr_dap.append_range(right_sib, 0, right_sib.size());
-		mark_free_in_future_page(right_sib_pid, 1); // unlink right, remove its slot in parent
+		mark_free_in_future_page(right_sib_pid, 1, right_sib.page->tid()); // unlink right, remove its slot in parent
 		cur.bucket_desc->leaf_page_count -= 1;
 		wr_parent.erase(path_pa.second + 1);
 	}
@@ -537,13 +539,12 @@ void TX::commit(){
 			if (dap.page->tid() != meta_page.tid) // Table not dirty
 				continue;
 			std::string key = bucket_prefix + tit.first;
-			
 			char buf[sizeof(BucketDesc)];
 			Val value(buf, sizeof(BucketDesc));
 			tit.second.pack(buf, sizeof(BucketDesc));
 			ass(meta_bucket.put(Val(key), value, false), "Writing table desc failed during commit");
 		}
-		free_list.commit_free_pages(this, meta_page.tid);
+		free_list.commit_free_pages(this);
 		my_db.commit_transaction(this, meta_page);
 	}
 	meta_page_dirty = false;
@@ -615,7 +616,8 @@ bool TX::drop_bucket(const Val & name){
 			cursor.del();
 		}
 		ass(bucket_desc->leaf_page_count == 1 && bucket_desc->node_page_count == 0 && bucket_desc->overflow_page_count == 0 && bucket_desc->height == 0, "Bucket in wrong state after deleting all keys");
-		mark_free_in_future_page(bucket_desc->root_page, 1);
+		const DataPage * dap = readable_page(bucket_desc->root_page, 1);
+		mark_free_in_future_page(bucket_desc->root_page, 1, dap->tid());
 	}
 	for(IntrusiveNode<Cursor> * cit = &my_cursors; !cit->is_end();){
 		Cursor * c = cit->get_current();
@@ -718,14 +720,27 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 }
 void TX::check_database(std::function<void(int percent)> on_progress){
 	MergablePageCache pages(false);
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	check_bucket(meta_bucket.bucket_desc, &pages);
-	for(auto bname : get_bucket_names()){
-		Bucket bucket = get_bucket(bname);
-		check_bucket(bucket.bucket_desc, &pages);
-	}
-	pages.print_db();
 	free_list.get_all_free_pages(this, &pages);
+	std::cerr << "Free Pages" << std::endl;
+	pages.print_db();
+
+	MergablePageCache meta_pages(false);
+	Bucket meta_bucket(this, &meta_page.meta_bucket);
+	check_bucket(meta_bucket.bucket_desc, &meta_pages);
+	
+	std::cerr << "Meta pages " << std::endl;
+	meta_pages.print_db();
+	pages.merge_from(meta_pages);
+	
+	for(auto bname : get_bucket_names()){
+		MergablePageCache busy_pages(false);
+		Bucket bucket = get_bucket(bname);
+		check_bucket(bucket.bucket_desc, &busy_pages);
+		std::cerr << "Pages from " << bname.to_string() << std::endl;
+		busy_pages.print_db();
+		pages.merge_from(busy_pages);
+	}
+	std::cerr << "All pages " << std::endl;
 	pages.print_db();
 	Pid remaining_pages = meta_page.page_count - pages.defrag_end(meta_page.page_count);
 	ass(pages.empty(), "After defrag free pages left");

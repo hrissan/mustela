@@ -162,10 +162,11 @@ bool Cursor::del(){
 	auto path_el = at(0);
 	ass( path_el.second < wr_dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
 	Pid overflow_page, overflow_count;
-	wr_dap.erase(path_el.second, overflow_page, overflow_count);
+	Tid overflow_tid;
+	wr_dap.erase(path_el.second, overflow_page, overflow_count, overflow_tid);
 	if( overflow_page ) {
 		bucket_desc->overflow_page_count -= overflow_count;
-		my_txn->mark_free_in_future_page(overflow_page, overflow_count);
+		my_txn->mark_free_in_future_page(overflow_page, overflow_count, overflow_tid);
 	}
 	for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
 		c->get_current()->on_erase(bucket_desc, 0, path_el.first, path_el.second);

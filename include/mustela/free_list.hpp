@@ -48,18 +48,23 @@ namespace mustela {
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
 		// TODO - records_to_delete are unnecessary - they form single range for deletion
 		
+		void read_record_space(TX * tx, Tid oldest_read_tid);
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
 		void grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);
 	public:
 		FreeList():free_pages(true), future_pages(false), next_record_tid(0), next_record_batch(0)
 		{}
 		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid);
-		void get_all_free_pages(TX * tx, MergablePageCache * pages);
-		void mark_free_in_future_page(Pid page, Pid count);
-		void commit_free_pages(TX * tx, Tid write_tid);
+		void mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid);
+		void commit_free_pages(TX * tx);
 		
+		void add_to_future_from_end_of_file(Pid page); // remove after testing new method of back to future
+
+		void load_all_free_pages(TX * tx, Tid oldest_read_tid);
+		void get_all_free_pages(TX * tx, MergablePageCache * pages)const;
+
 		void print_db();
-		static void test();
+		static void test(){}
 
 		static Val fill_free_record_key(char * keybuf, Tid tid, uint64_t batch);
 		static bool parse_free_record_key(Val key, Tid * tid, uint64_t * batch);

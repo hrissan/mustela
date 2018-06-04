@@ -64,10 +64,11 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	auto path_el = main_cursor.path.at(0);
 	if( same_key ){
 		Pid overflow_page, overflow_count;
-		wr_dap.erase(path_el.second, overflow_page, overflow_count);
+		Tid overflow_tid;
+		wr_dap.erase(path_el.second, overflow_page, overflow_count, overflow_tid);
 		if( overflow_page ){
 			bucket_desc->overflow_page_count -= overflow_count;
-			my_txn->mark_free_in_future_page(overflow_page, overflow_count);
+			my_txn->mark_free_in_future_page(overflow_page, overflow_count, overflow_tid);
 		}
 	}else{
 		for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
@@ -82,6 +83,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		Pid opa = my_txn->get_free_page(overflow_count);
 		bucket_desc->overflow_page_count += overflow_count;
 		pack_uint_le(result, NODE_PID_SIZE, opa);
+		pack_uint_le(result + NODE_PID_SIZE, sizeof(Tid), my_txn->tid());
 		result = my_txn->writable_overflow(opa, overflow_count);
 	}
 	if( !same_key )
