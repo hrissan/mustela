@@ -119,9 +119,7 @@ namespace {
             cursors.clear();
             buckets.clear();
             if (tx) {
-//                tx->rollback();
-                tx = nullptr;
-                tx = std::make_unique<mustela::TX>(*db, false);
+                tx->rollback();
             }
         }
 
