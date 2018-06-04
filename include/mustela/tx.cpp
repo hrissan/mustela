@@ -140,7 +140,7 @@ static void find_best_node_split(int & left_split, int & right_split, const Node
 		}
 		if( right_size + right_add <= wr_dap.capacity() && right_size + right_add <= left_size + left_add ){
 			right_split -= 1;
-			right_size += left_add;
+			right_size += right_add;
 			right_add = get_item_size_with_insert(wr_dap, right_split - 1, insert_index, required_size1, required_size2);
 			continue;
 		}

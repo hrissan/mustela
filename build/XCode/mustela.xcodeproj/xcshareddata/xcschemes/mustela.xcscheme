@@ -71,8 +71,8 @@
             isEnabled = "NO">
          </CommandLineArgument>
          <CommandLineArgument
-            argument = "--test test.db --scenario ../../tests/case2.txt"
-            isEnabled = "NO">
+            argument = "--test test.db --scenario ../../tests/case4.txt"
+            isEnabled = "YES">
          </CommandLineArgument>
       </CommandLineArguments>
       <AdditionalOptions>
