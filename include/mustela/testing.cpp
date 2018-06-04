@@ -184,6 +184,15 @@ namespace {
                     v_.push_back(i);
                     obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
                 }
+            } else if (cmd == "put-many-rev") {
+                auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
+                for (int i = n - 1; i >= 0; i--) {
+                    auto k_ = bytes(k);
+                    auto v_ = bytes(v);
+                    k_.push_back(static_cast<uint8_t>(i));
+                    v_.push_back(static_cast<uint8_t>(i));
+                    obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
+                }
             } else if (cmd == "del" || cmd == "del-cursor") {
                 obtain_cursor(b).seek(mustela::Val(k));
                 if (cmd == "del") {

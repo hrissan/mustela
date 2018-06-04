@@ -110,6 +110,17 @@ class MustelaTestMachine(RuleBasedStateMachine):
             self.db[bucket][k] = v
         self.roundtrip('put-many', bucket, k_prefix, v_prefix, total.to_bytes(length=1, byteorder='big'))
 
+    @precondition(lambda self: self.db)
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), total=st.integers(min_value=0, max_value=255))
+    def put_many_rev(self, data, k_prefix, v_prefix, total):
+        bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
+        for i in reversed(range(total)):
+            p = i.to_bytes(length=1, byteorder='big')
+            k = k_prefix + p
+            v = v_prefix + p
+            self.db[bucket][k] = v
+        self.roundtrip('put-many-rev', bucket, k_prefix, v_prefix, total.to_bytes(length=1, byteorder='big'))
+
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), v=st.binary())
     def change(self, data, v):
