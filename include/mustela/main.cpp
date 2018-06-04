@@ -5,6 +5,7 @@
 #include <fstream>
 #include <map>
 #include <random>
+#include <chrono>
 #include "mustela.hpp"
 #include "testing.hpp"
 extern "C" {
@@ -296,7 +297,7 @@ int main(int argc, char * argv[]){
 		mustela::pack_uint_le(buf, i, 0x0123456789ABCDEF);
 		uint64_t result = 0;
 		mustela::unpack_uint_le(buf, i, result);
-		std::cout << "Aha " << std::hex << result << std::endl;
+//		std::cerr << "Aha " << std::hex << result << std::endl;
 	}
 
 	std::string test;

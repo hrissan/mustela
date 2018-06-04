@@ -4,6 +4,7 @@
 #include <vector>
 #include <set>
 #include <cstring>
+#include <functional>
 #include "pages.hpp"
 #include "lock.hpp"
 #include "free_list.hpp"
