@@ -307,12 +307,16 @@ void FreeList::commit_free_pages(TX * tx){
 	//        std::cerr << tx.print_db() << std::endl;
 	future_pages.fill_record_space(tx, tx->tid(), future_space);
 	//        std::cerr << tx.print_db() << std::endl;
+	clear();
+}
+void FreeList::clear(){
 	back_from_future_pages.clear();
 	free_pages.clear();
 	future_pages.clear();
 	next_record_tid = 0;
 	next_record_batch = 0;
 }
+
 void FreeList::print_db(){
 	std::cerr << "FreeList future pages:";
 	future_pages.print_db();

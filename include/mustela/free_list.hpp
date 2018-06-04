@@ -57,6 +57,7 @@ namespace mustela {
 		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid);
 		void mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid);
 		void commit_free_pages(TX * tx);
+		void clear();
 		
 		void add_to_future_from_end_of_file(Pid page); // remove after testing new method of back to future
 

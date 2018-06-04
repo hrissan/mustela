@@ -566,6 +566,7 @@ void TX::unlink_buckets_and_cursors(){
 void TX::rollback(){
 	if(read_only)
 		return;
+	free_list.clear();
 	meta_page_dirty = false;
 	my_db.finish_transaction(this);
 	unlink_buckets_and_cursors();
