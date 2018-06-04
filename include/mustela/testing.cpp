@@ -104,7 +104,6 @@ namespace {
         std::map<bytes, mustela::Cursor> cursors;
 
         explicit test_state(std::string db_path) : db_path(std::move(db_path)) {
-            mustela::DB::remove_db(this->db_path);
             reset();
         }
 
@@ -225,18 +224,21 @@ namespace {
             } else if (cmd == "kill") {
                 raise(SIGKILL);
             } else if (cmd == "noop") {
+                return db_hash(*tx);
+            } else if (cmd == "ensure-hash") {
+                assert(db_hash(*tx) == get_nth_tok(tokens, 1));
             } else {
                 std::cerr << "unknown command:" << cmd << std::endl;
             }
 
-            return db_hash(*tx);
+            return "ok";
         }
     };
 }
 
 void run_test_driver(std::string const& db_path, std::istream& scenario) {
     auto state = test_state(db_path);
-    std::cerr << ">>> " << state.db->max_bucket_name_size() << " >>> " << state.db->max_key_size() <<  " >>>" << std::endl;
+    std::cerr << ">>> test (re-)start " << state.db->max_bucket_name_size() << " >>> " << state.db->max_key_size() <<  " >>>" << std::endl;
 
     for (std::string line; std::getline(scenario, line, '\n');) {
         std::cerr << ">>> " << line << std::endl;
