@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <csignal>
 #include "mustela.hpp"
 
 extern "C" {
@@ -220,6 +221,9 @@ namespace {
             } else if (cmd == "rollback-reset") {
                 rollback();
                 reset();
+            } else if (cmd == "kill") {
+                raise(SIGKILL);
+            } else if (cmd == "noop") {
             } else {
                 std::cerr << "unknown command:" << cmd << std::endl;
             }
