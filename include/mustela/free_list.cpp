@@ -3,6 +3,7 @@
 
 using namespace mustela;
 
+constexpr bool FREE_LIST_VERBOSE_PRINT = false;
 constexpr size_t RECORD_SIZE = NODE_PID_SIZE + 1;
 // Use store fixed-size records of NODE_PID_SIZE page + 1-byte count
 
@@ -184,7 +185,8 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 			return;
 		}
 	}
-	std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
+	if(FREE_LIST_VERBOSE_PRINT)
+		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 	records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 	next_record_batch += 1;
 	size_t rec = 0;
@@ -199,14 +201,15 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 	}
 	Pid defrag = free_pages.defrag_end(tx->meta_page.page_count);
 	tx->meta_page.page_count -= defrag;
-	if(defrag != 0)
+	if(defrag != 0 && FREE_LIST_VERBOSE_PRINT)
 		std::cerr << "FreeList defrag " << defrag << " pages, now meta.page_count=" << tx->meta_page.page_count << std::endl;
 }
 
 void FreeList::load_all_free_pages(TX * tx, Tid oldest_read_tid){
 	while( next_record_tid < oldest_read_tid )
 		read_record_space(tx, oldest_read_tid);
-	std::cerr << "FreeList meta.page_count=" << tx->meta_page.page_count << std::endl;
+	if(FREE_LIST_VERBOSE_PRINT)
+		std::cerr << "FreeList meta.page_count=" << tx->meta_page.page_count << std::endl;
 }
 
 Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, bool updating_meta_bucket){
@@ -273,10 +276,12 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		Val key = fill_free_record_key(keybuf, tid, batch);
 		batch += 1;
 		char * raw_space = meta_bucket.put(key, tx->page_size, true);
-		if(raw_space)
-			std::cerr << "FreeList write " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
-		else{
-			std::cerr << "FreeList write conflict " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
+		if(raw_space){
+			if(FREE_LIST_VERBOSE_PRINT)
+				std::cerr << "FreeList write " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
+		}else{
+			if(FREE_LIST_VERBOSE_PRINT)
+				std::cerr << "FreeList write conflict " << tid << ":" << batch - 1 << " recs=" << page_records << std::endl;
 			// TODO - test case for this case
 			continue;
 		}
@@ -303,7 +308,8 @@ void FreeList::commit_free_pages(TX * tx){
 		while(!records_to_delete.empty()){
 			char keybuf[32];
 			Val key = fill_free_record_key(keybuf, records_to_delete.back().first, records_to_delete.back().second);
-			std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
+			if(FREE_LIST_VERBOSE_PRINT)
+				std::cerr << "FreeList del " << records_to_delete.back().first << ":" << records_to_delete.back().second << std::endl;
 			records_to_delete.pop_back();
 			ass(meta_bucket.del(key), "Failed to delete free list records after reading");
 		}

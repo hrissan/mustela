@@ -66,7 +66,7 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 		if(page_size > MAX_PAGE_SIZE)
 			throw Exception("Failed to find valid meta page of any supported page size");
 	}
-	print_db();
+//	print_db();
 	if(newest_meta->version != OUR_VERSION)
 		throw Exception("Incompatible database version");
 	if(newest_meta->pid_size != NODE_PID_SIZE)
