@@ -85,6 +85,8 @@ Pid MergablePageCache::get_free_page(Pid contigous_count){
 	if( siit == size_index.end() )
 		return 0;
 	Pid pa = *(siit->second.begin());
+	if(contigous_count == 1)
+		pa = cache.begin()->first;
 	remove_from_cache(pa, contigous_count);
 	ass(pa >= META_PAGES_COUNT, "Meta somehow got into freelist"); // TODO - constant
 	// TODO - check tid of the page?
