@@ -21,6 +21,10 @@ def gen_key():
     return st.binary(max_size=42)
 
 
+def gen_key_prefix():
+    return st.binary(max_size=42-8)
+
+
 def clone_db(db):
     return SortedDict((b, SortedDict((k, v) for k, v in kvs.items())) for b, kvs in db.items())
 
@@ -94,6 +98,17 @@ class MustelaTestMachine(RuleBasedStateMachine):
         bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
         self.db[bucket][k] = v
         self.roundtrip('put', bucket, k, v)
+
+    @precondition(lambda self: self.db)
+    @rule(data=st.data(), k_prefix=gen_key_prefix(), v_prefix=st.binary(), total=st.integers(min_value=0, max_value=255))
+    def put_many(self, data, k_prefix, v_prefix, total):
+        bucket = data.draw(st.sampled_from(list(self.db)), 'bucket')
+        for i in range(total):
+            p = i.to_bytes(length=1, byteorder='big')
+            k = k_prefix + p
+            v = v_prefix + p
+            self.db[bucket][k] = v
+        self.roundtrip('put-many', bucket, k_prefix, v_prefix, total.to_bytes(length=1, byteorder='big'))
 
     @precondition(lambda self: any(self.db.values()))
     @rule(data=st.data(), v=st.binary())

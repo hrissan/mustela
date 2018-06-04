@@ -175,6 +175,15 @@ namespace {
             } else if (cmd == "put") {
                 obtain_bucket(b, false).put(mustela::Val(k), mustela::Val(v), false);
                 obtain_cursor(b).seek(mustela::Val(k));
+            } else if (cmd == "put-many") {
+                auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
+                for (uint8_t i = 0; i < n; i++) {
+                    auto k_ = bytes(k);
+                    auto v_ = bytes(v);
+                    k_.push_back(i);
+                    v_.push_back(i);
+                    obtain_bucket(b, false).put(mustela::Val(k_), mustela::Val(v_), false);
+                }
             } else if (cmd == "del" || cmd == "del-cursor") {
                 obtain_cursor(b).seek(mustela::Val(k));
                 if (cmd == "del") {
