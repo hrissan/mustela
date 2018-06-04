@@ -23,8 +23,8 @@ namespace mustela {
 	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
 	// fixed pid size allows simple logic when replacing page in node index
 	
-	constexpr bool CLEAR_FREE_SPACE = false;
-	constexpr bool DEBUG_PAGES = false;
+	constexpr bool CLEAR_FREE_SPACE = true;
+	constexpr bool DEBUG_PAGES = true;
 
 #pragma pack(push, 1)
 	struct BucketDesc {
