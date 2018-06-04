@@ -137,6 +137,18 @@ class MustelaTestMachine(RuleBasedStateMachine):
         del self.db[bucket][k]
         self.roundtrip('del-cursor' if cursor else 'del', bucket, k)
 
+    @precondition(lambda self: any(self.db.values()))
+    @rule(data=st.data(), n=st.integers(min_value=0, max_value=255))
+    def del_n(self, data, n):
+        bucket = data.draw(st.sampled_from(list(b for b, kvs in self.db.items() if kvs)), 'bucket')
+        keys = list(self.db[bucket])
+        key = data.draw(st.sampled_from(keys), 'key')
+        for i, k in enumerate(keys[keys.index(key):]):
+            if i == n:
+                break
+            del self.db[bucket][k]
+        self.roundtrip('del-n', bucket, key, n.to_bytes(length=1, byteorder='big'))
+
 
 with settings(max_examples=100, stateful_step_count=100):
     TestMustela = MustelaTestMachine.TestCase

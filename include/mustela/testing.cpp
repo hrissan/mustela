@@ -200,6 +200,13 @@ namespace {
                 } else {
                     obtain_cursor(b).del();
                 }
+            } else if (cmd == "del-n") {
+                auto n = v.at(0);
+                auto& c = obtain_cursor(b);
+                c.seek(mustela::Val(k));
+                for (uint8_t i = 0; i < n; i++) {
+                    c.del();
+                }
             } else if (cmd == "commit") {
                 commit();
             } else if (cmd == "rollback") {
