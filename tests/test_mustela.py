@@ -53,9 +53,12 @@ class MustelaTestMachine(RuleBasedStateMachine):
     def __init__(self):
         super().__init__()
         self.dir = tempfile.TemporaryDirectory()
-        self.mustela = subprocess.Popen([MUSTELA_BINARY, '--test', os.path.join(self.dir.name, MUSTELA_DB)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0, encoding='utf-8')
+        self.mustela = self.open_db()
         self.committed = SortedDict()
         self.db = SortedDict()
+
+    def open_db(self):
+        return subprocess.Popen([MUSTELA_BINARY, '--test', os.path.join(self.dir.name, MUSTELA_DB)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0, encoding='utf-8')
 
     def teardown(self):
         self.mustela.stdin.close()
@@ -67,6 +70,13 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.mustela.stdin.write(input_ + '\n')
         h = self.mustela.stdout.readline().strip()
         assert binascii.hexlify(db_hash(self.db)) == h.encode('ascii')
+
+    @rule()
+    def kill(self):
+        self.db = clone_db(self.committed)
+        self.mustela.stdin.write('kill\n')
+        self.mustela = self.open_db()
+        self.roundtrip('noop')
 
     @rule(bucket=gen_bucket())
     def create_bucket(self, bucket):
