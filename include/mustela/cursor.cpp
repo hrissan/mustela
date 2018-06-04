@@ -170,7 +170,9 @@ bool Cursor::del(){
 	}
 	for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
 		c->get_current()->on_erase(bucket_desc, 0, path_el.first, path_el.second);
+	my_txn->start_update(bucket_desc);
 	my_txn->new_merge_leaf(*this, wr_dap);
+	my_txn->finish_update(bucket_desc);
 	bucket_desc->count -= 1;
 	return true;
 }

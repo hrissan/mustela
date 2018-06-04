@@ -209,13 +209,15 @@ void FreeList::load_all_free_pages(TX * tx, Tid oldest_read_tid){
 	std::cerr << "FreeList meta.page_count=" << tx->meta_page.page_count << std::endl;
 }
 
-Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid){
+Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, bool updating_meta_bucket){
 	while( true ){
 		Pid pa = free_pages.get_free_page(contigous_count);
 		if( pa != 0){
 			ass(back_from_future_pages.insert(pa).second, "Back from Future double addition");
 			return pa;
 		}
+		if( updating_meta_bucket) // We want to prevent reading while putting
+			return 0;
 		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
 			return 0;
 		read_record_space(tx, oldest_read_tid);
@@ -282,6 +284,12 @@ void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector
 		space_record_count += page_records;
 	}
 }
+
+void FreeList::ensure_have_several_pages(TX * tx, Tid oldest_read_tid){
+	if(free_pages.empty())// TODO - we want "we have < than several free pages"
+		read_record_space(tx, oldest_read_tid);
+}
+
 void FreeList::commit_free_pages(TX * tx){
 	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
 	uint32_t old_batch = 0;

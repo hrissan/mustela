@@ -43,8 +43,8 @@ namespace mustela {
 
 		std::set<Pid> back_from_future_pages; // If pages we gave are returned to us, we return them into free_pages instead of future_pages
 		
-		Tid next_record_tid;
-		uint64_t next_record_batch;
+		Tid next_record_tid = 0;
+		uint64_t next_record_batch = 0;
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
 		// TODO - records_to_delete are unnecessary - they form single range for deletion
 		
@@ -52,9 +52,10 @@ namespace mustela {
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
 		void grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);
 	public:
-		FreeList():free_pages(true), future_pages(false), next_record_tid(0), next_record_batch(0)
+		FreeList():free_pages(true), future_pages(false)
 		{}
-		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid);
+		void ensure_have_several_pages(TX * tx, Tid oldest_read_tid); // Called before updates to meta bucket
+		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, bool updating_meta_bucket);
 		void mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid);
 		void commit_free_pages(TX * tx);
 		void clear();

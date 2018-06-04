@@ -264,6 +264,7 @@ size_t DB::max_bucket_name_size()const{
 
 void DB::remove_db(const std::string & file_path){
     std::remove(file_path.c_str());
+    std::remove((file_path + ".lock").c_str());
 }
 
 void DB::create_db(){

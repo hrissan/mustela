@@ -77,6 +77,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		main_cursor.path.at(0).second = path_el.second;
 	}
 	bool overflow;
+	my_txn->start_update(bucket_desc);
 	char * result = my_txn->new_insert2leaf(main_cursor, key, value_size, &overflow);
 	if( overflow ){
 		Pid overflow_count = (value_size + my_txn->page_size - 1)/my_txn->page_size;
@@ -86,6 +87,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 		pack_uint_le(result + NODE_PID_SIZE, sizeof(Tid), my_txn->tid());
 		result = my_txn->writable_overflow(opa, overflow_count);
 	}
+	my_txn->finish_update(bucket_desc);
 	if( !same_key )
 		bucket_desc->count += 1;
 	return result;

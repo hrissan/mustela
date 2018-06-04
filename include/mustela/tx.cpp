@@ -40,8 +40,22 @@ char * TX::writable_overflow(Pid pa, Pid count){
 void TX::mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid){
 	free_list.mark_free_in_future_page(this, page, contigous_count, page_tid);
 }
+void TX::start_update(BucketDesc * bucket_desc){
+	if(bucket_desc != &meta_page.meta_bucket)
+		return;
+	ass(!updating_meta_bucket, "Double start of update meta bucket");
+	updating_meta_bucket = true;
+	free_list.ensure_have_several_pages(this, oldest_reader_tid);
+}
+void TX::finish_update(BucketDesc * bucket_desc){
+	if(bucket_desc != &meta_page.meta_bucket)
+		return;
+	ass(updating_meta_bucket, "Double finish of update meta bucket");
+	updating_meta_bucket = false;
+}
+
 Pid TX::get_free_page(Pid contigous_count){
-	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid);
+	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid, updating_meta_bucket);
 	if( !pa ){
 		if(meta_page.page_count + contigous_count > file_page_count)
 			my_db.grow_transaction(this, meta_page.page_count + contigous_count);

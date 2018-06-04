@@ -44,7 +44,10 @@ namespace mustela {
 		
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid); // associated with our tx, will be available after no read tx can ever use our tid
-		
+		bool updating_meta_bucket = false;
+		void start_update(BucketDesc * bucket_desc);
+		void finish_update(BucketDesc * bucket_desc);
+
 		DataPage * make_pages_writable(Cursor & cur, size_t height);
 		
 		void new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap);

@@ -16,7 +16,7 @@ namespace mustela {
 	};
 #pragma pack(push, 1)
 	struct ReaderSlot {
-		uint64_t deadline; // seconds as returned by std::steady_clock
+		uint64_t deadline; // microseconds as returned by std::steady_clock
 		Tid tid;
 		uint64_t rand0;
 		uint64_t rand1;
