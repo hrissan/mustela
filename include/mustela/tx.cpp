@@ -780,7 +780,7 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 				kv.value.data = readable_overflow(overflow_page, overflow_count);
 			}
 			//                std::cerr << kv.key.to_string() << ":" << kv.value.to_string() << ", ";
-			std::cerr << trim_key(kv.key, parse_meta) << "(" << kv.value.size << "), ";
+			std::cerr << trim_key(kv.key, parse_meta) << "(" << kv.value.size << ")" << (overflow_page ? "->" + std::to_string(overflow_page) : "") << ", ";
 			result += "\"" + trim_key(kv.key, parse_meta) + "(" + std::to_string(kv.value.size) + ")\""; //  + ":" + value.to_string() +
 		}
 		std::cerr << "]" << std::endl;
