@@ -68,11 +68,11 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "--benchmark benchmark.db"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </CommandLineArgument>
          <CommandLineArgument
             argument = "--test test.db --scenario ../../tests/case8.txt"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
       </CommandLineArguments>
       <AdditionalOptions>

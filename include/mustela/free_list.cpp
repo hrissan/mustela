@@ -39,6 +39,7 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 //		std::cerr << "MergablePageCache::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
 	auto it = cache.lower_bound(page);
 	ass(it == cache.end() || it->first != page, "adding existing page to cache");
+	ass(it == cache.end() || it->first >= page + count, "adding overlapping page to cache (to the right)");
 	if(it != cache.end() && it->first == page + count){
 		if( update_index)
 			remove_from_size_index(it->first, it->second);
@@ -48,6 +49,7 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 	}
 	if( it != cache.begin() ){
 		--it;
+		ass(it->first + it->second <= page, "adding overlapping page to cache (to the left)");
 		if( it->first + it->second == page){
 			if( update_index)
 				remove_from_size_index(it->first, it->second);
@@ -256,10 +258,10 @@ void FreeList::add_to_future_from_end_of_file(Pid page){
 	ass(back_from_future_pages.insert(page).second, "Back from Future double addition from end of file");
 }
 
-void FreeList::mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid){
+void FreeList::mark_free_in_future_page(Pid page, Pid count, bool is_from_current_tid){
 	ass(page >= META_PAGES_COUNT, "Adding meta to freelist"); // TODO - constant
 	auto bfit = back_from_future_pages.find(page);
-	ass((bfit != back_from_future_pages.end()) == (tx->tid() == page_tid), "back from future failed to detect");
+	ass((bfit != back_from_future_pages.end()) == is_from_current_tid, "back from future failed to detect");
 	if( bfit != back_from_future_pages.end()){
 		bfit = back_from_future_pages.erase(bfit);
 		free_pages.add_to_cache(page, count);
@@ -338,13 +340,25 @@ void FreeList::print_db(){
 	std::cerr << "FreeList free pages:";
 	free_pages.print_db();
 }
-//void FreeList::test(){
-//	FreeList list;
-//	list.mark_free_in_future_page(4, 2);
-//	list.mark_free_in_future_page(10, 4);
-//	list.mark_free_in_future_page(7, 2);
-//	list.mark_free_in_future_page(6, 1);
-//	list.mark_free_in_future_page(9, 1);
-//	list.print_db();
-//}
+void FreeList::test(){
+	for(int i = 0; i != 1; ++i ){
+		FreeList list;
+//		list.mark_free_in_future_page(4, 8, false);
+//		list.mark_free_in_future_page(6, 2, false);
+
+//		list.mark_free_in_future_page(6, 2, false);
+//		list.mark_free_in_future_page(4, 8, false);
+
+//		list.mark_free_in_future_page(6, 2, false);
+//		list.mark_free_in_future_page(7, 2, false);
+//		list.mark_free_in_future_page(5, 2, false);
+
+		list.mark_free_in_future_page(4, 2, i != 0);
+		list.mark_free_in_future_page(10, 4, i != 0);
+		list.mark_free_in_future_page(7, 2, i != 0);
+		list.mark_free_in_future_page(6, 1, i != 0);
+		list.mark_free_in_future_page(9, 1, i != 0);
+		list.print_db();
+	}
+}
 

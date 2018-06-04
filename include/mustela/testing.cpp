@@ -124,6 +124,9 @@ namespace {
         }
 
         void reset() {
+			mustela::DBOptions options;
+			options.new_db_page_size = mustela::MIN_PAGE_SIZE;
+			options.minimal_mapping_size = 1024; // Small increase of mapped region == lots of mmap/munmap when DB grows
             tx = nullptr;
             db = nullptr;
             db = std::make_unique<mustela::DB>(db_path);

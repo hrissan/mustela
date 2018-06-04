@@ -219,9 +219,10 @@ void interactive_test(){
 }
 
 void run_benchmark(const std::string & db_path){
-	mustela::DBOptions options;
-	options.new_db_page_size = 4096;
 	mustela::DB::remove_db(db_path);
+	mustela::DBOptions options;
+	options.minimal_mapping_size = 16*1024*1024;
+	options.new_db_page_size = 4096;
 	mustela::DB db(db_path, options);
 
 
@@ -327,7 +328,7 @@ int main(int argc, char * argv[]){
 	}
 	
 //	mustela::FreeList::test();
-	mustela::test_data_pages();
+//	mustela::test_data_pages();
 	{
 		mustela::DB db("test.mustella");
 		mustela::TX txn(db);

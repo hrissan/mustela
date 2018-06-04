@@ -56,7 +56,7 @@ namespace mustela {
 		{}
 		void ensure_have_several_pages(TX * tx, Tid oldest_read_tid); // Called before updates to meta bucket
 		Pid get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, bool updating_meta_bucket);
-		void mark_free_in_future_page(TX * tx, Pid page, Pid count, Tid page_tid);
+		void mark_free_in_future_page(Pid page, Pid count, bool is_from_current_tid);
 		void commit_free_pages(TX * tx);
 		void clear();
 		
@@ -66,7 +66,7 @@ namespace mustela {
 		void get_all_free_pages(TX * tx, MergablePageCache * pages)const;
 
 		void print_db();
-		static void test(){}
+		static void test();
 
 		static Val fill_free_record_key(char * keybuf, Tid tid, uint64_t batch);
 		static bool parse_free_record_key(Val key, Tid * tid, uint64_t * batch);

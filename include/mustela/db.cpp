@@ -45,7 +45,7 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
 	if( file_size == 0 ){
-		page_size = options.new_db_page_size == 0 ? MIN_PAGE_SIZE : options.new_db_page_size;
+		page_size = options.new_db_page_size == 0 ? GOOD_PAGE_SIZE : options.new_db_page_size;
 		create_db();
 //		return;
 	}

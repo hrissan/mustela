@@ -26,19 +26,19 @@ DataPage * TX::writable_page(Pid page, Pid count){
 
 LeafPtr TX::writable_leaf(Pid pa){
 	LeafPage * result = (LeafPage *)writable_page(pa, 1);
-	ass(result->tid() == meta_page.tid, "writable_leaf is not from our transaction");
+//	ass(result->tid() == meta_page.tid, "writable_leaf is not from our transaction");
 	return LeafPtr(page_size, result);
 }
 NodePtr TX::writable_node(Pid pa){
 	NodePage * result = (NodePage *)writable_page(pa, 1);
-	ass(result->tid() == meta_page.tid, "writable_node is not from our transaction");
+//	ass(result->tid() == meta_page.tid, "writable_node is not from our transaction");
 	return NodePtr(page_size, result);
 }
 char * TX::writable_overflow(Pid pa, Pid count){
 	return (char *)writable_page(pa, count);
 }
 void TX::mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid){
-	free_list.mark_free_in_future_page(this, page, contigous_count, page_tid);
+	free_list.mark_free_in_future_page(page, contigous_count, this->tid() == page_tid);
 }
 void TX::start_update(BucketDesc * bucket_desc){
 	if(bucket_desc != &meta_page.meta_bucket)
