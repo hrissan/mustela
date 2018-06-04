@@ -318,6 +318,7 @@ void FreeList::commit_free_pages(TX * tx){
 	clear();
 }
 void FreeList::clear(){
+	records_to_delete.clear();
 	back_from_future_pages.clear();
 	free_pages.clear();
 	future_pages.clear();
