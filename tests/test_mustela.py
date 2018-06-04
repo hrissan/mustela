@@ -14,15 +14,15 @@ MUSTELA_DB = 'db.mustela'
 
 
 def gen_bucket():
-    return st.binary(max_size=41)
+    return st.binary(max_size=45)
 
 
 def gen_key():
-    return st.binary(max_size=42)
+    return st.binary(max_size=46)
 
 
 def gen_key_prefix():
-    return st.binary(max_size=42-8)
+    return st.binary(max_size=46-1)
 
 
 def clone_db(db):
