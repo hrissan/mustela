@@ -5,6 +5,7 @@
 #include <fstream>
 #include <map>
 #include <random>
+#include <chrono>
 #include "mustela.hpp"
 #include "testing.hpp"
 extern "C" {
