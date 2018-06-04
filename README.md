@@ -4,6 +4,20 @@ Mustela
 
 # testing
 
+One time:
+
+- `brew install python3`
+- `python3 -m venv venv`
+- `source ./venv/bin/activate`
+- `pip install -r requirements.txt`
+
+Each time:
+
+- (with `source ./venv/bin/activate` before)
+- `py.test -vv`
+
+---
+
 - page size related
 - file size related
 - reader gets pristine
