@@ -6,6 +6,7 @@
 #include <cstring>
 #include "pages.hpp"
 #include "tx.hpp"
+#include "lock.hpp"
 
 namespace mustela {
 	
@@ -54,16 +55,30 @@ namespace mustela {
 			explicit FD(int fd):fd(fd) {}
 			~FD();
 		};
+		struct FileLock {
+			int fd;
+			explicit FileLock(int fd);
+			~FileLock();
+		};
 		FD fd;
-		uint64_t file_size = 0;
+		FD lock_fd;
 		const DBOptions options;
 		size_t page_size = 0;
 		const size_t physical_page_size; // We allow to work with smaller/larger pages when reading file from different platform (or portable variant)
+
+		std::mutex mu; // protect vars shared between all transactions
+		uint64_t file_size = 0;
 		TX * wr_transaction = nullptr;
-		
+		int r_transactions_counter = 0;
 		// mappings are expensive to create, so they are shared between transactions
 		std::vector<Mapping> c_mappings;
 		std::vector<Mapping> wr_mappings;
+		
+		ReaderTable reader_table;
+
+		std::mutex wr_mut;
+		std::unique_ptr<std::lock_guard<std::mutex>> wr_guard;
+		std::unique_ptr<FileLock> wr_file_lock;
 		
 		bool is_valid_meta(Pid index, const MetaPage * mp)const;
 		bool is_valid_meta_strict(const MetaPage * mp)const;

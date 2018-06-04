@@ -8,7 +8,9 @@ constexpr size_t RECORD_SIZE = NODE_PID_SIZE + 1;
 
 // TODO - use variable-encoding for count, leave free worst-case free bytes at the end of page
 
-static size_t get_records_count(Pid count){
+// TODO - select lowest free page range that has enough space
+
+static size_t get_records_count(Pid page, Pid count){
 	return ((count + 254) / 255);
 }
 
@@ -39,8 +41,8 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 	if(it != cache.end() && it->first == page + count){
 		if( update_index)
 			remove_from_size_index(it->first, it->second);
+		record_count -= get_records_count(it->first, it->second);
 		count += it->second;
-		record_count -= get_records_count(it->second);
 		it = cache.erase(it);
 	}
 	if( it != cache.begin() ){
@@ -48,13 +50,13 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 		if( it->first + it->second == page){
 			if( update_index)
 				remove_from_size_index(it->first, it->second);
+			record_count -= get_records_count(it->first, it->second);
 			page = it->first;
 			count += it->second;
-			record_count -= get_records_count(it->second);
 			it = cache.erase(it);
 		}
 	}
-	record_count += get_records_count(count);
+	record_count += get_records_count(page, count);
 	cache.insert(std::make_pair(page, count));
 	if( update_index)
 		add_to_size_index(page, count);
@@ -66,18 +68,18 @@ void MergablePageCache::remove_from_cache(Pid page, Pid count){
 	if( update_index )
 		remove_from_size_index(it->first, it->second);
 	if( count == it->second ){
-		record_count -= get_records_count(it->second);
+		record_count -= get_records_count(it->first, it->second);
 		cache.erase(it);
 		return;
 	}
 	auto old_count = it->second;
-	record_count -= get_records_count(old_count);
+	record_count -= get_records_count(it->first, it->second);
 	cache.erase(it);
 	old_count -= count;
 	page += count;
 	if( update_index )
 		add_to_size_index(page, old_count);
-	record_count += get_records_count(old_count);
+	record_count += get_records_count(page, old_count);
 	cache.insert(std::make_pair(page, old_count));
 }
 Pid MergablePageCache::get_free_page(Pid contigous_count){

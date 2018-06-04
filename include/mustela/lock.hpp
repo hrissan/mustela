@@ -9,17 +9,31 @@
 
 namespace mustela {
 	
-	class WriterLock { // Acquires mutually exclusive lock, scans reader table for oldest reader
-	public:
-		explicit WriterLock()
-		{}
-		~WriterLock();
-		Tid oldest_reader_tid();
+	struct ReaderSlotDesc {
+		size_t slot = 0;
+		uint64_t rand0 = 0;
+		uint64_t rand1 = 0;
 	};
-	class ReaderLock { // Sets reader tid into reader table slot
+#pragma pack(push, 1)
+	struct ReaderSlot {
+		uint64_t deadline; // seconds as returned by std::steady_clock
+		Tid tid;
+		uint64_t rand0;
+		uint64_t rand1;
+		char padding[64 - 3*sizeof(uint64_t) - sizeof(Tid)];
+	};
+#pragma pack(pop)
+	class ReaderTable {
+		ReaderSlot * slots = 0;
+		size_t mapping_size = 0;
 	public:
-		ReaderLock();
-		~ReaderLock();
+		explicit ReaderTable();
+		~ReaderTable();
+
+		ReaderSlotDesc create_reader_slot(Tid tid, int fd, size_t granularity);
+		void update_reader_slot(const ReaderSlotDesc & slot);
+		void release_reader_slot(const ReaderSlotDesc & slot);
+		Tid find_oldest_tid(Tid writer_tid);
 	};
 }
 

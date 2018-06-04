@@ -5,6 +5,7 @@
 #include <set>
 #include <cstring>
 #include "pages.hpp"
+#include "lock.hpp"
 #include "free_list.hpp"
 
 namespace mustela {
@@ -19,21 +20,27 @@ namespace mustela {
 		friend class DB;
 
 		DB & my_db;
-		const char * c_file_ptr = nullptr;
-		char * wr_file_ptr = nullptr;
-		Pid file_page_count = 0;
-		size_t used_mapping_size = 0; // r-tx uses 1 mapping, w-tx uses all mappings larger than this
-		Tid oldest_reader_tid = 0;
-		MetaPage meta_page;
-		bool meta_page_dirty = false;
-
+		// For readers & writers
 		IntrusiveNode<Cursor> my_cursors;
 		std::set<Bucket *> my_buckets;
+
+		const char * c_file_ptr = nullptr;
+		Pid file_page_count = 0;
+		size_t used_mapping_size = 0; // r-tx uses 1 mapping, w-tx uses all mappings larger than this
+		MetaPage meta_page;
+
+		// For readers
+		ReaderSlotDesc reader_slot;
+
+		// For writers
+		char * wr_file_ptr = nullptr;
+		Tid oldest_reader_tid = 0;
+		bool meta_page_dirty = false;
+		FreeList free_list;
 
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists);
 		
-		FreeList free_list;
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid); // associated with our tx, will be available after no read tx can ever use our tid
 		
