@@ -121,6 +121,8 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 		height -= 1;
 	}
 }
+// TODO - true cursor end behaves differently to fast end indicator when inserting into DB end
+// true end will point to inserted item, fast end will point to new DB end
 void Cursor::end(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	at(0).first = 0; // fast end indicator
