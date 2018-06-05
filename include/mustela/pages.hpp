@@ -51,38 +51,40 @@ namespace mustela {
 	// TODO - detect hot copy made with "cp" utility
 	struct DataPage {
 		// Our design makes no use of Pid in pages
-		unsigned char s_tid[sizeof(Tid)];
+		Tid s_tid;
 		// We do a lot of ==, != comparions between tids, might optimize them...
 		Tid tid()const{ // transaction which did write the page
 			Tid result;
-			unpack_uint_le(s_tid, sizeof(Tid), result);
+			unpack_uint_le((const unsigned char * )&s_tid, sizeof(Tid), result);
 			return result;
 		}
 		void set_tid(Tid t){
-			pack_uint_le(s_tid, sizeof(Tid), t);
+			pack_uint_le((unsigned char * )&s_tid, sizeof(Tid), t);
 		}
 	};
-	inline size_t unpack_page_object(const unsigned char * buf){
+	inline size_t unpack_page_object(const void * vbuf){
+		const unsigned char * buf = (const unsigned char * )vbuf;
 		return (size_t(buf[1]) << 8) + buf[0];
 	}
-	inline void pack_page_object(size_t c, unsigned char * buf){
+	inline void pack_page_object(size_t c, void * vbuf){
+		unsigned char * buf = (unsigned char * )vbuf;
 		buf[0] = static_cast<unsigned char>(c);
 		buf[1] = static_cast<unsigned char>(c >> 8);
 	}
 	struct KeysPage : public DataPage {
-		unsigned char s_item_count[2];
-		unsigned char s_items_size[2]; // bytes keys+values + their sizes occupy. for branch pages instead of svalue we store pagenum
-		unsigned char s_free_end_offset[2]; // we can have a bit of gaps, will compact when free middle space not enough to store new item
-		unsigned char s_item_offsets[1];
+		PageIndex s_item_count;
+		PageOffset s_items_size; // bytes keys+values + their sizes occupy. for branch pages instead of svalue we store pagenum
+		PageOffset s_free_end_offset; // we can have a bit of gaps, will compact when free middle space not enough to store new item
+		PageOffset s_item_offsets[20];
 		
-		int item_count()const { return (int)unpack_page_object(s_item_count); }
-		void set_item_count(int c) { pack_page_object((size_t)c, s_item_count); }
-		size_t items_size()const { return unpack_page_object(s_items_size); }
-		void set_items_size(size_t c) { pack_page_object(c, s_items_size); }
-		size_t free_end_offset()const { return unpack_page_object(s_free_end_offset); }
-		void set_free_end_offset(size_t c) { pack_page_object(c, s_free_end_offset); }
-		size_t item_offsets(int item)const { return unpack_page_object(s_item_offsets + 2 * item); }
-		void set_item_offsets(int item, size_t c) { pack_page_object(c, s_item_offsets + 2 * item); }
+		int item_count()const { return (int)unpack_page_object(&s_item_count); }
+		void set_item_count(int c) { pack_page_object((size_t)c, &s_item_count); }
+		size_t items_size()const { return unpack_page_object(&s_items_size); }
+		void set_items_size(size_t c) { pack_page_object(c, &s_items_size); }
+		size_t free_end_offset()const { return unpack_page_object(&s_free_end_offset); }
+		void set_free_end_offset(size_t c) { pack_page_object(c, &s_free_end_offset); }
+		size_t item_offsets(int item)const { return unpack_page_object(static_cast<const PageOffset *>(s_item_offsets) + item); }
+		void set_item_offsets(int item, size_t c) { pack_page_object(c, static_cast<PageOffset *>(s_item_offsets) + item); }
 
 		MVal get_item_key(size_t page_size, int item);
 		Val get_item_key(size_t page_size, int item)const;
@@ -97,7 +99,8 @@ namespace mustela {
 		// each NodePage has NODE_PID_SIZE bytes at the end, storing the -1 indexed link to child, which has no associated key
 		// header [io0, io1, io2] free_middle [skey2 page_be2, gap, skey0 page_be0, gap, skey1 page_be1] page_last
 	};
-	constexpr size_t NODE_HEADER_SIZE = sizeof(NodePage) - sizeof(unsigned char);
+	constexpr size_t NODE_HEADER_SIZE = sizeof(NodePage) - sizeof(KeysPage::s_item_offsets);
+	static_assert(sizeof(KeysPage) < MIN_PAGE_SIZE, "Array of offsets does not fit into page (used for debugging only).");
 
 	inline size_t node_capacity(size_t page_size){
 		return page_size - NODE_HEADER_SIZE - NODE_PID_SIZE;
@@ -113,7 +116,7 @@ namespace mustela {
 		// Leaf page
 		// header [io0, io1, io2] free_middle [skey2 svalue2, gap, skey0 svalue0, gap, skey1 svalue1]
 	};
-	constexpr size_t LEAF_HEADER_SIZE = sizeof(LeafPage) - sizeof(unsigned char);
+	constexpr size_t LEAF_HEADER_SIZE = sizeof(LeafPage) - sizeof(KeysPage::s_item_offsets);
 	inline size_t leaf_capacity(size_t page_size){
 		return page_size - LEAF_HEADER_SIZE;
 	}

@@ -328,9 +328,12 @@ int main(int argc, char * argv[]){
 	}
 	
 //	mustela::FreeList::test();
-//	mustela::test_data_pages();
+	mustela::test_data_pages();
 	{
-		mustela::DB db("test.mustella");
+		mustela::DBOptions options;
+		options.minimal_mapping_size = 1024;
+		options.new_db_page_size = 128;
+		mustela::DB db("test.mustella", options);
 		mustela::TX txn(db);
 		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
 		auto ab = txn.get_bucket_names();

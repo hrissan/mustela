@@ -102,7 +102,7 @@ void KeysPage::erase_item(size_t page_size, int to_remove_item, size_t item_size
 		set_free_end_offset( free_end_offset() + kv_size); // Luck, removed item is after free middle space
 //	for(int pos = to_remove_item; pos != item_count - 1; ++pos)
 //		item_offsets[pos] = item_offsets[pos+1];
-	memmove(s_item_offsets + sizeof(PageOffset) * static_cast<size_t>(to_remove_item), s_item_offsets + sizeof(PageOffset) * static_cast<size_t>(to_remove_item + 1), static_cast<size_t>(item_count() - 1 - to_remove_item) * sizeof(PageOffset));
+	memmove(static_cast<PageOffset *>(s_item_offsets) + to_remove_item, static_cast<const PageOffset *>(s_item_offsets) + to_remove_item + 1, static_cast<size_t>(item_count() - 1 - to_remove_item) * sizeof(PageOffset));
 	set_items_size( items_size() - item_size);
 	set_item_count( item_count() - 1);
 	if( CLEAR_FREE_SPACE )
@@ -114,7 +114,7 @@ MVal KeysPage::insert_item_at(size_t page_size, int insert_index, Val key, size_
 	auto kv_size = item_size - sizeof(PageOffset);
 //	for(int pos = item_count; pos-- > insert_index;)
 //		item_offsets[pos + 1] = item_offsets[pos];
-	memmove(s_item_offsets + sizeof(PageOffset)*static_cast<size_t>(insert_index + 1), s_item_offsets + sizeof(PageOffset)*static_cast<size_t>(insert_index), static_cast<size_t>(item_count() - insert_index) * sizeof(PageOffset));
+	memmove(static_cast<PageOffset *>(s_item_offsets) + insert_index + 1, static_cast<const PageOffset *>(s_item_offsets) + insert_index, static_cast<size_t>(item_count() - insert_index) * sizeof(PageOffset));
 	auto insert_offset = free_end_offset() - kv_size;
 	set_item_offsets(insert_index, insert_offset);
 	set_free_end_offset( free_end_offset() - kv_size);
@@ -135,11 +135,9 @@ size_t mustela::get_item_size(size_t page_size, Val key, Pid value){
 void NodePtr::init_dirty(Tid new_tid){
 	char * raw_page = (char *)page;
 	if( CLEAR_FREE_SPACE )
-		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
-	else{
-		mpage()->set_item_count(0);
-		mpage()->set_items_size(0);
-	}
+		memset(raw_page + NODE_HEADER_SIZE, 0, page_size - NODE_HEADER_SIZE);
+	mpage()->set_item_count(0);
+	mpage()->set_items_size(0);
 	mpage()->set_tid(new_tid);
 	mpage()->set_free_end_offset(page_size - NODE_PID_SIZE);
 }
@@ -193,11 +191,9 @@ void NodePtr::set_value(int item, Pid value){
 void LeafPtr::init_dirty(Tid new_tid){
 	char * raw_page = (char *)mpage();
 	if( CLEAR_FREE_SPACE )
-		memset(raw_page + sizeof(DataPage), 0, page_size - sizeof(DataPage));
-	else{
-		mpage()->set_item_count(0);
-		mpage()->set_items_size(0);
-	}
+		memset(raw_page + LEAF_HEADER_SIZE, 0, page_size - LEAF_HEADER_SIZE);
+	mpage()->set_item_count(0);
+	mpage()->set_items_size(0);
 	mpage()->set_tid(new_tid);
 	mpage()->set_free_end_offset(page_size);
 }
