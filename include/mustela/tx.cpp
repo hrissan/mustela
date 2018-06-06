@@ -631,8 +631,7 @@ bool TX::drop_bucket(const Val & name){
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, false);
 	if(DEBUG_MIRROR){
-		bool mirror_erased = mirror.erase(name.to_string()) != 0;
-		ass(mirror_erased == (bucket_desc != 0), "mirror violation in drop_bucket");
+		ass(mirror.count(name.to_string()) == (bucket_desc != 0), "mirror violation in drop_bucket");
 		before_mirror_operation();
 	}
 	if( !bucket_desc ){
@@ -658,6 +657,8 @@ bool TX::drop_bucket(const Val & name){
 		}else
 			cit = cit->get_next(&Cursor::tx_cursors);
 	}
+	if(DEBUG_MIRROR)
+		ass(mirror.erase(name.to_string()) != 0, "inconsistency with mirror in drop_bucket");
 	for(auto cit = my_buckets.begin(); cit != my_buckets.end();) // All cursor to that table become set to end
 		if( (*cit)->bucket_desc == bucket_desc ){
 			(*cit)->my_txn = nullptr;
