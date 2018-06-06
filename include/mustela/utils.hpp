@@ -85,8 +85,8 @@ namespace mustela {
 		{}
 	};
 
-#define ass(expr, what) do_assert(expr, __FILE__, __LINE__, what)
-#define ass2(expr, what, expr2) do_assert(!(expr2) || (expr), __FILE__, __LINE__, what)
+#define ass(expr, what) mustela::do_assert(expr, __FILE__, __LINE__, what)
+#define ass2(expr, what, expr2) mustela::do_assert(!(expr2) || (expr), __FILE__, __LINE__, what)
 	inline void do_assert(bool expr, const char* file, int line, const char * what){
 		if( !expr ) {
 			std::cerr << file << ":" << line << ": " << what << std::endl;

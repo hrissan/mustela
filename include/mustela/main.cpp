@@ -6,6 +6,7 @@
 #include <map>
 #include <random>
 #include <chrono>
+#include <iomanip>
 #include "mustela.hpp"
 #include "testing.hpp"
 extern "C" {
@@ -242,8 +243,156 @@ void run_benchmark(const std::string & db_path){
 	}
 }
 
+template<class T>
+class SkipList {
+public:
+	static constexpr size_t LEVELS = 8;
+	struct Item {
+		std::array<Item *, LEVELS> nexts{};
+//		std::unique_ptr<Item> next;
+		Item * prev = nullptr;
+		T value = -1;
+	};
+	struct InsertPtr {
+		std::array<Item *, LEVELS> previous_levels{};
+		Item * next()const { return previous_levels.at(0)->nexts.at(0); }
+	};
+	SkipList(){
+		tail_head.nexts.fill(&tail_head);
+		tail_head.prev = &tail_head;
+	}
+	~SkipList(){
+		while(tail_head.prev != &tail_head){
+			erase_begin();
+			print();
+		}
+	}
+	bool lower_bound(const T & value, InsertPtr * insert_ptr){
+		Item * curr = &tail_head;
+		size_t current_height = LEVELS;
+		while(current_height != 0){
+			Item * next_curr = curr->nexts.at(current_height - 1);
+			if(next_curr == &tail_head || next_curr->value >= value){
+				insert_ptr->previous_levels.at(current_height - 1) = curr;
+				current_height -= 1;
+				continue;
+			}
+//			if( next_curr->value == value ){
+//				for(size_t i = 0; i != current_height; ++i)
+//					insert_ptr->previous_levels.at(i) = curr;
+//				return true;
+//			}
+			if( next_curr->value < value )
+				curr = next_curr;
+		}
+		return false;
+	}
+	std::pair<Item *, bool> insert(const T & value){
+		InsertPtr insert_ptr;
+		lower_bound(value, &insert_ptr);
+		Item * next_curr = insert_ptr.next();
+		if(next_curr != &tail_head && next_curr->value == value)
+			return std::make_pair(next_curr, true);
+		Item * new_item = new Item{};
+		new_item->prev = insert_ptr.previous_levels.at(0);
+		next_curr->prev = new_item;
+		uint64_t ra = our_rand();
+		size_t i = 0;
+		for(; i != LEVELS; ++i){
+			if(i != 0 && (ra & (1 << i)) != 0)
+				break;
+			new_item->nexts.at(i) = insert_ptr.previous_levels.at(i)->nexts.at(i);
+			insert_ptr.previous_levels.at(i)->nexts.at(i) = new_item;
+		}
+		for(; i != LEVELS; ++i)
+			new_item->nexts.at(i) = nullptr;
+		new_item->value = value;
+		return std::make_pair(new_item, true);
+	}
+	bool erase(const T & value){
+		InsertPtr insert_ptr;
+		lower_bound(value, &insert_ptr);
+		Item * del_item = insert_ptr.next();
+		if(del_item == &tail_head || del_item->value != value)
+			return false;
+		del_item->nexts.at(0)->prev = del_item->prev;
+		del_item->prev = nullptr;
+		for(size_t i = 0; i != LEVELS; ++i)
+			if(del_item->nexts.at(i)){
+				insert_ptr.previous_levels.at(i)->nexts.at(i) = del_item->nexts.at(i);
+				del_item->nexts.at(i) = nullptr;
+			}
+		delete del_item;
+		return true;
+	}
+	void erase_begin(){
+		Item * del_item = tail_head.nexts.at(0);
+		ass(del_item != &tail_head, "deleting head_tail");
+//		Item * next_item = del_item->nexts.at(0);
+		Item * prev_item = del_item->prev;
+		del_item->nexts.at(0)->prev = prev_item;
+		del_item->prev = nullptr;
+		for(size_t i = 0; i != LEVELS; ++i)
+			if(del_item->nexts.at(i)){
+				prev_item->nexts.at(i) = del_item->nexts.at(i);
+				del_item->nexts.at(i) = nullptr;
+			}
+		delete del_item;
+//		return next_item;
+	}
+	bool empty()const{ return tail_head.prev == &tail_head; }
+	Item * end(const T & v);
+	void print(){
+		Item * curr = &tail_head;
+		std::cerr << "---- list ----" << std::endl;
+		while(true){
+			if(curr == &tail_head)
+				std::cerr << std::setw(4) << "end" << " | ";
+			else
+				std::cerr << std::setw(4) << curr->value << " | ";
+			for(size_t i = 0; i != LEVELS; ++i){
+				if(curr->nexts.at(i) == &tail_head)
+					std::cerr << std::setw(4) <<  "end" << " ";
+				else if(curr->nexts.at(i) == nullptr)
+					std::cerr << std::setw(4) <<  "_" << " ";
+				else
+					std::cerr << std::setw(4) << curr->nexts.at(i)->value << " ";
+			}
+			if(curr->prev == &tail_head)
+				std::cerr << "| " << std::setw(4) << "end" << std::endl;
+			else
+				std::cerr << "| " << std::setw(4) << curr->prev->value << std::endl;
+			if(curr == tail_head.prev)
+				break;
+			curr = curr->nexts.at(0);
+		}
+	}
+private:
+	Item tail_head;
+	uint64_t random_seed = 0;
+
+	uint64_t our_rand() { // MMIX by Donald Knuth
+		random_seed = 6364136223846793005 * random_seed + 1442695040888963407;
+		return random_seed;
+	}
+};
 
 int main(int argc, char * argv[]){
+	{
+		SkipList<int> skip_list;
+		skip_list.print();
+		const int SKIPCOUNT = 32;
+		for(int i = 0; i != SKIPCOUNT; ++i){
+			skip_list.insert(rand()%SKIPCOUNT);
+		}
+		skip_list.print();
+		for(int i = 0; i != SKIPCOUNT; ++i){
+			skip_list.erase(rand()%SKIPCOUNT);
+			skip_list.print();
+		}
+	}
+
+
 	for(size_t i = 0; i != 9; ++i){
 		unsigned char buf[8]{};
 		mustela::pack_uint_le(buf, i, 0x0123456789ABCDEF);
