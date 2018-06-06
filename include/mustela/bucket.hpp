@@ -7,9 +7,6 @@
 
 namespace mustela {
 	
-	class TX;
-	class Cursor;
-	class FreeList;
 	class Bucket {
 		friend class TX;
 		friend class Cursor;
@@ -38,8 +35,15 @@ namespace mustela {
 		bool get(const Val & key, Val * value)const;
 		bool del(const Val & key);
 		
-		std::string print_db();
 		std::string get_stats()const;
+	//{'branch_pages': 1040L,
+	//    'depth': 4L,
+	//    'entries': 3761848L,
+	//    'leaf_pages': 73658L,
+	//    'overflow_pages': 0L,
+	//    'psize': 4096L}
+
+		std::string debug_print_db();
 	};
 }
 

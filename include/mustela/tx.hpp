@@ -11,10 +11,34 @@
 
 namespace mustela {
 	
-	class DB;
-	class Cursor;
-	class Bucket;
 	class TX {
+	public:
+		// We cannot have ove semantic in TX for now because &meta_page.meta_bucket is stored in our cursors and buckets
+		explicit TX(DB & my_db, bool read_only = false);
+		~TX();
+		Tid tid()const{ return meta_page.tid; }
+		std::string get_meta_stats();
+
+		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
+		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
+		std::vector<Val> get_bucket_names(); // sorted
+
+		// both rollback and commit of read-only transaction are nops
+		// commit of r/w transaction writes it to disk, everything remains valid for next commit, etc
+		// rollback of r/w transaction invalidates buckets and cursors, restarts r/w transaction
+		void commit();
+		void rollback();
+
+		// Slow - reads all values
+		void check_database(std::function<void(int percent)> on_progress, bool verbose);
+
+		std::string debug_print_meta_db();
+		void debug_print_free_list(){
+			free_list.load_all_free_pages(this, oldest_reader_tid);
+			free_list.debug_print_db();
+		}
+		int debug_get_mirror_counter()const { return debug_mirror_counter; }
+	private:
 		friend class Cursor;
 		friend class FreeList;
 		friend class Bucket;
@@ -84,6 +108,7 @@ namespace mustela {
 		void unlink_buckets_and_cursors();
 
 		const bool read_only;
+		const size_t page_size; // copy from my_db
 
 		typedef std::map<std::string, std::pair<std::string, Cursor>> BucketMirror;
 		std::map<std::string, BucketMirror> mirror; // model of our DB
@@ -91,32 +116,6 @@ namespace mustela {
 		void before_mirror_operation();
 		void load_mirror();
 		void check_mirror();
-	public:
-		const size_t page_size; // copy from my_db
-
-		explicit TX(DB & my_db, bool read_only = false);
-		~TX();
-		
-		Bucket get_bucket(const Val & name, bool create_if_not_exists = true);
-		bool drop_bucket(const Val & name); // true if dropped, false if did not exist
-		std::vector<Val> get_bucket_names(); // sorted
-		
-		void check_database(std::function<void(int percent)> on_progress, bool verbose);
-		
-		// both rollback and commit of read-only transaction are nops
-		// commit of r/w transaction writes it to disk, everything remains valid for next commit, etc
-		// rollback of r/w transaction invalidates buckets and cursors, restarts r/w transaction
-		void commit();
-		void rollback();
-		Tid tid()const{ return meta_page.tid; }
-
-		std::string print_meta_db();
-		void print_free_list(){
-			free_list.load_all_free_pages(this, oldest_reader_tid);
-			free_list.print_db();
-		}
-		std::string get_meta_stats();
-		int get_mirror_counter()const { return debug_mirror_counter; }
 	};
 }
 

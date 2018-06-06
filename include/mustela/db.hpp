@@ -12,45 +12,31 @@
 
 namespace mustela {
 	
-	// Mappings cannot be in chunks, because count pages could fall onto the edge between chunks
-	struct Mapping {
-		size_t end_addr;
-		char * addr;
-		int ref_count;
-		explicit Mapping(size_t end_addr, char * addr, int ref_count):end_addr(end_addr), addr(addr), ref_count(ref_count)
-		{}
-	};
 	struct DBOptions {
 		bool read_only = false;
 		bool meta_sync = true;
 		size_t new_db_page_size = 0; // 0 - select automatically. Used only when creating file
 		size_t minimal_mapping_size = 1024; // Good for test, TODO - set to larger value closer to release
 	};
-	class TX;
-	//{'branch_pages': 1040L,
-	//    'depth': 4L,
-	//    'entries': 3761848L,
-	//    'leaf_pages': 73658L,
-	//    'overflow_pages': 0L,
-	//    'psize': 4096L}
-	class DB {
 
+	class DB {
+	public:
+		explicit DB(const std::string & file_path, DBOptions options = DBOptions{});
+		~DB();
+		
+		static void remove_db(const std::string & file_path);
+
+		static std::string lib_version();
+		size_t max_key_size()const;
+		size_t max_bucket_name_size()const;
+		
+		void debug_print_db();
 	protected:
 		friend class TX;
 		void start_transaction(TX * tx);
 		void grow_transaction(TX * tx, Pid new_file_page_count);
 		void commit_transaction(TX * tx, MetaPage meta_page);
 		void finish_transaction(TX * tx);
-	public:
-		explicit DB(const std::string & file_path, DBOptions options = DBOptions{});
-		~DB();
-		void print_db();
-		
-		static std::string lib_version();
-		size_t max_key_size()const;
-		size_t max_bucket_name_size()const;
-		
-		static void remove_db(const std::string & file_path);
 	private:
 		struct FD {
 			int fd;
@@ -61,6 +47,14 @@ namespace mustela {
 			int fd;
 			explicit FileLock(int fd);
 			~FileLock();
+		};
+		// Mappings cannot be in chunks, because count pages could fall onto the edge between chunks
+		struct Mapping {
+			size_t end_addr;
+			char * addr;
+			int ref_count;
+			explicit Mapping(size_t end_addr, char * addr, int ref_count):end_addr(end_addr), addr(addr), ref_count(ref_count)
+			{}
 		};
 		FD fd;
 		FD lock_fd;

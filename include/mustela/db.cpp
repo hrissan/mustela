@@ -240,7 +240,7 @@ void DB::finish_transaction(TX * tx){
 	wr_guard.reset();
 }
 
-void DB::print_db(){
+void DB::debug_print_db(){
 	std::cerr << "DB: page_size=" << page_size << " phys. page_size=" << physical_page_size << " file_size=" << file_size << std::endl;
 	for(Pid i = 0; i != META_PAGES_COUNT; ++i){
 		std::cerr << "  meta page " << i << ": ";

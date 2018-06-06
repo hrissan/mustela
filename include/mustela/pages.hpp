@@ -6,6 +6,12 @@
 
 namespace mustela {
 	
+	class DB;
+	class TX;
+	class FreeList;
+	class Cursor;
+	class Bucket;
+
 	constexpr int MIN_KEY_COUNT = 2;
 	constexpr uint32_t OUR_VERSION = 3;
 	typedef uint16_t PageOffset;

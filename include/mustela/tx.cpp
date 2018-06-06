@@ -758,7 +758,7 @@ void TX::check_database(std::function<void(int percent)> on_progress, bool verbo
 	free_list.get_all_free_pages(this, &pages);
 	if (verbose) {
 		std::cerr << "Free Pages" << std::endl;
-		pages.print_db();
+		pages.debug_print_db();
 	}
 
 	MergablePageCache meta_pages(false);
@@ -767,7 +767,7 @@ void TX::check_database(std::function<void(int percent)> on_progress, bool verbo
 
 	if (verbose) {
         std::cerr << "Meta pages " << std::endl;
-        meta_pages.print_db();
+        meta_pages.debug_print_db();
 	}
 	pages.merge_from(meta_pages);
 	
@@ -777,13 +777,13 @@ void TX::check_database(std::function<void(int percent)> on_progress, bool verbo
 		check_bucket(bucket.bucket_desc, &busy_pages);
 		if (verbose) {
             std::cerr << "Pages from " << bname.to_string() << std::endl;
-            busy_pages.print_db();
+            busy_pages.debug_print_db();
 		}
 		pages.merge_from(busy_pages);
 	}
 	if (verbose) {
         std::cerr << "All pages " << std::endl;
-        pages.print_db();
+        pages.debug_print_db();
 	}
 	Pid remaining_pages = meta_page.page_count - pages.defrag_end(meta_page.page_count);
 	ass(pages.empty(), "After defrag free pages left");
@@ -856,9 +856,9 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 	}
 	return result + "]}";
 }
-std::string TX::print_meta_db(){
+std::string TX::debug_print_meta_db(){
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	return meta_bucket.print_db();
+	return meta_bucket.debug_print_db();
 }
 std::string TX::get_meta_stats(){
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
@@ -891,10 +891,10 @@ void TX::check_mirror(){
 		for(auto && ma : part.second){
 			mustela::Val value, c_key, c_value;
 			bool result = bucket.get(mustela::Val(ma.first), &value);
-			ma.second.second.check_cursor_path_up();
+			ma.second.second.debug_check_cursor_path_up();
 			bool c_result = ma.second.second.get(&c_key, &c_value);
 			if( !result || !c_result || c_key.to_string() != ma.first || value.to_string() != ma.second.first || c_value.to_string() != ma.second.first ){
-				std::string json = bucket.print_db();
+				std::string json = bucket.debug_print_db();
 				std::cerr << "Main table: " << json << std::endl;
 				ass(false, "Bad mirror check ma");
 			}

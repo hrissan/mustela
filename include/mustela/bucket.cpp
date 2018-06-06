@@ -135,7 +135,7 @@ bool Bucket::del(const Val & key){
 	ass(main_cursor.del(), "Cursor del returned false after successfull seek");
 	return true;
 }
-std::string Bucket::print_db(){
+std::string Bucket::debug_print_db(){
 	return bucket_desc ? my_txn->print_db(bucket_desc) : std::string();
 }
 

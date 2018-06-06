@@ -7,13 +7,46 @@
 
 namespace mustela {
 	
-	class TX;
-	class Bucket;
-	class FreeList;
 	class Cursor {
+	public:
+		explicit Cursor()
+		{}
+		~Cursor();
+		Cursor(Cursor && other);
+		Cursor(const Cursor & other);
+		Cursor & operator=(Cursor && other);
+		Cursor & operator=(const Cursor & other);
+		
+		bool is_valid()const { return bucket_desc != nullptr; }
+		Val get_bucket_name()const { return persistent_name; }
+		
+		Bucket get_bucket();
+
+		bool operator==(const Cursor & other)const;
+		bool operator!=(const Cursor & other)const{ return !(*this == other); }
+
+		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key or end() and returns false
+		void before_first(); // sets before first
+		void end(); // sets to end
+		void first(); // sets to end(), if db is empty
+		void last(); // sets to end(), if db is empty
+		
+		bool get(Val * key, Val * value); // you can get from any position except end() and before_first()
+		bool del(); // If you can get, you can del. After successfull del, cursor points to the next item, or end() if it was last one
+		
+		void next(); // next from last() goes to the end(), next from end() is nop
+		void prev(); // prev from first() goes to the before_first(), prev from before_first() is nop
+		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.next() ) {}
+		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.prev() ) {}
+		
+		void debug_make_pages_writable();
+		void debug_check_cursor_path_up();
+	private:
 		friend class TX;
 		friend class Bucket;
 		friend class FreeList;
+		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name);
+
 		TX * my_txn = nullptr;
 		BucketDesc * bucket_desc = nullptr;
 		Val persistent_name; // used for mirror only for now
@@ -28,7 +61,6 @@ namespace mustela {
 		// Cursor is at end() if it is set at last leaf end
 		// To speed up Cursor construction, we define another special value for end - path.at(0).first == 0
 		
-		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name);
 		bool fix_cursor_after_last_item(); // true if points to item
 		void set_at_direction(size_t height, Pid pa, int dir);
 
@@ -70,43 +102,6 @@ namespace mustela {
 			}
 		}
 		bool is_before_first()const { return path.at(0).first == 0; }
-	public:
-		explicit Cursor()
-		{}
-		~Cursor();
-		Cursor(Cursor && other);
-		Cursor(const Cursor & other);
-		Cursor & operator=(Cursor && other);
-		Cursor & operator=(const Cursor & other);
-		
-		bool is_valid()const { return bucket_desc != nullptr; }
-		Val get_bucket_name()const { return persistent_name; }
-		
-//		Bucket get_bucket(){ // Good idea but classes will reference each other by value :)
-//			ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-//			return Bucket(my_txn, bucket_desc, persistent_name);
-//		}
-
-		bool operator==(const Cursor & other)const;
-		bool operator!=(const Cursor & other)const{ return !(*this == other); }
-
-		bool seek(const Val & key); // sets to key and returns true if key is found, otherwise sets to next key or end() and returns false
-		void before_first(); // sets before first
-		void end(); // sets to end
-		void first(); // sets to end(), if db is empty
-		void last(); // sets to end(), if db is empty
-		
-		bool get(Val * key, Val * value); // you can get from any position except end() and before_first()
-		bool del(); // If you can get, you can del. After successfull del, cursor points to the next item, or end() if it was last one
-		
-		void next(); // next from last() goes to the end(), next from end() is nop
-		void prev(); // prev from first() goes to the before_first(), prev from before_first() is nop
-		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.next() ) {}
-		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.prev() ) {}
-		
-		// for debug
-		void make_pages_writable();
-		void check_cursor_path_up();
 	};
 }
 

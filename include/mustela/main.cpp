@@ -32,7 +32,7 @@ void interactive_test(){
 	
 	{
 //		mustela::Bucket meta_bucket(txn, mustela::Val());
-//		std::string json = txn.print_meta_db();
+//		std::string json = txn.debug_print_meta_db();
 //		std::cout << "Meta table: " << json << std::endl;
 	}
 	
@@ -90,12 +90,12 @@ void interactive_test(){
 			continue;
 		}
 		if( input == "pp"){
-			std::string json = txn.print_meta_db();
+			std::string json = txn.debug_print_meta_db();
 			std::cout << "Meta table: " << json << std::endl;
 			continue;
 		}
 		if( input == "p"){
-			std::string json = main_bucket.print_db();
+			std::string json = main_bucket.debug_print_db();
 			std::cout << "Main table: " << json << std::endl;
 			continue;
 		}
@@ -113,7 +113,7 @@ void interactive_test(){
 		}
 		if( input == "f"){
 			std::cout << "Free table: " << std::endl;
-			txn.print_free_list();
+			txn.debug_print_free_list();
 			continue;
 		}
 		bool new_range = input.find("n") != std::string::npos;

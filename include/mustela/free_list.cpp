@@ -110,7 +110,7 @@ Pid MergablePageCache::defrag_end(Pid page_count){
 	remove_from_cache(last_page, last_count);
 	return last_count;
 }
-void MergablePageCache::print_db()const{
+void MergablePageCache::debug_print_db()const{
 	int counter = 0;
 	for(auto && it : cache){
 		if( counter != 0 && counter++ % 10 == 0)
@@ -218,7 +218,7 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, b
 	while( true ){
 		Pid pa = free_pages.get_free_page(contigous_count);
 		if( pa != 0){
-			ass(back_from_future_pages.insert(pa).second, "Back from Future double addition");
+			ass(debug_back_from_future_pages.insert(pa).second, "Back from Future double addition");
 			return pa;
 		}
 		if( updating_meta_bucket) // We want to prevent reading while putting
@@ -255,15 +255,15 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 }
 
 void FreeList::add_to_future_from_end_of_file(Pid page){
-	ass(back_from_future_pages.insert(page).second, "Back from Future double addition from end of file");
+	ass(debug_back_from_future_pages.insert(page).second, "Back from Future double addition from end of file");
 }
 
 void FreeList::mark_free_in_future_page(Pid page, Pid count, bool is_from_current_tid){
 	ass(page >= META_PAGES_COUNT, "Adding meta to freelist"); // TODO - constant
-	auto bfit = back_from_future_pages.find(page);
-	ass((bfit != back_from_future_pages.end()) == is_from_current_tid, "back from future failed to detect");
-	if( bfit != back_from_future_pages.end()){
-		bfit = back_from_future_pages.erase(bfit);
+	auto bfit = debug_back_from_future_pages.find(page);
+	ass((bfit != debug_back_from_future_pages.end()) == is_from_current_tid, "back from future failed to detect");
+	if( bfit != debug_back_from_future_pages.end()){
+		bfit = debug_back_from_future_pages.erase(bfit);
 		free_pages.add_to_cache(page, count);
 		return;
 	}
@@ -327,20 +327,20 @@ void FreeList::commit_free_pages(TX * tx){
 }
 void FreeList::clear(){
 	records_to_delete.clear();
-	back_from_future_pages.clear();
+	debug_back_from_future_pages.clear();
 	free_pages.clear();
 	future_pages.clear();
 	next_record_tid = 0;
 	next_record_batch = 0;
 }
 
-void FreeList::print_db(){
+void FreeList::debug_print_db(){
 	std::cerr << "FreeList future pages:";
-	future_pages.print_db();
+	future_pages.debug_print_db();
 	std::cerr << "FreeList free pages:";
-	free_pages.print_db();
+	free_pages.debug_print_db();
 }
-void FreeList::test(){
+void FreeList::debug_test(){
 	for(int i = 0; i != 1; ++i ){
 		FreeList list;
 //		list.mark_free_in_future_page(4, 8, false);
@@ -358,7 +358,7 @@ void FreeList::test(){
 		list.mark_free_in_future_page(7, 2, i != 0);
 		list.mark_free_in_future_page(6, 1, i != 0);
 		list.mark_free_in_future_page(9, 1, i != 0);
-		list.print_db();
+		list.debug_print_db();
 	}
 }
 
