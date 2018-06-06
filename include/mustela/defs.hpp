@@ -33,7 +33,7 @@ namespace mustela {
 // turn on/off health checks
 	constexpr bool CLEAR_FREE_SPACE = true;
 	constexpr bool DEBUG_PAGES = true;
-	constexpr bool DEBUG_MIRROR = false;
+	constexpr bool DEBUG_MIRROR = true;
 
 // Forward declarations
 	class DB;
