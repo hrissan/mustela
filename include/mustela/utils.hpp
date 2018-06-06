@@ -78,7 +78,16 @@ namespace mustela {
 	inline uint32_t crc32c(uint32_t crc, const void *buf, size_t len){
 		return crc32c(crc, reinterpret_cast<const unsigned char *>(buf), len);
 	}
-
+	struct Random {
+		explicit Random(uint64_t random_seed = 0):random_seed(random_seed)
+		{}
+		uint64_t rand() { // MMIX by Donald Knuth
+			random_seed = 6364136223846793005 * random_seed + 1442695040888963407;
+			return random_seed;
+		}
+	private:
+		uint64_t random_seed;
+	};
 	class Exception {
 	public:
 		explicit Exception(const std::string & what)

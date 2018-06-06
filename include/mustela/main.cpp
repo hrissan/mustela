@@ -246,7 +246,7 @@ void run_benchmark(const std::string & db_path){
 template<class T>
 class SkipList {
 public:
-	static constexpr size_t LEVELS = 8;
+	static constexpr size_t LEVELS = 20;
 	struct Item {
 		std::array<Item *, LEVELS> nexts{};
 //		std::unique_ptr<Item> next;
@@ -264,7 +264,7 @@ public:
 	~SkipList(){
 		while(tail_head.prev != &tail_head){
 			erase_begin();
-			print();
+//			print();
 		}
 	}
 	bool lower_bound(const T & value, InsertPtr * insert_ptr){
@@ -292,11 +292,11 @@ public:
 		lower_bound(value, &insert_ptr);
 		Item * next_curr = insert_ptr.next();
 		if(next_curr != &tail_head && next_curr->value == value)
-			return std::make_pair(next_curr, true);
+			return std::make_pair(next_curr, false);
 		Item * new_item = new Item{};
 		new_item->prev = insert_ptr.previous_levels.at(0);
 		next_curr->prev = new_item;
-		uint64_t ra = our_rand();
+		uint64_t ra = random.rand();
 		size_t i = 0;
 		for(; i != LEVELS; ++i){
 			if(i != 0 && (ra & (1 << i)) != 0)
@@ -369,28 +369,70 @@ public:
 	}
 private:
 	Item tail_head;
-	uint64_t random_seed = 0;
-
-	uint64_t our_rand() { // MMIX by Donald Knuth
-		random_seed = 6364136223846793005 * random_seed + 1442695040888963407;
-		return random_seed;
-	}
+	mustela::Random random;
 };
 
-int main(int argc, char * argv[]){
+void benchmark_skiplist(int TEST_COUNT){
+	mustela::Random random;
+	SkipList<int> skip_list;
+	skip_list.print();
 	{
-		SkipList<int> skip_list;
-		skip_list.print();
-		const int SKIPCOUNT = 32;
-		for(int i = 0; i != SKIPCOUNT; ++i){
-			skip_list.insert(rand()%SKIPCOUNT);
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		for(int i = 0; i != TEST_COUNT; ++i){
+			int val = random.rand()%TEST_COUNT;
+			found_counter += skip_list.insert(val).second;
 		}
-		skip_list.print();
-		for(int i = 0; i != SKIPCOUNT; ++i){
-			skip_list.erase(rand()%SKIPCOUNT);
-			skip_list.print();
-		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "skiplist insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
+//	skip_list.print();
+	{
+//		mustela::Random random;
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		for(int i = 0; i != TEST_COUNT; ++i){
+			int val = random.rand()%TEST_COUNT;
+			found_counter += skip_list.erase(val);
+		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "skiplist delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
+}
+void benchmark_stdset(int TEST_COUNT){
+	mustela::Random random;
+	std::set<int> skip_list;
+	{
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		for(int i = 0; i != TEST_COUNT; ++i){
+			int val = random.rand()%TEST_COUNT;
+			found_counter += skip_list.insert(val).second;
+		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "std::set insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
+//		skip_list.print();
+	{
+//		mustela::Random random;
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		for(int i = 0; i != TEST_COUNT; ++i){
+			int val = random.rand()%TEST_COUNT;
+			found_counter += skip_list.erase(val);
+		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "std::set delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
+}
+int main(int argc, char * argv[]){
+	benchmark_skiplist(1000000);
+	benchmark_stdset(1000000);
+	return 0;
 
 
 	for(size_t i = 0; i != 9; ++i){
