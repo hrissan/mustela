@@ -84,6 +84,13 @@ namespace mustela {
 		void unlink_buckets_and_cursors();
 
 		const bool read_only;
+
+		typedef std::map<std::string, std::pair<std::string, Cursor>> BucketMirror;
+		std::map<std::string, BucketMirror> mirror; // model of our DB
+		static int debug_mirror_counter;
+		void before_mirror_operation();
+		void load_mirror();
+		void check_mirror();
 	public:
 		const size_t page_size; // copy from my_db
 
@@ -109,6 +116,7 @@ namespace mustela {
 			free_list.print_db();
 		}
 		std::string get_meta_stats();
+		int get_mirror_counter()const { return debug_mirror_counter; }
 	};
 }
 

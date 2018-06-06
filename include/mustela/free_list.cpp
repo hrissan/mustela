@@ -180,7 +180,7 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 	Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val value;
 	{
-		Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
+		Cursor main_cursor(tx, &tx->meta_page.meta_bucket, Val{});
 		main_cursor.seek(key);
 		if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
 			next_record_tid = oldest_read_tid; // Fast subsequent checks
@@ -236,7 +236,7 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 	char keybuf[32];
 	Val free_key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val key, value;
-	Cursor main_cursor(tx, &tx->meta_page.meta_bucket);
+	Cursor main_cursor(tx, &tx->meta_page.meta_bucket, Val{});
 	main_cursor.seek(free_key);
 	Tid tid;
 	uint64_t batch;

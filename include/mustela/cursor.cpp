@@ -3,7 +3,7 @@
 
 using namespace mustela;
 	
-Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc):my_txn(my_txn), bucket_desc(bucket_desc){
+Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), bucket_desc(bucket_desc), persistent_name(name){
 	ass(my_txn && bucket_desc, "get_cursor called on invalid bucket");
     my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 //	path.resize(bucket_desc->height + 1);
@@ -22,12 +22,13 @@ void Cursor::unlink(){
 	tx_cursors.unlink(&Cursor::tx_cursors);
 	my_txn = nullptr;
 	bucket_desc = nullptr;
+	persistent_name = Val{};
 }
-Cursor::Cursor(Cursor && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(std::move(other.path)){
+Cursor::Cursor(Cursor && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name), path(std::move(other.path)){
 	if(my_txn)
     	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 }
-Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), path(other.path){
+Cursor::Cursor(const Cursor & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name), path(other.path){
 	if(my_txn)
     	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
 }
@@ -35,6 +36,7 @@ Cursor & Cursor::operator=(Cursor && other){
 	unlink();
 	my_txn = other.my_txn;
 	bucket_desc = other.bucket_desc;
+	persistent_name = other.persistent_name;
 	path = std::move(other.path);
 	if(my_txn)
     	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
@@ -44,6 +46,7 @@ Cursor & Cursor::operator=(const Cursor & other){
 	unlink();
 	my_txn = other.my_txn;
 	bucket_desc = other.bucket_desc;
+	persistent_name = other.persistent_name;
 	path = other.path;
 	if(my_txn)
     	my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
@@ -159,6 +162,17 @@ bool Cursor::del(){
 		throw Exception("Attempt to modify read-only transaction in Cursor::del");
 	if( !fix_cursor_after_last_item() )
 		return false;
+	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
+		Val c_key, c_value;
+		ass(get(&c_key, &c_value), "cursor get failed in del");
+ 		auto & part = my_txn->mirror.at(persistent_name.to_string());
+ 		auto mit = part.find(c_key.to_string());
+		ass(mit != part.end(), "inconsistent mirror in cursor del");
+		ass(mit->second.first == c_value.to_string(), "inconsistent mirror in cursor del");
+		ass(mit->second.second == *this, "inconsistent mirror in cursor del");
+		mit = part.erase(mit);
+		my_txn->before_mirror_operation();
+	}
 	my_txn->meta_page_dirty = true;
 	LeafPtr wr_dap(my_txn->page_size, (LeafPage *)my_txn->make_pages_writable(*this, 0));
 	auto path_el = at(0);
@@ -176,6 +190,8 @@ bool Cursor::del(){
 	my_txn->new_merge_leaf(*this, wr_dap);
 	my_txn->finish_update(bucket_desc);
 	bucket_desc->count -= 1;
+	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket)
+		my_txn->check_mirror();
 	return true;
 }
 void Cursor::next(){
@@ -218,4 +234,23 @@ void Cursor::prev(){
 	set_at_direction(height, pa, 1);
 	ass(at(0).second > 0, "Invalid cursor after set_at_direction in Cursor::prev");
 	at(0).second -= 1;
+}
+void Cursor::make_pages_writable(){
+	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
+	if( my_txn->read_only )
+		throw Exception("Attempt to modify read-only transaction in Cursor::del");
+	if( !fix_cursor_after_last_item() )
+		return;
+	my_txn->meta_page_dirty = true;
+	LeafPtr wr_dap(my_txn->page_size, (LeafPage *)my_txn->make_pages_writable(*this, 0));
+}
+
+void Cursor::check_cursor_path_up(){
+	for(size_t i = 0; i != bucket_desc->height; ++i){
+		auto path_pa = path.at(i+1);
+		CNodePtr nap = my_txn->readable_node(path_pa.first);
+		ass(path_pa.second < nap.size(), "check cursor failed");
+		Pid pa = nap.get_value(path_pa.second);
+		ass(pa == path.at(i).first, "check cursor failed 2");
+	}
 }

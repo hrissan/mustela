@@ -17,14 +17,14 @@ void Bucket::unlink(){
 		ass(my_txn->my_buckets.erase(this) == 1, "Double etase");
 	my_txn = nullptr;
 	bucket_desc = nullptr;
-	persistent_name = Val();
+	persistent_name = Val{};
 }
-Bucket::Bucket(Bucket && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc){
+Bucket::Bucket(Bucket && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name){
 	if(my_txn)
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 	other.unlink();
 }
-Bucket::Bucket(const Bucket & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc){
+Bucket::Bucket(const Bucket & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name){
 	if(my_txn)
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 }
@@ -32,6 +32,7 @@ Bucket & Bucket::operator=(Bucket && other){
 	unlink();
 	my_txn = other.my_txn;
 	bucket_desc = other.bucket_desc;
+	persistent_name = other.persistent_name;
 	if(my_txn)
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 	other.unlink();
@@ -41,6 +42,7 @@ Bucket & Bucket::operator=(const Bucket & other){
 	unlink();
 	my_txn = other.my_txn;
 	bucket_desc = other.bucket_desc;
+	persistent_name = other.persistent_name;
 	if(my_txn)
 		ass(my_txn->my_buckets.insert(this).second, "Double insert");
 	return *this;
@@ -52,10 +54,16 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	if(key.size > max_key_size(my_txn->page_size))
 		throw Exception("Key size too big in Bucket::put");
-	Cursor main_cursor(my_txn, bucket_desc);
-	bool same_key = main_cursor.seek(key);
+	Cursor main_cursor(my_txn, bucket_desc, persistent_name);
+	const bool same_key = main_cursor.seek(key);
 //		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
 //		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
+	TX::BucketMirror * bu = nullptr;
+	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
+	 	bu = &my_txn->mirror.at(persistent_name.to_string());
+		ass(bu->count(key.to_string()) == size_t(same_key), "Mirror key different in bucket put");
+		my_txn->before_mirror_operation();
+	}
 	if( same_key && nooverwrite )
 		return nullptr;
 	my_txn->meta_page_dirty = true;
@@ -90,17 +98,28 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	my_txn->finish_update(bucket_desc);
 	if( !same_key )
 		bucket_desc->count += 1;
+	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
+		if(same_key) // Update only value, existing cursor should stay pointing to the same key-value
+			bu->at(key.to_string()).first = std::string();
+		else
+			ass(bu->insert(std::make_pair(key.to_string(), std::make_pair(std::string(), main_cursor))).second, "inconsistent mirror");
+	}
 	return result;
 }
 bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // false if nooverwrite and key existed
 	char * dst = put(key, value.size, nooverwrite);
 	if( dst )
 		memcpy(dst, value.data, value.size);
+	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
+	 	auto & part = my_txn->mirror.at(persistent_name.to_string());
+	 	part.at(key.to_string()).first = value.to_string();
+		my_txn->check_mirror();
+	}
 	return dst != nullptr;
 }
 bool Bucket::get(const Val & key, Val * value)const{
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
-	Cursor main_cursor(my_txn, bucket_desc);
+	Cursor main_cursor(my_txn, bucket_desc, persistent_name);
 	if( !main_cursor.seek(key) )
 		return false;
 	Val c_key;
@@ -110,7 +129,7 @@ bool Bucket::del(const Val & key){
 	if( my_txn->read_only )
 		throw Exception("Attempt to modify read-only transaction");
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
-	Cursor main_cursor(my_txn, bucket_desc);
+	Cursor main_cursor(my_txn, bucket_desc, persistent_name);
 	if( !main_cursor.seek(key) )
 		return false;
 	ass(main_cursor.del(), "Cursor del returned false after successfull seek");

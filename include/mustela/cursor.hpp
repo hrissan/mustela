@@ -16,6 +16,8 @@ namespace mustela {
 		friend class FreeList;
 		TX * my_txn = nullptr;
 		BucketDesc * bucket_desc = nullptr;
+		Val persistent_name; // used for mirror only for now
+
 		IntrusiveNode<Cursor> tx_cursors;
 
 		void unlink();
@@ -26,7 +28,7 @@ namespace mustela {
 		// Cursor is at end() if it is set at last leaf end
 		// To speed up Cursor construction, we define another special value for end - path.at(0).first == 0
 		
-		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc);
+		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name);
 		bool fix_cursor_after_last_item(); // true if points to item
 		void set_at_direction(size_t height, Pid pa, int dir);
 
@@ -40,10 +42,10 @@ namespace mustela {
 				at(height).second -= erase_count;
 			}
 		}
-		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
+		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index, int is_node){
 			if( bucket_desc == desc && at(height).first == pa && at(height).second >= split_index ){
 				at(height).first = new_pa;
-				at(height).second -= split_index;
+				at(height).second -= split_index + is_node;
 				at(height + 1).second += 1;
 			}
 		}
@@ -91,6 +93,10 @@ namespace mustela {
 		void prev(); // prev from first() goes to the end, beware
 		// for( cur.first(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.next() ) {}
 		// for( cur.last(); cur.get(key, val) /*&& key.prefix("a", &key_tail)*/; cur.prev() ) {}
+		
+		// for debug
+		void make_pages_writable();
+		void check_cursor_path_up();
 	};
 }
 

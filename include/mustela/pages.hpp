@@ -25,6 +25,7 @@ namespace mustela {
 	
 	constexpr bool CLEAR_FREE_SPACE = true;
 	constexpr bool DEBUG_PAGES = true;
+	constexpr bool DEBUG_MIRROR = true;
 
 #pragma pack(push, 1)
 	struct BucketDesc {

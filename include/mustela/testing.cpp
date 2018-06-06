@@ -181,7 +181,13 @@ namespace {
                 obtain_cursor(b).seek(mustela::Val(k));
             } else if (cmd == "put-n") {
                 auto n = from_hex(get_nth_tok(tokens, 4)).at(0);
+                auto & bucket = obtain_bucket(b, false);
                 for (uint8_t i = 0; i < n; i++) {
+                	if(tx->get_mirror_counter() >= 224 && tx->get_mirror_counter() <= 225){
+//                		c.make_pages_writable();
+						std::string json = bucket.print_db();
+						std::cout << "Main table: " << json << std::endl;
+					}
                     auto k_ = bytes(k);
                     auto v_ = bytes(v);
                     k_.push_back(i);
@@ -206,9 +212,15 @@ namespace {
                 }
             } else if (cmd == "del-n" || cmd == "del-n-rev") {
                 auto n = v.at(0);
+                auto & bucket = obtain_bucket(b, false);
                 auto& c = obtain_cursor(b);
                 c.seek(mustela::Val(k));
                 for (uint8_t i = 0; i < n; i++) {
+                	if(tx->get_mirror_counter() >= 304 && tx->get_mirror_counter() <= 305){
+//                		c.make_pages_writable();
+						std::string json = bucket.print_db();
+						std::cout << "Main table: " << json << std::endl;
+					}
                     c.del();
                     if (cmd == "del-n-rev") {
                         c.prev();

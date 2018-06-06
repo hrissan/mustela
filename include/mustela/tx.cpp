@@ -9,10 +9,14 @@ static const bool BULK_LOADING = true;
 
 static const char bucket_prefix = 'b';
 
+int TX::debug_mirror_counter = 0;
+
 TX::TX(DB & my_db, bool read_only):my_db(my_db), read_only(read_only), page_size(my_db.page_size) {
 	if( !read_only && my_db.options.read_only)
 		throw Exception("Read-write transaction impossible on read-only DB");
 	my_db.start_transaction(this);
+	if(DEBUG_MIRROR)
+		load_mirror();
 }
 
 TX::~TX(){
@@ -202,7 +206,7 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 		wr_right.append(get_kv_with_insert(wr_dap, i, insert_index, insert_kv1, insert_kv2));
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 		c->get_current()->on_insert(cur.bucket_desc, height + 1, path_pa.first, path_pa.second + 1);
-		c->get_current()->on_split(cur.bucket_desc, height, path_el.first, wr_right_pid, right_split);
+		c->get_current()->on_split(cur.bucket_desc, height, path_el.first, wr_right_pid, left_split, 1); // !!!
 	}
 	ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
 	wr_right.set_value(-1, split_kv.pid);
@@ -296,7 +300,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			wr_right.append(get_kv_with_insert(wr_dap, i, insert_index));
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 		c->get_current()->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
-		c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_right_pid, right_split);
+		c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_right_pid, right_split, 0);
 	}
 	Pid wr_middle_pid = 0;
 	LeafPtr wr_middle;
@@ -311,7 +315,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			wr_middle.append(get_kv_with_insert(wr_dap, left_split, insert_index));
 		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors)){
 			c->get_current()->on_insert(cur.bucket_desc, 1, path_pa.first, path_pa.second + 1);
-			c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_middle_pid, left_split);
+			c->get_current()->on_split(cur.bucket_desc, 0, path_el.first, wr_middle_pid, left_split, 0);
 		}
 	}
 	{
@@ -329,11 +333,12 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 			result = wr_dap.insert_at(insert_index, insert_key, insert_value_size, *overflow);
 		}
 	}
-	cur.at(1).second = path_pa.second + 1; // original item
+	Cursor truncated_validity(cur); // truncated_validity will not be valid below height
+	truncated_validity.at(1).second = path_pa.second + 1; // original item
 	if(left_split + 1 == right_split){
-		new_insert2node(cur, 1, ValPid(wr_middle.get_key(0), wr_middle_pid), ValPid(wr_right.get_key(0), wr_right_pid));
+		new_insert2node(truncated_validity, 1, ValPid(wr_middle.get_key(0), wr_middle_pid), ValPid(wr_right.get_key(0), wr_right_pid));
 	}else{
-		new_insert2node(cur, 1, ValPid(wr_right.get_key(0), wr_right_pid));
+		new_insert2node(truncated_validity, 1, ValPid(wr_right.get_key(0), wr_right_pid));
 	}
 	return result;
 }
@@ -392,7 +397,7 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			use_left_sib = false;
 	}
 	if( wr_dap.size() == 0 && !use_left_sib && !use_right_sib) { // Cannot merge, siblings are full and do not fit key from parent, so we borrow!
-		std::cerr << "Borrowing key from sibling" << std::endl;
+//		std::cerr << "Borrowing key from sibling" << std::endl;
 		ass(left_sib.page || right_sib.page, "Cannot borrow - no siblings for node with 0 items" );
 		if(left_sib.page && right_sib.page){
 			if(left_sib.data_size() < right_sib.data_size())
@@ -446,8 +451,8 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		}
 		return;
 	}
-	if( use_left_sib && use_right_sib )
-		std::cerr << "3-way merge" << std::endl;
+//	if( use_left_sib && use_right_sib )
+//		std::cerr << "3-way merge" << std::endl;
 	if( use_left_sib ){
 		Pid spec_val = wr_dap.get_value(-1);
 		wr_dap.insert_at(0, my_kv.key, spec_val);
@@ -514,8 +519,8 @@ void TX::new_merge_leaf(Cursor & cur, LeafPtr wr_dap){
 		ass(left_sib.page || right_sib.page, "Cannot merge leaf with 0 items" );
 		//            std::cerr << "We could optimize by unlinking our leaf" << std::endl;
 	}
-	if( left_sib.page && right_sib.page )
-		std::cerr << "3-way merge" << std::endl;
+//	if( left_sib.page && right_sib.page )
+//		std::cerr << "3-way merge" << std::endl;
 	if( left_sib.page ){
 		wr_dap.insert_range(0, left_sib, 0, left_sib.size());
 		mark_free_in_future_page(left_sib_pid, 1, left_sib.page->tid()); // unlink left, point its slot in parent to us, remove our slot in parent
@@ -586,6 +591,8 @@ void TX::rollback(){
 	my_db.finish_transaction(this);
 	unlink_buckets_and_cursors();
 	my_db.start_transaction(this);
+	if(DEBUG_MIRROR)
+		load_mirror();
 }
 
 //{'branch_pages': 1040L,
@@ -596,7 +603,7 @@ void TX::rollback(){
 //    'psize': 4096L}
 std::vector<Val> TX::get_bucket_names(){
 	std::vector<Val> results;
-	Cursor cur(this, &meta_page.meta_bucket);
+	Cursor cur(this, &meta_page.meta_bucket, Val{});
 	Val c_key, c_value, c_tail;
 	const Val prefix(&bucket_prefix, 1);
 	for(cur.seek(prefix); cur.get(&c_key, &c_value) && c_key.has_prefix(prefix, &c_tail); cur.next()){
@@ -614,6 +621,7 @@ std::vector<Val> TX::get_bucket_names(){
 Bucket TX::get_bucket(const Val & name, bool create_if_not_exists){
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, create_if_not_exists);
+	ass(!DEBUG_MIRROR || (mirror.count(name.to_string()) != 0) == (bucket_desc != 0), "mirror violation in get_bucket");
 	return Bucket(this, bucket_desc, persistent_name);
 }
 
@@ -622,11 +630,17 @@ bool TX::drop_bucket(const Val & name){
 		throw Exception("Attempt to modify read-only transaction");
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, false);
-	if( !bucket_desc )
+	if(DEBUG_MIRROR){
+		bool mirror_erased = mirror.erase(name.to_string()) != 0;
+		ass(mirror_erased == (bucket_desc != 0), "mirror violation in drop_bucket");
+		before_mirror_operation();
+	}
+	if( !bucket_desc ){
 		return false;
+	}
 	{
 		// TODO - delete page by page
-		Cursor cursor(this, bucket_desc);
+		Cursor cursor(this, bucket_desc, persistent_name);
 		cursor.first();
 		while(bucket_desc->count != 0){
 			cursor.del();
@@ -677,6 +691,10 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 		return nullptr;
 	if( read_only )
 		throw Exception("Attempt to modify read-only transaction");
+	if(DEBUG_MIRROR){
+		ass(mirror.insert(std::make_pair(name.to_string(), BucketMirror{})).second, "mirror violation in load_bucket");
+		before_mirror_operation();
+	}
 	tit = bucket_descs.insert(std::make_pair(str_name, BucketDesc{})).first;
 	*persistent_name = Val(tit->first);
 	tit->second.root_page = get_free_page(1);
@@ -778,7 +796,7 @@ static std::string trim_key(const Val & key, bool parse_meta){
 		return "f" + std::to_string(next_record_tid) + ":" + std::to_string(next_record_batch);
 	std::string result;
 	for(auto && ch : key.to_string())
-		if( std::isprint(ch) && ch != '"')
+		if( std::isprint(ch) && ch != '"' && ch != '\\' && ch != '<' && ch != '>' && ch != '{')
 			result += ch;
 		else
 			result += std::string("$") + "0123456789abcdef"[static_cast<unsigned char>(ch) >> 4] + "0123456789abcdef"[static_cast<unsigned char>(ch) & 0xf];
@@ -817,9 +835,15 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 		if( i != 0)
 			result += ",";
 		ValPid va = nap.get_kv(i);
-		std::cerr << trim_key(va.key, parse_meta) << ":" << va.pid << ", ";
-		result += "\"" + trim_key(va.key, parse_meta) + ":" + std::to_string(va.pid) + "\"";
+		std::cerr << trim_key(va.key, parse_meta) << "-" << va.pid << ", ";
+		if( i == 0)
+			result += "\"" + std::to_string(spec_value) + " ";
+		else
+			result += "\"";
+		result += trim_key(va.key, parse_meta) + " " + std::to_string(va.pid) + "\"";
 	}
+	if(nap.size() == 0)
+		result += "\"" + std::to_string(spec_value) + "\"";
 	result += "],\"children\":[";
 	std::cerr << "]" << std::endl;
 	std::string spec_str = print_db(spec_value, height - 1, parse_meta);
@@ -838,4 +862,40 @@ std::string TX::print_meta_db(){
 std::string TX::get_meta_stats(){
 	Bucket meta_bucket(this, &meta_page.meta_bucket);
 	return meta_bucket.get_stats();
+}
+void TX::before_mirror_operation(){
+	if( debug_mirror_counter++ == 115)
+		std::cerr << "before_mirror_operation" << std::endl;
+}
+void TX::load_mirror(){
+	mirror.clear();
+	for(auto bn : get_bucket_names()){
+		ass(mirror.count(bn.to_string()) == 0, "Duplicate bucket name in mirror");
+		auto & part = mirror[bn.to_string()];
+		mustela::Bucket bucket = get_bucket(bn);
+		mustela::Cursor cur = bucket.get_cursor();
+		mustela::Val c_key, c_value;
+		for (cur.first(); cur.get(&c_key, &c_value); cur.next())
+			ass(part.insert(std::make_pair(c_key.to_string(), std::make_pair(c_value.to_string(), cur))).second, "BAD mirror insert");
+		BucketMirror part2_back;
+		for (cur.last(); cur.get(&c_key, &c_value); cur.prev())
+			ass(part2_back.insert(std::make_pair(c_key.to_string(), std::make_pair(c_value.to_string(), cur))).second, "BAD mirror insert");
+		ass(part == part2_back, "Inconsistent forward/backward iteration");
+	}
+}
+void TX::check_mirror(){
+	for(auto && part : mirror){
+		mustela::Bucket bucket = get_bucket(Val(part.first), false);
+		for(auto && ma : part.second){
+			mustela::Val value, c_key, c_value;
+			bool result = bucket.get(mustela::Val(ma.first), &value);
+			ma.second.second.check_cursor_path_up();
+			bool c_result = ma.second.second.get(&c_key, &c_value);
+			if( !result || !c_result || c_key.to_string() != ma.first || value.to_string() != ma.second.first || c_value.to_string() != ma.second.first ){
+				std::string json = bucket.print_db();
+				std::cerr << "Main table: " << json << std::endl;
+				ass(false, "Bad mirror check ma");
+			}
+		}
+	}
 }
