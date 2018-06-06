@@ -2,9 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <set>
-#include <cstring>
-#include <memory>
 #include <mutex>
 #include "pages.hpp"
 #include "tx.hpp"

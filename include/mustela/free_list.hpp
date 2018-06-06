@@ -4,7 +4,6 @@
 #include <vector>
 #include <map>
 #include <set>
-#include <cstring>
 #include "pages.hpp"
 
 namespace mustela {
@@ -79,7 +78,7 @@ namespace mustela {
 		// while there could be entries like [0:1] [10:0], we will delete [0:1] next iteration
 		// We cannot modify logic to never read free entries during commit, because we might need lots of free pages
 		
-		void read_record_space(TX * tx, Tid oldest_read_tid);
+		bool read_record_space(TX * tx, Tid oldest_read_tid);
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
 		MVal grow_record_space(TX * tx, Tid tid, uint32_t & batch);
 	};

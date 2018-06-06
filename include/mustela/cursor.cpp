@@ -168,7 +168,7 @@ bool Cursor::del(){
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
 		Val c_key, c_value;
 		ass(get(&c_key, &c_value), "cursor get failed in del");
- 		auto & part = my_txn->mirror.at(persistent_name.to_string());
+ 		auto & part = my_txn->debug_mirror.at(persistent_name.to_string());
  		auto mit = part.find(c_key.to_string());
 		ass(mit != part.end(), "inconsistent mirror in cursor del");
 		ass(mit->second.first == c_value.to_string(), "inconsistent mirror in cursor del");

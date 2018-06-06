@@ -214,7 +214,9 @@ bool FreeList::parse_free_record_key(Val key, Tid * tid, uint64_t * batch){
 	return p1 == key.size;
 }
 
-void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
+bool FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
+	if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
+		return false;
 	char keybuf[32];
 	Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val value;
@@ -223,7 +225,7 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 		main_cursor.seek(key);
 		if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
 			next_record_tid = oldest_read_tid; // Fast subsequent checks
-			return;
+			return false;
 		}
 	}
 	if(FREE_LIST_VERBOSE_PRINT)
@@ -235,11 +237,12 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 	tx->meta_page.page_count -= defrag;
 	if(defrag != 0 && FREE_LIST_VERBOSE_PRINT)
 		std::cerr << "FreeList defrag " << defrag << " pages, now meta.page_count=" << tx->meta_page.page_count << std::endl;
+	return true;
 }
 
 void FreeList::load_all_free_pages(TX * tx, Tid oldest_read_tid){
-	while( next_record_tid < oldest_read_tid )
-		read_record_space(tx, oldest_read_tid);
+	while( read_record_space(tx, oldest_read_tid) )
+		;
 	if(FREE_LIST_VERBOSE_PRINT)
 		std::cerr << "FreeList meta.page_count=" << tx->meta_page.page_count << std::endl;
 }
@@ -253,9 +256,8 @@ Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, b
 		}
 		if( updating_meta_bucket) // We want to prevent reading while putting
 			return 0;
-		if( next_record_tid >= oldest_read_tid ) // End of free list reached during last get_free_page
+		if( !read_record_space(tx, oldest_read_tid) )
 			return 0;
-		read_record_space(tx, oldest_read_tid);
 	}
 }
 
@@ -309,7 +311,7 @@ MVal FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch){
 }
 
 void FreeList::ensure_have_several_pages(TX * tx, Tid oldest_read_tid){
-	if(free_pages.empty())// TODO - we want "we have < than several free pages"
+	if(free_pages.get_page_count() < 8)// TODO - better guess on number of pages we wish
 		read_record_space(tx, oldest_read_tid);
 }
 

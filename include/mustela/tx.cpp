@@ -98,20 +98,18 @@ DataPage * TX::make_pages_writable(Cursor & cur, size_t height){
 	return wr_dap;
 }
 void TX::new_increase_height(Cursor & cur){
+	ass(cur.bucket_desc->height + 1 <= MAX_HEIGHT, "Maximum bucket height reached, congratulation!");
 	const Pid wr_root_pid = get_free_page(1);
 	NodePtr wr_root = writable_node(wr_root_pid);
 	cur.bucket_desc->node_page_count += 1;
 	wr_root.init_dirty(meta_page.tid);
 	Pid previous_root = cur.bucket_desc->root_page;
 	wr_root.set_value(-1, previous_root);
-	//		wr_root.append(key, new_pid);
 	cur.bucket_desc->root_page = wr_root_pid;
 	cur.bucket_desc->height += 1;
 	for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
-		if(c->get_current()->bucket_desc == cur.bucket_desc){
-//			c->get_current()->push_back(std::make_pair(cur.bucket_desc->root_page, -1) );
+		if(c->get_current()->bucket_desc == cur.bucket_desc)
 			c->get_current()->at(cur.bucket_desc->height) = std::make_pair(cur.bucket_desc->root_page, -1);
-		}
 }
 static size_t get_item_size_with_insert(const NodePtr & wr_dap, int pos, int insert_pos, size_t required_size1, size_t required_size2){
 	if(pos == insert_pos)
@@ -623,7 +621,7 @@ std::vector<Val> TX::get_bucket_names(){
 Bucket TX::get_bucket(const Val & name, bool create_if_not_exists){
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, create_if_not_exists);
-	ass(!DEBUG_MIRROR || (mirror.count(name.to_string()) != 0) == (bucket_desc != 0), "mirror violation in get_bucket");
+	ass(!DEBUG_MIRROR || (debug_mirror.count(name.to_string()) != 0) == (bucket_desc != 0), "mirror violation in get_bucket");
 	return Bucket(this, bucket_desc, persistent_name);
 }
 
@@ -633,7 +631,7 @@ bool TX::drop_bucket(const Val & name){
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, false);
 	if(DEBUG_MIRROR){
-		ass(mirror.count(name.to_string()) == (bucket_desc != 0), "mirror violation in drop_bucket");
+		ass(debug_mirror.count(name.to_string()) == (bucket_desc != 0), "mirror violation in drop_bucket");
 		before_mirror_operation();
 	}
 	if( !bucket_desc ){
@@ -660,7 +658,7 @@ bool TX::drop_bucket(const Val & name){
 			cit = cit->get_next(&Cursor::tx_cursors);
 	}
 	if(DEBUG_MIRROR)
-		ass(mirror.erase(name.to_string()) != 0, "inconsistency with mirror in drop_bucket");
+		ass(debug_mirror.erase(name.to_string()) != 0, "inconsistency with mirror in drop_bucket");
 	for(IntrusiveNode<Bucket> * cit = &my_buckets; !cit->is_end();){
 		Bucket * c = cit->get_current();
 		if( c->bucket_desc == bucket_desc ){
@@ -697,7 +695,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	if( read_only )
 		throw Exception("Attempt to modify read-only transaction");
 	if(DEBUG_MIRROR){
-		ass(mirror.insert(std::make_pair(name.to_string(), BucketMirror{})).second, "mirror violation in load_bucket");
+		ass(debug_mirror.insert(std::make_pair(name.to_string(), BucketMirror{})).second, "mirror violation in load_bucket");
 		before_mirror_operation();
 	}
 	tit = bucket_descs.insert(std::make_pair(str_name, BucketDesc{})).first;
@@ -876,10 +874,10 @@ void TX::before_mirror_operation(){
 //		std::cerr << "before_mirror_operation" << std::endl;
 }
 void TX::load_mirror(){
-	mirror.clear();
+	debug_mirror.clear();
 	for(auto bn : get_bucket_names()){
-		ass(mirror.count(bn.to_string()) == 0, "Duplicate bucket name in mirror");
-		auto & part = mirror[bn.to_string()];
+		ass(debug_mirror.count(bn.to_string()) == 0, "Duplicate bucket name in mirror");
+		auto & part = debug_mirror[bn.to_string()];
 		mustela::Bucket bucket = get_bucket(bn);
 		mustela::Cursor cur = bucket.get_cursor();
 		mustela::Val c_key, c_value;
@@ -892,7 +890,7 @@ void TX::load_mirror(){
 	}
 }
 void TX::check_mirror(){
-	for(auto && part : mirror){
+	for(auto && part : debug_mirror){
 		mustela::Bucket bucket = get_bucket(Val(part.first), false);
 		for(auto && ma : part.second){
 			mustela::Val value, c_key, c_value;

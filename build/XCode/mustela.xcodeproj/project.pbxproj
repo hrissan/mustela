@@ -34,6 +34,7 @@
 
 /* Begin PBXFileReference section */
 		6E045A631F3A2FD6001B247C /* mustela */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = mustela; sourceTree = BUILT_PRODUCTS_DIR; };
+		6E1EA31920C845DA00D4E019 /* defs.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = defs.hpp; sourceTree = "<group>"; };
 		6E4E86521F7D8F67008F5E05 /* mustela.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = mustela.hpp; sourceTree = "<group>"; };
 		6E4E86541F7D8F80008F5E05 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		6E4E86561F7F092F008F5E05 /* pages.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pages.cpp; sourceTree = "<group>"; };
@@ -99,6 +100,7 @@
 				6E7C8A0720BD564F0028B79F /* cursor.hpp */,
 				6E7C8A0B20BD58A30028B79F /* db.cpp */,
 				6E7C8A0A20BD58A30028B79F /* db.hpp */,
+				6E1EA31920C845DA00D4E019 /* defs.hpp */,
 				6E7255441F8FC87B0033EF74 /* free_list.cpp */,
 				6E7255461F8FC87B0033EF74 /* free_list.hpp */,
 				6E72554A1F8FCACB0033EF74 /* lock.cpp */,

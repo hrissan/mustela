@@ -5,36 +5,15 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include "defs.hpp"
 
 namespace mustela {
 
-	// TODO - use LE by default
 	template<class T>
 	void unpack_uint_be(const unsigned char * buf, size_t si, T & val){
 		T result = 0;
 		for(size_t i = 0; i != si; ++i)
 			result = (result << 8) + buf[i];
-/*		switch(si)
-		{
-			case 8:
-				result = buf[si - 8];
-			case 7:
-				result = (result << 8) + buf[si - 7];
-			case 6:
-				result = (result << 8) + buf[si - 6];
-			case 5:
-				result = (result << 8) + buf[si - 5];
-			case 4:
-				result = (result << 8) + buf[si - 4];
-			case 3:
-				result = (result << 8) + buf[si - 3];
-			case 2:
-				result = (result << 8) + buf[si - 2];
-			case 1:
-				result = (result << 8) + buf[si - 1];
-			case 0:
-				break;
-		}*/
 		val = result;
 	}
 	template<class T>
@@ -44,7 +23,6 @@ namespace mustela {
 			val >>= 8;
 		}
 	}
-
 	template<class T>
 	size_t unpack_uint_le(const unsigned char * buf, size_t si, T & val){
 		T result = 0;
@@ -170,9 +148,6 @@ namespace mustela {
 		}
 	};
 	
-	typedef uint64_t Tid;
-	typedef uint64_t Pid;
-
 	struct ValPid {
 		Val key;
 		Pid pid;

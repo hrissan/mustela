@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <array>
 #include "pages.hpp"
 
@@ -53,7 +52,7 @@ namespace mustela {
 		IntrusiveNode<Cursor> tx_cursors;
 
 		void unlink();
-		std::array<std::pair<Pid, int>, MAX_DEPTH> path{};
+		std::array<std::pair<Pid, int>, MAX_HEIGHT + 1> path{};
 		std::pair<Pid, int> & at(size_t height){ return path.at(height); }
 		// All node indices are always [-1..node.size-1]
 		// Leaf index is always [0..leaf.size], so can point to the "end" of leaf

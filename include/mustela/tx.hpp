@@ -1,10 +1,7 @@
 #pragma once
 
 #include <string>
-#include <vector>
-#include <set>
-#include <cstring>
-#include <functional>
+#include <map>
 #include "pages.hpp"
 #include "lock.hpp"
 #include "free_list.hpp"
@@ -112,7 +109,7 @@ namespace mustela {
 		const size_t page_size; // copy from my_db
 
 		typedef std::map<std::string, std::pair<std::string, Cursor>> BucketMirror;
-		std::map<std::string, BucketMirror> mirror; // model of our DB
+		std::map<std::string, BucketMirror> debug_mirror; // model of our DB
 		static int debug_mirror_counter;
 		void before_mirror_operation();
 		void load_mirror();

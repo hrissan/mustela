@@ -2,36 +2,10 @@
 
 #include <string>
 #include <cstring>
+#include "defs.hpp"
 #include "utils.hpp"
 
 namespace mustela {
-	
-	class DB;
-	class TX;
-	class FreeList;
-	class Cursor;
-	class Bucket;
-
-	constexpr int MIN_KEY_COUNT = 2;
-	constexpr uint32_t OUR_VERSION = 4;
-	typedef uint16_t PageOffset;
-	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
-
-	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
-//	constexpr uint64_t META_MAGIC_ALTENDIAN = 0x4d757374656c6158;
-	constexpr int META_PAGES_COUNT = 3; // We might end up using 2 like lmdb
-	constexpr int NODE_PID_SIZE = 5;
-	constexpr size_t MIN_PAGE_SIZE = 128;
-	constexpr size_t GOOD_PAGE_SIZE = 4096;
-	constexpr size_t MAX_PAGE_SIZE = 1 << 8*sizeof(PageOffset);
-	// 4 bytes to store page index will result in ~4 billion pages limit, or 16TB max for 4KB pages
-	// TODO - move NODE_PID_SIZE into MetaPage
-	constexpr int MAX_DEPTH = 40; // TODO - calculate from NODE_PID_SIZE, use for Cursor::path
-	// fixed pid size allows simple logic when replacing page in node index
-	
-	constexpr bool CLEAR_FREE_SPACE = true;
-	constexpr bool DEBUG_PAGES = true;
-	constexpr bool DEBUG_MIRROR = true;
 
 #pragma pack(push, 1)
 	struct BucketDesc {
@@ -129,7 +103,6 @@ namespace mustela {
 	}
 #pragma pack(pop)
 
-	static_assert(MIN_KEY_COUNT == 2, "Should be 2 for invariants, do not change");
 	static_assert(MIN_PAGE_SIZE >= sizeof(MetaPage), "Metapage does not fit into page size");
 	static_assert(MIN_PAGE_SIZE >= (NODE_PID_SIZE + 1 + sizeof(PageOffset))*MIN_KEY_COUNT + NODE_PID_SIZE + NODE_HEADER_SIZE, "Node page with min keys does not fit into page size");
 

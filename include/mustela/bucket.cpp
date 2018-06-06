@@ -55,7 +55,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 //		bool same_key = item != dap.size() && Val(dap.get_key(item)) == key;
 	TX::BucketMirror * bu = nullptr;
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
-	 	bu = &my_txn->mirror.at(persistent_name.to_string());
+	 	bu = &my_txn->debug_mirror.at(persistent_name.to_string());
 		ass(bu->count(key.to_string()) == size_t(same_key), "Mirror key different in bucket put");
 		my_txn->before_mirror_operation();
 	}
@@ -106,7 +106,7 @@ bool Bucket::put(const Val & key, const Val & value, bool nooverwrite) { // fals
 	if( dst )
 		memcpy(dst, value.data, value.size);
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
-	 	auto & part = my_txn->mirror.at(persistent_name.to_string());
+	 	auto & part = my_txn->debug_mirror.at(persistent_name.to_string());
 	 	part.at(key.to_string()).first = value.to_string();
 		my_txn->check_mirror();
 	}
