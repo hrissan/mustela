@@ -41,6 +41,11 @@ namespace mustela {
 		void debug_make_pages_writable();
 		void debug_check_cursor_path_up();
 	private:
+		void debug_set_truncated_validity_guard(){ // We will keep this guard forever. Costs very little
+			at(0).second = std::numeric_limits<int>::max();
+			// We call this method when making truncated validity cursors. If we by accident attempt to use them
+			// beyond short local scope, will trigger assert on leaf access.
+		}
 		friend class TX;
 		friend class Bucket;
 		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name);

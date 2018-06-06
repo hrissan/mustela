@@ -208,7 +208,8 @@ void TX::new_insert2node(Cursor & cur, size_t height, ValPid insert_kv1, ValPid 
 	}
 	ValPid split_kv = get_kv_with_insert(wr_dap, left_split, insert_index, insert_kv1, insert_kv2);
 	wr_right.set_value(-1, split_kv.pid);
-	cur.at(height + 1).second = path_pa.second + 1; // original item
+	cur.at(height + 1).second = path_pa.second + 1; // original item.
+	cur.debug_set_truncated_validity_guard();
 	new_insert2node(cur, height + 1, ValPid(split_kv.key, wr_right_pid));
 	// split_kv will not be valid after code below
 	{
@@ -333,6 +334,7 @@ char * TX::new_insert2leaf(Cursor & cur, Val insert_key, size_t insert_value_siz
 	}
 	Cursor truncated_validity(cur); // truncated_validity will not be valid below height
 	truncated_validity.at(1).second = path_pa.second + 1; // original item
+	truncated_validity.debug_set_truncated_validity_guard();
 	if(left_split + 1 == right_split){
 		new_insert2node(truncated_validity, 1, ValPid(wr_middle.get_key(0), wr_middle_pid), ValPid(wr_right.get_key(0), wr_right_pid));
 	}else{
@@ -354,7 +356,6 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 		for(IntrusiveNode<Cursor> * c = &my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
 			if( c->get_current()->bucket_desc == cur.bucket_desc)
 				c->get_current()->at(height) = std::make_pair(0, 0);
-//				c->get_current()->path.pop_back();
 		return;
 	}
 	auto path_el = cur.at(height);
@@ -362,7 +363,6 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 	NodePtr wr_parent = writable_node(path_pa.first);
 	ass(wr_parent.size() > 0, "Found parent node with 0 items");
 	ValPid my_kv;
-	//	size_t required_size_for_my_kv = 0;
 	
 	Pid left_sib_pid = 0;
 	CNodePtr left_sib;
@@ -405,9 +405,10 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			// TODO idea - zero one that does not fit in parent after rotation
 		}
 		if(left_sib.page){
-			Cursor cur2(cur); // This cursor will be invalid below height
+			Cursor cur2(cur);
 			cur2.at(height + 1).second -= 1;
 			cur2.at(height) = std::make_pair(left_sib_pid, -1);
+			cur2.debug_set_truncated_validity_guard();
 			NodePtr wr_left(page_size, (NodePage *)make_pages_writable(cur2, height));
 			const Pid wr_left_pid = cur2.at(height).first;
 
@@ -423,12 +424,15 @@ void TX::new_merge_node(Cursor & cur, size_t height, NodePtr wr_dap){
 			auto split_kv = wr_left.get_kv(left_split);
 			wr_dap.set_value(-1, split_kv.pid);
 			wr_parent.erase(path_pa.second);
-			new_insert2node(cur, height + 1, ValPid(split_kv.key, path_el.first)); // split_kv is only valid here
+			Cursor truncated_validity(cur); // truncated_validity will not be valid below height
+			truncated_validity.debug_set_truncated_validity_guard();
+			new_insert2node(truncated_validity, height + 1, ValPid(split_kv.key, path_el.first)); // split_kv is only valid here
 			wr_left.erase(left_split, wr_left.size());
 		}else{
 			Cursor cur2(cur); // This cursor will be invalid below height
 			cur2.at(height + 1).second += 1;
 			cur2.at(height) = std::make_pair(right_kv.pid, right_sib.size() - 1);
+			cur2.debug_set_truncated_validity_guard();
 			NodePtr wr_right(page_size, (NodePage *)make_pages_writable(cur2, height));
 			const Pid wr_right_pid = cur2.at(height).first;
 
