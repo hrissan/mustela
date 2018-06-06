@@ -16,23 +16,29 @@ namespace mustela {
 		{}
 		void clear();
 		bool empty()const { return cache.empty() && record_count == 0; }
+		size_t get_page_count()const { return page_count; }
+		size_t get_packed_size()const { return packed_size; }
 		size_t get_record_count()const { return record_count; }
-		
+
 		void add_to_cache(Pid page, Pid count);
 		void remove_from_cache(Pid page, Pid count);
 
 		Pid get_free_page(Pid contigous_count);
-		Pid defrag_end(Pid page_count);
+		Pid defrag_end(Pid meta_page_count);
 		
 		void merge_from(const MergablePageCache & other);
-		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space)const;
+		
+		void fill_packed_pages(TX * tx, Tid tid, const std::vector<MVal> & space)const;
+		void read_packed_page(Val value);
 
 		void debug_print_db()const;
 	private:
 		bool update_index;
 
 		std::map<Pid, Pid> cache;
+		size_t page_count = 0;
 		size_t record_count = 0;
+		size_t packed_size = 0;
 		std::map<Pid, std::set<Pid>> size_index;
 
 		void add_to_size_index(Pid page, Pid count);
@@ -70,7 +76,7 @@ namespace mustela {
 		std::vector<std::pair<Tid, uint64_t>> records_to_delete;
 		// records_to_delete are necessary for now - we are writting [0:0] [0:2] entries
 		// while there could be entries like [0:1] [10:0], we will delete [0:1] next iteration
-		// TODO - modify logic to never read free entries during commit
+		// We cannot modify logic to never read free entries during commit, because we might need lots of free pages
 		
 		void read_record_space(TX * tx, Tid oldest_read_tid);
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);

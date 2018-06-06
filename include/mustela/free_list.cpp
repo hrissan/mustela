@@ -15,9 +15,19 @@ static size_t get_records_count(Pid page, Pid count){
 	return ((count + 254) / 255);
 }
 
+static size_t get_record_packed_size(Pid page, Pid count){
+	return get_compact_size_sqlite4(page) + get_compact_size_sqlite4(count);
+}
+
+static size_t get_max_record_packed_size(){
+	return 2*get_max_compact_size_sqlite4();
+}
+
 void MergablePageCache::clear(){
 	cache.clear();
 	record_count = 0;
+	page_count = 0;
+	packed_size = 0;
 	size_index.clear();
 }
 
@@ -44,6 +54,8 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 		if( update_index)
 			remove_from_size_index(it->first, it->second);
 		record_count -= get_records_count(it->first, it->second);
+		page_count -= it->second;
+		packed_size -= get_record_packed_size(it->first, it->second);
 		count += it->second;
 		it = cache.erase(it);
 	}
@@ -54,12 +66,16 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 			if( update_index)
 				remove_from_size_index(it->first, it->second);
 			record_count -= get_records_count(it->first, it->second);
+			page_count -= it->second;
+			packed_size -= get_record_packed_size(it->first, it->second);
 			page = it->first;
 			count += it->second;
 			it = cache.erase(it);
 		}
 	}
 	record_count += get_records_count(page, count);
+	page_count += count;
+	packed_size += get_record_packed_size(page, count);
 	cache.insert(std::make_pair(page, count));
 	if( update_index)
 		add_to_size_index(page, count);
@@ -72,17 +88,23 @@ void MergablePageCache::remove_from_cache(Pid page, Pid count){
 		remove_from_size_index(it->first, it->second);
 	if( count == it->second ){
 		record_count -= get_records_count(it->first, it->second);
+		page_count -= it->second;
+		packed_size -= get_record_packed_size(it->first, it->second);
 		cache.erase(it);
 		return;
 	}
 	auto old_count = it->second;
 	record_count -= get_records_count(it->first, it->second);
+	page_count -= it->second;
+	packed_size -= get_record_packed_size(it->first, it->second);
 	cache.erase(it);
 	old_count -= count;
 	page += count;
 	if( update_index )
 		add_to_size_index(page, old_count);
 	record_count += get_records_count(page, old_count);
+	page_count += old_count;
+	packed_size += get_record_packed_size(page, old_count);
 	cache.insert(std::make_pair(page, old_count));
 }
 Pid MergablePageCache::get_free_page(Pid contigous_count){
@@ -97,15 +119,15 @@ Pid MergablePageCache::get_free_page(Pid contigous_count){
 	// TODO - check tid of the page?
 	return pa;
 }
-Pid MergablePageCache::defrag_end(Pid page_count){
+Pid MergablePageCache::defrag_end(Pid meta_page_count){
 	if( cache.empty() )
 		return 0;
 	auto fit = cache.end();
 	--fit;
 	Pid last_page = fit->first;
 	Pid last_count = fit->second;
-	ass(last_page + last_count <= page_count, "free list spans last page");
-	if( last_page + last_count != page_count)
+	ass(last_page + last_count <= meta_page_count, "free list spans last page");
+	if( last_page + last_count != meta_page_count)
 		return 0;
 	remove_from_cache(last_page, last_count);
 	return last_count;
@@ -120,7 +142,20 @@ void MergablePageCache::debug_print_db()const{
 	std::cerr << std::endl;
 }
 
-void MergablePageCache::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space)const{
+void MergablePageCache::read_packed_page(Val value){
+	size_t rec = 0;
+	for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
+		Pid page;
+		unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
+		Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
+		if( count == 0) // Marker of unused space
+			break;
+		ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading");
+		add_to_cache(page, count);
+	}
+}
+
+void MergablePageCache::fill_packed_pages(TX * tx, Tid tid, const std::vector<MVal> & space)const{
 	size_t space_count = 0;
 	size_t space_pos = 0;
 	for(auto && pa : cache){
@@ -128,8 +163,6 @@ void MergablePageCache::fill_record_space(TX * tx, Tid tid, std::vector<MVal> & 
 		Pid count = pa.second;
 		while( count > 0 ){
 			Pid r_count = std::min<Pid>(count, 255);
-//			if( r_count == 255 )
-//				std::cerr << "Aha!" << std::endl;
 //			std::cerr << "FreeList fill " << pid << ":" << r_count << std::endl;
 			ass(space_count < space.size(), "No space to save free list, though  enough space was allocated");
 			pack_uint_le(space.at(space_count).data + space_pos, NODE_PID_SIZE, pid); space_pos += NODE_PID_SIZE;
@@ -191,16 +224,7 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 	records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 	next_record_batch += 1;
-	size_t rec = 0;
-	for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
-		Pid page;
-		unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
-		Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
-		if( count == 0) // Marker of unused space
-			break;
-		ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading"); // TODO - constant
-		free_pages.add_to_cache(page, count);
-	}
+	free_pages.read_packed_page(value);
 	Pid defrag = free_pages.defrag_end(tx->meta_page.page_count);
 	tx->meta_page.page_count -= defrag;
 	if(defrag != 0 && FREE_LIST_VERBOSE_PRINT)
@@ -240,18 +264,8 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 	main_cursor.seek(free_key);
 	Tid tid;
 	uint64_t batch;
-	for(;main_cursor.get(&key, &value) && parse_free_record_key(key, &tid, &batch); main_cursor.next() ){
-		size_t rec = 0;
-		for(;(rec + 1) * RECORD_SIZE <= value.size; ++rec){
-			Pid page;
-			unpack_uint_le(value.data + rec * RECORD_SIZE, NODE_PID_SIZE, page);
-			Pid count = static_cast<unsigned char>(value.data[rec * RECORD_SIZE + NODE_PID_SIZE]);
-			if( count == 0) // Marker of unused space
-				break;
-			ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading"); // TODO - constant
-			pages->add_to_cache(page, count);
-		}
-	}
+	for(;main_cursor.get(&key, &value) && parse_free_record_key(key, &tid, &batch); main_cursor.next() )
+		pages->read_packed_page(value);
 }
 
 void FreeList::add_to_future_from_end_of_file(Pid page){
@@ -319,9 +333,9 @@ void FreeList::commit_free_pages(TX * tx){
 		grow_record_space(tx, tx->tid(), future_batch, future_space, future_record_count, future_pages.get_record_count());
 	}
 	//        std::cerr << tx.print_db() << std::endl;
-	free_pages.fill_record_space(tx, 0, old_space);
+	free_pages.fill_packed_pages(tx, 0, old_space);
 	//        std::cerr << tx.print_db() << std::endl;
-	future_pages.fill_record_space(tx, tx->tid(), future_space);
+	future_pages.fill_packed_pages(tx, tx->tid(), future_space);
 	//        std::cerr << tx.print_db() << std::endl;
 	clear();
 }

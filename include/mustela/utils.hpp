@@ -70,6 +70,7 @@ namespace mustela {
 		return pack_uint_le((unsigned char *)buf, si, val);
 	}
 	size_t get_compact_size_sqlite4(uint64_t val);
+	inline size_t get_max_compact_size_sqlite4() { return 9; }
 	size_t read_u64_sqlite4(uint64_t & val, const void * ptr);
 	size_t write_u64_sqlite4(uint64_t val, void * ptr);
 
