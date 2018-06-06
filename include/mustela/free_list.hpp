@@ -18,7 +18,8 @@ namespace mustela {
 		bool empty()const { return cache.empty() && record_count == 0; }
 		size_t get_page_count()const { return page_count; }
 		size_t get_packed_size()const { return packed_size; }
-		size_t get_record_count()const { return record_count; }
+		Pid get_packed_page_count(size_t page_size)const;
+//		size_t get_record_count()const { return record_count; }
 
 		void add_to_cache(Pid page, Pid count);
 		void remove_from_cache(Pid page, Pid count);
@@ -80,7 +81,7 @@ namespace mustela {
 		
 		void read_record_space(TX * tx, Tid oldest_read_tid);
 		void fill_record_space(TX * tx, Tid tid, std::vector<MVal> & space, const std::map<Pid, Pid> & pages);
-		void grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count);
+		MVal grow_record_space(TX * tx, Tid tid, uint32_t & batch);
 	};
 }
 

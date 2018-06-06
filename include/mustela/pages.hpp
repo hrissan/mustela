@@ -13,7 +13,7 @@ namespace mustela {
 	class Bucket;
 
 	constexpr int MIN_KEY_COUNT = 2;
-	constexpr uint32_t OUR_VERSION = 3;
+	constexpr uint32_t OUR_VERSION = 4;
 	typedef uint16_t PageOffset;
 	typedef int16_t PageIndex; // we use -1 to indicate special left value in nodes
 
