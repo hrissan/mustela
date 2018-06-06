@@ -43,6 +43,8 @@ namespace mustela {
 		TX * my_txn = nullptr;
 		BucketDesc * bucket_desc = nullptr;
 		Val persistent_name;
+
+		IntrusiveNode<Bucket> tx_buckets;
 		void unlink();
 	};
 }

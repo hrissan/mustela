@@ -4,29 +4,25 @@ using namespace mustela;
 
 
 Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), bucket_desc(bucket_desc), persistent_name(name) {
-	if(bucket_desc)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
-	else
-		this->my_txn = nullptr;
+	ass(my_txn && bucket_desc, "get_bucket called on invalid transaction");
+   	my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
 }
 Bucket::~Bucket(){
 	unlink();
 }
 void Bucket::unlink(){
-	if(my_txn)
-		ass(my_txn->my_buckets.erase(this) == 1, "Double etase");
+	tx_buckets.unlink(&Bucket::tx_buckets);
 	my_txn = nullptr;
 	bucket_desc = nullptr;
 	persistent_name = Val{};
 }
 Bucket::Bucket(Bucket && other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name){
 	if(my_txn)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
-	other.unlink();
+		my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
 }
 Bucket::Bucket(const Bucket & other):my_txn(other.my_txn), bucket_desc(other.bucket_desc), persistent_name(other.persistent_name){
 	if(my_txn)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
+		my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
 }
 Bucket & Bucket::operator=(Bucket && other){
 	unlink();
@@ -34,8 +30,7 @@ Bucket & Bucket::operator=(Bucket && other){
 	bucket_desc = other.bucket_desc;
 	persistent_name = other.persistent_name;
 	if(my_txn)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
-	other.unlink();
+   		my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
 	return *this;
 }
 Bucket & Bucket::operator=(const Bucket & other){
@@ -44,7 +39,7 @@ Bucket & Bucket::operator=(const Bucket & other){
 	bucket_desc = other.bucket_desc;
 	persistent_name = other.persistent_name;
 	if(my_txn)
-		ass(my_txn->my_buckets.insert(this).second, "Double insert");
+   		my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
 	return *this;
 }
 

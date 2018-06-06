@@ -243,23 +243,38 @@ void run_benchmark(const std::string & db_path){
 	}
 }
 
+static size_t count_zeroes(uint64_t val){
+	for(size_t i = 0; i != sizeof(val)*8; ++i)
+		if((val & (1 << i)) != 0)
+			return i;
+	return sizeof(val)*8;
+}
+
+static constexpr size_t LEVELS = 20;
+
 template<class T>
 class SkipList {
 public:
-	static constexpr size_t LEVELS = 20;
-	struct Item {
-		std::array<Item *, LEVELS> nexts{};
-//		std::unique_ptr<Item> next;
-		Item * prev = nullptr;
-		T value = -1;
+	struct Item { // We allocate only part of it
+		T value;
+		Item * prev;
+		size_t height;
+		Item * s_nexts[LEVELS];
+		Item * & nexts(size_t i){
+			ass(i < height, "out of nexts");
+			return s_nexts[i];
+		}
 	};
 	struct InsertPtr {
 		std::array<Item *, LEVELS> previous_levels{};
-		Item * next()const { return previous_levels.at(0)->nexts.at(0); }
+		Item * next()const { return previous_levels.at(0)->nexts(0); }
 	};
 	SkipList(){
-		tail_head.nexts.fill(&tail_head);
+		tail_head.value = T{};
 		tail_head.prev = &tail_head;
+		tail_head.height = LEVELS;
+		for(size_t i = 0; i != LEVELS; ++i)
+			tail_head.nexts(i) = &tail_head;
 	}
 	~SkipList(){
 		while(tail_head.prev != &tail_head){
@@ -267,25 +282,23 @@ public:
 //			print();
 		}
 	}
-	bool lower_bound(const T & value, InsertPtr * insert_ptr){
+	int lower_bound(const T & value, InsertPtr * insert_ptr){
 		Item * curr = &tail_head;
 		size_t current_height = LEVELS;
+		int hops = 0;
+		Item ** p_levels = insert_ptr->previous_levels.data();
 		while(current_height != 0){
-			Item * next_curr = curr->nexts.at(current_height - 1);
+			hops += 1;
+			Item * next_curr = curr->nexts(current_height - 1);
 			if(next_curr == &tail_head || next_curr->value >= value){
-				insert_ptr->previous_levels.at(current_height - 1) = curr;
+//				insert_ptr->previous_levels.at(current_height - 1) = curr;
+				p_levels[current_height - 1] = curr;
 				current_height -= 1;
 				continue;
 			}
-//			if( next_curr->value == value ){
-//				for(size_t i = 0; i != current_height; ++i)
-//					insert_ptr->previous_levels.at(i) = curr;
-//				return true;
-//			}
-			if( next_curr->value < value )
-				curr = next_curr;
+			curr = next_curr;
 		}
-		return false;
+		return hops;
 	}
 	std::pair<Item *, bool> insert(const T & value){
 		InsertPtr insert_ptr;
@@ -293,19 +306,18 @@ public:
 		Item * next_curr = insert_ptr.next();
 		if(next_curr != &tail_head && next_curr->value == value)
 			return std::make_pair(next_curr, false);
-		Item * new_item = new Item{};
+		const size_t height = std::min<size_t>(LEVELS, 1 + count_zeroes(random.rand()));
+		Item * new_item = (Item *)malloc(sizeof(Item) - (LEVELS - height) * sizeof(Item *)); //new Item{};
 		new_item->prev = insert_ptr.previous_levels.at(0);
 		next_curr->prev = new_item;
-		uint64_t ra = random.rand();
+		new_item->height = height;
 		size_t i = 0;
-		for(; i != LEVELS; ++i){
-			if(i != 0 && (ra & (1 << i)) != 0)
-				break;
-			new_item->nexts.at(i) = insert_ptr.previous_levels.at(i)->nexts.at(i);
-			insert_ptr.previous_levels.at(i)->nexts.at(i) = new_item;
+		for(; i != height; ++i){
+			new_item->nexts(i) = insert_ptr.previous_levels.at(i)->nexts(i);
+			insert_ptr.previous_levels.at(i)->nexts(i) = new_item;
 		}
-		for(; i != LEVELS; ++i)
-			new_item->nexts.at(i) = nullptr;
+//		for(; i != LEVELS; ++i)
+//			new_item->nexts(i) = nullptr;
 		new_item->value = value;
 		return std::make_pair(new_item, true);
 	}
@@ -315,30 +327,28 @@ public:
 		Item * del_item = insert_ptr.next();
 		if(del_item == &tail_head || del_item->value != value)
 			return false;
-		del_item->nexts.at(0)->prev = del_item->prev;
+		del_item->nexts(0)->prev = del_item->prev;
 		del_item->prev = nullptr;
-		for(size_t i = 0; i != LEVELS; ++i)
-			if(del_item->nexts.at(i)){
-				insert_ptr.previous_levels.at(i)->nexts.at(i) = del_item->nexts.at(i);
-				del_item->nexts.at(i) = nullptr;
+		for(size_t i = 0; i != del_item->height; ++i)
+			if(del_item->nexts(i)){
+				insert_ptr.previous_levels.at(i)->nexts(i) = del_item->nexts(i);
+				del_item->nexts(i) = nullptr;
 			}
-		delete del_item;
+		free(del_item);// delete del_item;
 		return true;
 	}
 	void erase_begin(){
-		Item * del_item = tail_head.nexts.at(0);
+		Item * del_item = tail_head.nexts(0);
 		ass(del_item != &tail_head, "deleting head_tail");
-//		Item * next_item = del_item->nexts.at(0);
+//		Item * next_item = del_item->nexts(0);
 		Item * prev_item = del_item->prev;
-		del_item->nexts.at(0)->prev = prev_item;
+		del_item->nexts(0)->prev = prev_item;
 		del_item->prev = nullptr;
-		for(size_t i = 0; i != LEVELS; ++i)
-			if(del_item->nexts.at(i)){
-				prev_item->nexts.at(i) = del_item->nexts.at(i);
-				del_item->nexts.at(i) = nullptr;
-			}
-		delete del_item;
-//		return next_item;
+		for(size_t i = 0; i != del_item->height; ++i) {
+			prev_item->nexts(i) = del_item->nexts(i);
+			del_item->nexts(i) = nullptr;
+		}
+		free(del_item);// delete del_item;
 	}
 	bool empty()const{ return tail_head.prev == &tail_head; }
 	Item * end(const T & v);
@@ -350,21 +360,21 @@ public:
 				std::cerr << std::setw(4) << "end" << " | ";
 			else
 				std::cerr << std::setw(4) << curr->value << " | ";
-			for(size_t i = 0; i != LEVELS; ++i){
-				if(curr->nexts.at(i) == &tail_head)
+			for(size_t i = 0; i != curr->height; ++i){
+				if(curr->nexts(i) == &tail_head)
 					std::cerr << std::setw(4) <<  "end" << " ";
-				else if(curr->nexts.at(i) == nullptr)
-					std::cerr << std::setw(4) <<  "_" << " ";
 				else
-					std::cerr << std::setw(4) << curr->nexts.at(i)->value << " ";
+					std::cerr << std::setw(4) << curr->nexts(i)->value << " ";
 			}
+			for(size_t i = curr->height; i != LEVELS; ++i)
+				std::cerr << std::setw(4) <<  "_" << " ";
 			if(curr->prev == &tail_head)
 				std::cerr << "| " << std::setw(4) << "end" << std::endl;
 			else
 				std::cerr << "| " << std::setw(4) << curr->prev->value << std::endl;
 			if(curr == tail_head.prev)
 				break;
-			curr = curr->nexts.at(0);
+			curr = curr->nexts(0);
 		}
 	}
 private:
@@ -372,15 +382,15 @@ private:
 	mustela::Random random;
 };
 
-void benchmark_skiplist(int TEST_COUNT){
+void benchmark_skiplist(size_t TEST_COUNT){
 	mustela::Random random;
-	SkipList<int> skip_list;
+	SkipList<uint64_t> skip_list;
 	skip_list.print();
 	{
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(int i = 0; i != TEST_COUNT; ++i){
-			int val = random.rand()%TEST_COUNT;
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random.rand()%TEST_COUNT;
 			found_counter += skip_list.insert(val).second;
 		}
 		auto idea_ms =
@@ -389,11 +399,24 @@ void benchmark_skiplist(int TEST_COUNT){
 	}
 //	skip_list.print();
 	{
+		mustela::Random random2;
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		SkipList<uint64_t>::InsertPtr ptr;
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random2.rand()%TEST_COUNT;
+			found_counter += skip_list.lower_bound(val, &ptr);
+		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "skiplist get of " << TEST_COUNT << " hashes, hops " << double(found_counter)/TEST_COUNT << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
+	{
 //		mustela::Random random;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(int i = 0; i != TEST_COUNT; ++i){
-			int val = random.rand()%TEST_COUNT;
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random.rand()%TEST_COUNT;
 			found_counter += skip_list.erase(val);
 		}
 		auto idea_ms =
@@ -401,27 +424,38 @@ void benchmark_skiplist(int TEST_COUNT){
 		std::cout << "skiplist delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
 }
-void benchmark_stdset(int TEST_COUNT){
+void benchmark_stdset(size_t TEST_COUNT){
 	mustela::Random random;
-	std::set<int> skip_list;
+	std::set<uint64_t> skip_list;
 	{
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(int i = 0; i != TEST_COUNT; ++i){
-			int val = random.rand()%TEST_COUNT;
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random.rand()%TEST_COUNT;
 			found_counter += skip_list.insert(val).second;
 		}
 		auto idea_ms =
 			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
 		std::cout << "std::set insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
-//		skip_list.print();
+	{
+		mustela::Random random2;
+		int found_counter = 0;
+		auto idea_start  = std::chrono::high_resolution_clock::now();
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random2.rand()%TEST_COUNT;
+			found_counter += skip_list.count(val);
+		}
+		auto idea_ms =
+			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+		std::cout << "std::set get of " << TEST_COUNT << " hashes, found_counter " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+	}
 	{
 //		mustela::Random random;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(int i = 0; i != TEST_COUNT; ++i){
-			int val = random.rand()%TEST_COUNT;
+		for(size_t i = 0; i != TEST_COUNT; ++i){
+			uint64_t val = random.rand()%TEST_COUNT;
 			found_counter += skip_list.erase(val);
 		}
 		auto idea_ms =
@@ -429,11 +463,19 @@ void benchmark_stdset(int TEST_COUNT){
 		std::cout << "std::set delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
 }
-int main(int argc, char * argv[]){
-	benchmark_skiplist(1000000);
-	benchmark_stdset(1000000);
-	return 0;
+// typical benchmark
+// skiplist insert of 1000000 hashes, inserted 632459, seconds=1.486
+// skiplist get of 1000000 hashes, hops 37.8428, seconds=1.428
+// skiplist delete of 1000000 hashes, found 400314, seconds=1.565
+// std::set insert of 1000000 hashes, inserted 632459, seconds=0.782
+// std::set get of 1000000 hashes, found_counter 1000000, seconds=0.703
+// std::set delete of 1000000 hashes, found 400314, seconds=0.906
 
+int main(int argc, char * argv[]){
+//	size_t count = 1000000;
+//	benchmark_skiplist(count);
+//	benchmark_stdset(count);
+//	return 0;
 
 	for(size_t i = 0; i != 9; ++i){
 		unsigned char buf[8]{};

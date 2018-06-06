@@ -47,7 +47,7 @@ namespace mustela {
 		DB & my_db;
 		// For readers & writers
 		IntrusiveNode<Cursor> my_cursors;
-		std::set<Bucket *> my_buckets;
+		IntrusiveNode<Bucket> my_buckets;
 
 		const char * c_file_ptr = nullptr;
 		Pid file_page_count = 0;

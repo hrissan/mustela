@@ -576,9 +576,11 @@ void TX::unlink_buckets_and_cursors(){
 		c->bucket_desc = nullptr;
 		c->tx_cursors.unlink(&Cursor::tx_cursors);
 	}
-	for(auto cit = my_buckets.begin(); cit != my_buckets.end(); cit = my_buckets.erase(cit)){
-		(*cit)->my_txn = nullptr;
-		(*cit)->bucket_desc = nullptr;
+	while(!my_buckets.is_end()){
+		Bucket * c = my_buckets.get_current();
+		c->my_txn = nullptr;
+		c->bucket_desc = nullptr;
+		c->tx_buckets.unlink(&Bucket::tx_buckets);
 	}
 	bucket_descs.clear();
 }
@@ -659,13 +661,15 @@ bool TX::drop_bucket(const Val & name){
 	}
 	if(DEBUG_MIRROR)
 		ass(mirror.erase(name.to_string()) != 0, "inconsistency with mirror in drop_bucket");
-	for(auto cit = my_buckets.begin(); cit != my_buckets.end();) // All cursor to that table become set to end
-		if( (*cit)->bucket_desc == bucket_desc ){
-			(*cit)->my_txn = nullptr;
-			(*cit)->bucket_desc = nullptr;
-			cit = my_buckets.erase(cit);
+	for(IntrusiveNode<Bucket> * cit = &my_buckets; !cit->is_end();){
+		Bucket * c = cit->get_current();
+		if( c->bucket_desc == bucket_desc ){
+			c->my_txn = nullptr;
+			c->bucket_desc = nullptr;
+			cit->unlink(&Bucket::tx_buckets);
 		}else
-			++cit;
+			cit = cit->get_next(&Bucket::tx_buckets);
+	}
 	std::string key = bucket_prefix + name.to_string();
 	Bucket meta_bucket = get_meta_bucket();
 	ass(meta_bucket.del(Val(key)), "Error while dropping table");
