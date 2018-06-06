@@ -59,7 +59,10 @@ bool Cursor::operator==(const Cursor & other)const{
 	bool end2 = const_cast<Cursor &>(other).fix_cursor_after_last_item();
 	if(end1 != end2) // fix_cursor returns end for both our end indicators
 		return false;
-	return path == other.path; // TODO - compare up to the height + 1 only. This code works because path is zeroed initially and on reducing bucket height
+	for(size_t i = 0; i != bucket_desc->height + 1; ++i)
+		if(at(i).pid != other.at(i).pid || at(i).item != other.at(i).item)
+			return false;
+	return true;
 }
 Bucket Cursor::get_bucket(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
@@ -75,12 +78,12 @@ bool Cursor::seek(const Val & key){
 			CLeafPtr dap = my_txn->readable_leaf(pa);
 			bool found;
 			int item = dap.lower_bound_item(key, &found);
-			at(height) = std::make_pair(pa, item);
+			at(height) = Element{pa, item};
 			return found;
 		}
 		CNodePtr nap = my_txn->readable_node(pa);
 		int nitem = nap.upper_bound_item(key) - 1;
-		at(height) = std::make_pair(pa, nitem);
+		at(height) = Element{pa, nitem};
 		pa = nap.get_value(nitem);
 		height -= 1;
 	}
@@ -89,19 +92,19 @@ bool Cursor::fix_cursor_after_last_item(){
 	if( is_before_first() )
 		return false;
 	auto path_el = at(0);
-	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
-	if(path_el.second < dap.size())
+	CLeafPtr dap = my_txn->readable_leaf(path_el.pid);
+	if(path_el.item < dap.size())
 		return true;
-	ass(path_el.second == dap.size(), "Cursor corrupted at Cursor::fix_cursor_after_last_item");
+	ass(path_el.item == dap.size(), "Cursor corrupted at Cursor::fix_cursor_after_last_item");
 	size_t height = 1;
 	Pid pa = 0;
 	while(true){
 		if( height == bucket_desc->height + 1 )
 			return false;
-		CNodePtr nap = my_txn->readable_node(at(height).first);
-		if( at(height).second + 1 < nap.size() ){
-			at(height).second += 1;
-			pa = nap.get_value(at(height).second);
+		CNodePtr nap = my_txn->readable_node(at(height).pid);
+		if( at(height).item + 1 < nap.size() ){
+			at(height).item += 1;
+			pa = nap.get_value(at(height).item);
 			height -= 1;
 			break;
 		}
@@ -115,12 +118,12 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 		if( height == 0 ){
 			CLeafPtr dap = my_txn->readable_leaf(pa);
 			ass(bucket_desc->count == 0 || dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
-			at(height) = std::make_pair(pa, dir > 0 ? dap.size() : 0);
+			at(height) = Element{pa, dir > 0 ? dap.size() : 0};
 			break;
 		}
 		CNodePtr nap = my_txn->readable_node(pa);
 		int nitem = dir > 0 ? nap.size() - 1 : -1;
-		at(height) = std::make_pair(pa, nitem);
+		at(height) = Element{pa, nitem};
 		pa = nap.get_value(nitem);
 		height -= 1;
 	}
@@ -131,7 +134,7 @@ void Cursor::end(){
 }
 void Cursor::before_first(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
-	at(0).first = 0;
+	at(0).pid = 0;
 }
 
 void Cursor::first(){
@@ -147,10 +150,10 @@ bool Cursor::get(Val * key, Val * value){
 	if( !fix_cursor_after_last_item() )
 		return false;
 	auto path_el = at(0);
-	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
-	ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::get" );
+	CLeafPtr dap = my_txn->readable_leaf(path_el.pid);
+	ass( path_el.item < dap.size(), "fix_cursor_after_last_item failed at Cursor::get" );
 	Pid overflow_page;
-	auto kv = dap.get_kv(path_el.second, overflow_page);
+	auto kv = dap.get_kv(path_el.item, overflow_page);
 	if( overflow_page ){
 		Pid overflow_count = (kv.value.size + my_txn->page_size - 1)/my_txn->page_size;
 		kv.value.data = my_txn->readable_overflow(overflow_page, overflow_count);
@@ -174,21 +177,21 @@ bool Cursor::del(){
 		ass(mit->second.first == c_value.to_string(), "inconsistent mirror in cursor del");
 		ass(mit->second.second == *this, "inconsistent mirror in cursor del");
 		mit = part.erase(mit);
-		my_txn->before_mirror_operation();
+		my_txn->before_mirror_operation(bucket_desc, persistent_name);
 	}
 	my_txn->meta_page_dirty = true;
 	LeafPtr wr_dap(my_txn->page_size, (LeafPage *)my_txn->make_pages_writable(*this, 0));
 	auto path_el = at(0);
-	ass( path_el.second < wr_dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
+	ass( path_el.item < wr_dap.size(), "fix_cursor_after_last_item failed at Cursor::del" );
 	Pid overflow_page, overflow_count;
 	Tid overflow_tid;
-	wr_dap.erase(path_el.second, overflow_page, overflow_count, overflow_tid);
+	wr_dap.erase(path_el.item, overflow_page, overflow_count, overflow_tid);
 	if( overflow_page ) {
 		bucket_desc->overflow_page_count -= overflow_count;
 		my_txn->mark_free_in_future_page(overflow_page, overflow_count, overflow_tid);
 	}
 	for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
-		c->get_current()->on_erase(bucket_desc, 0, path_el.first, path_el.second);
+		c->get_current()->on_erase(bucket_desc, 0, path_el.pid, path_el.item);
 	my_txn->start_update(bucket_desc);
 	my_txn->new_merge_leaf(*this, wr_dap);
 	my_txn->finish_update(bucket_desc);
@@ -204,19 +207,19 @@ void Cursor::next(){
 	if( !fix_cursor_after_last_item() )
 		return;
 	auto & path_el = at(0);
-	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
-	ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::next" );
-	path_el.second += 1;
+	CLeafPtr dap = my_txn->readable_leaf(path_el.pid);
+	ass( path_el.item < dap.size(), "fix_cursor_after_last_item failed at Cursor::next" );
+	path_el.item += 1;
 }
 void Cursor::prev(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
 	if( is_before_first())
 		return;
-	if( at(0).second > 0 ) {
+	if( at(0).item > 0 ) {
 		// TODO - fast check here
 //			CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 //			ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
-		at(0).second -= 1;
+		at(0).item -= 1;
 		return;
 	}
 	size_t height = 1;
@@ -224,18 +227,18 @@ void Cursor::prev(){
 	while(true){
 		if( height == bucket_desc->height + 1 )
 			return before_first();
-		CNodePtr nap = my_txn->readable_node(at(height).first);
-		if( at(height).second != -1 ){
-			at(height).second -= 1;
-			pa = nap.get_value(at(height).second);
+		CNodePtr nap = my_txn->readable_node(at(height).pid);
+		if( at(height).item != -1 ){
+			at(height).item -= 1;
+			pa = nap.get_value(at(height).item);
 			height -= 1;
 			break;
 		}
 		height += 1;
 	}
 	set_at_direction(height, pa, 1);
-	ass(at(0).second > 0, "Invalid cursor after set_at_direction in Cursor::prev");
-	at(0).second -= 1;
+	ass(at(0).item > 0, "Invalid cursor after set_at_direction in Cursor::prev");
+	at(0).item -= 1;
 }
 void Cursor::debug_make_pages_writable(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
@@ -253,9 +256,9 @@ void Cursor::debug_check_cursor_path_up(){
 		return;
 	for(size_t i = 0; i != bucket_desc->height; ++i){
 		auto path_pa = path.at(i+1);
-		CNodePtr nap = my_txn->readable_node(path_pa.first);
-		ass(path_pa.second < nap.size(), "check cursor failed");
-		Pid pa = nap.get_value(path_pa.second);
-		ass(pa == path.at(i).first, "check cursor failed 2");
+		CNodePtr nap = my_txn->readable_node(path_pa.pid);
+		ass(path_pa.item < nap.size(), "check cursor failed");
+		Pid pa = nap.get_value(path_pa.item);
+		ass(pa == path.at(i).pid, "check cursor failed 2");
 	}
 }

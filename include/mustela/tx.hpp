@@ -111,7 +111,7 @@ namespace mustela {
 		typedef std::map<std::string, std::pair<std::string, Cursor>> BucketMirror;
 		std::map<std::string, BucketMirror> debug_mirror; // model of our DB
 		static int debug_mirror_counter;
-		void before_mirror_operation();
+		void before_mirror_operation(BucketDesc * bucket_desc, Val name);
 		void load_mirror();
 		void check_mirror();
 	};

@@ -42,7 +42,7 @@ namespace mustela {
 		void debug_check_cursor_path_up();
 	private:
 		void debug_set_truncated_validity_guard(){ // We will keep this guard forever. Costs very little
-			at(0).second = std::numeric_limits<int>::max();
+			at(0).item = std::numeric_limits<int>::max();
 			// We call this method when making truncated validity cursors. If we by accident attempt to use them
 			// beyond short local scope, will trigger assert on leaf access.
 		}
@@ -57,8 +57,13 @@ namespace mustela {
 		IntrusiveNode<Cursor> tx_cursors;
 
 		void unlink();
-		std::array<std::pair<Pid, int>, MAX_HEIGHT + 1> path{};
-		std::pair<Pid, int> & at(size_t height){ return path.at(height); }
+		struct Element {
+			Pid pid = 0;
+			int item = 0;
+		};
+		std::array<Element, MAX_HEIGHT + 1> path{};
+		Element & at(size_t height){ return path.at(height); }
+		Element at(size_t height)const { return path.at(height); }
 		// All node indices are always [-1..node.size-1]
 		// Leaf index is always [0..leaf.size], so can point to the "end" of leaf
 		// Cursor is at end() if it is set at last leaf end
@@ -68,43 +73,43 @@ namespace mustela {
 		void set_at_direction(size_t height, Pid pa, int dir);
 
 		void on_insert(BucketDesc * desc, size_t height, Pid pa, int insert_index, int insert_count = 1){
-			if( bucket_desc == desc && at(height).first == pa && at(height).second >= insert_index ){
-				at(height).second += insert_count;
+			if( bucket_desc == desc && at(height).pid == pa && at(height).item >= insert_index ){
+				at(height).item += insert_count;
 			}
 		}
 		void on_erase(BucketDesc * desc, size_t height, Pid pa, int erase_index, int erase_count = 1){
-			if( bucket_desc == desc && at(height).first == pa && at(height).second > erase_index ){
-				at(height).second -= erase_count;
+			if( bucket_desc == desc && at(height).pid == pa && at(height).item > erase_index ){
+				at(height).item -= erase_count;
 			}
 		}
 		void on_split(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index, int is_node){
-			if( bucket_desc == desc && at(height).first == pa && at(height).second >= split_index ){
-				at(height).first = new_pa;
-				at(height).second -= split_index + is_node;
-				at(height + 1).second += 1;
+			if( bucket_desc == desc && at(height).pid == pa && at(height).item >= split_index ){
+				at(height).pid = new_pa;
+				at(height).item -= split_index + is_node;
+				at(height + 1).item += 1;
 			}
 		}
 		void on_merge(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int new_index){
-			if( bucket_desc == desc && at(height).first == pa){
-				at(height).first = new_pa;
-				at(height).second += new_index;
+			if( bucket_desc == desc && at(height).pid == pa){
+				at(height).pid = new_pa;
+				at(height).item += new_index;
 			}
 		}
 		void on_rotate_right(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
-			if( bucket_desc == desc && at(height).first == pa && at(height).second >= split_index ){
-				at(height).first = new_pa;
-				at(height).second -= split_index + 1;
-				at(height + 1).second += 1;
+			if( bucket_desc == desc && at(height).pid == pa && at(height).item >= split_index ){
+				at(height).pid = new_pa;
+				at(height).item -= split_index + 1;
+				at(height + 1).item += 1;
 			}
 		}
 		void on_rotate_left(BucketDesc * desc, size_t height, Pid pa, Pid new_pa, int split_index){
-			if( bucket_desc == desc && at(height).first == pa && at(height).second < split_index ){
-				at(height).first = new_pa;
-				at(height).second += 1;
-				at(height + 1).second -= 1;
+			if( bucket_desc == desc && at(height).pid == pa && at(height).item < split_index ){
+				at(height).pid = new_pa;
+				at(height).item += 1;
+				at(height + 1).item -= 1;
 			}
 		}
-		bool is_before_first()const { return path.at(0).first == 0; }
+		bool is_before_first()const { return path.at(0).pid == 0; }
 	};
 }
 

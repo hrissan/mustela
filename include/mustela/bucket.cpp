@@ -57,7 +57,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
 	 	bu = &my_txn->debug_mirror.at(persistent_name.to_string());
 		ass(bu->count(key.to_string()) == size_t(same_key), "Mirror key different in bucket put");
-		my_txn->before_mirror_operation();
+		my_txn->before_mirror_operation(bucket_desc, persistent_name);
 	}
 	if( same_key && nooverwrite )
 		return nullptr;
@@ -68,16 +68,16 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	if( same_key ){
 		Pid overflow_page, overflow_count;
 		Tid overflow_tid;
-		wr_dap.erase(path_el.second, overflow_page, overflow_count, overflow_tid);
+		wr_dap.erase(path_el.item, overflow_page, overflow_count, overflow_tid);
 		if( overflow_page ){
 			bucket_desc->overflow_page_count -= overflow_count;
 			my_txn->mark_free_in_future_page(overflow_page, overflow_count, overflow_tid);
 		}
 	}else{
 		for(IntrusiveNode<Cursor> * c = &my_txn->my_cursors; !c->is_end(); c = c->get_next(&Cursor::tx_cursors))
-			c->get_current()->on_insert(bucket_desc, 0, path_el.first, path_el.second);
-		ass(main_cursor.path.at(0).second == path_el.second + 1, "Main cursor was unaffectet by on_insert");
-		main_cursor.path.at(0).second = path_el.second;
+			c->get_current()->on_insert(bucket_desc, 0, path_el.pid, path_el.item);
+		ass(main_cursor.path.at(0).item == path_el.item + 1, "Main cursor was unaffectet by on_insert");
+		main_cursor.path.at(0).item = path_el.item;
 	}
 	bool overflow;
 	my_txn->start_update(bucket_desc);
