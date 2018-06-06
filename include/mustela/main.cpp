@@ -449,48 +449,6 @@ int main(int argc, char * argv[]){
 	
 //	mustela::FreeList::test();
 //	mustela::test_data_pages();
-	/*{
-		mustela::DBOptions options;
-		mustela::DB db("test.mustella", options);
-		mustela::TX txn(db);
-		mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"), false);
-		auto ab = txn.get_bucket_names();
-		mustela::Bucket zhu_bucket = txn.get_bucket(mustela::Val("zhu"));
-		ab = txn.get_bucket_names();
-		
-		mustela::Bucket large_bucket = txn.get_bucket(mustela::Val("large"));
-		mustela::Cursor cur = large_bucket.get_cursor();
-		mustela::Cursor before_first = cur;
-		mustela::Cursor end = cur;
-		end.end();
-//		large_bucket.put(mustela::Val(), mustela::Val("aha"), false);
-//		large_bucket.put(mustela::Val(std::string(db.max_key_size(), 0)), mustela::Val("oho"), false);
-//		large_bucket.put(mustela::Val(std::string(db.max_key_size(), char(0xFF))), mustela::Val("uhu"), false);
-		large_bucket.put(mustela::Val("000"), mustela::Val("000"), false);
-		large_bucket.put(mustela::Val("111"), mustela::Val("111"), false);
-		large_bucket.put(mustela::Val("222"), mustela::Val("222"), false);
-		std::cerr << "forward " << std::endl;
-		for(cur.before_first(); cur != end; cur.next()){
-			mustela::Val c_key, c_value;
-			bool res = cur.get(&c_key, &c_value);
-			std::cerr << res << " " << c_key.to_string() << std::endl;
-		}
-		std::cerr << "backwards " << std::endl;
-		for(cur.end(); cur != before_first; cur.prev()){
-			mustela::Val c_key, c_value;
-			bool res = cur.get(&c_key, &c_value);
-			std::cerr << res << " " << c_key.to_string() << std::endl;
-		}
-		ab = txn.get_bucket_names();
-		txn.check_database([](int progress){
-			std::cout << "Checking... " << progress << "%" << std::endl;
-		}, true);
-		txn.commit();
-		txn.check_database([](int progress){
-			std::cout << "Checking... " << progress << "%" << std::endl;
-		}, true);
-//		return 0;
-	}*/
 	interactive_test();
 	return 0;
 }
