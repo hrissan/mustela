@@ -8,15 +8,6 @@
 namespace mustela {
 	
 	class Bucket {
-		friend class TX;
-		friend class Cursor;
-		friend class FreeList;
-		TX * my_txn = nullptr;
-		BucketDesc * bucket_desc = nullptr;
-		Val persistent_name;
-		void unlink();
-
-		Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name = Val());
 	public:
 		Bucket(){}
 		~Bucket();
@@ -44,6 +35,15 @@ namespace mustela {
 	//    'psize': 4096L}
 
 		std::string debug_print_db();
+	private:
+		friend class TX;
+		friend class Cursor;
+		Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name = Val());
+
+		TX * my_txn = nullptr;
+		BucketDesc * bucket_desc = nullptr;
+		Val persistent_name;
+		void unlink();
 	};
 }
 

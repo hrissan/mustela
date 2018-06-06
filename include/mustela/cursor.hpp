@@ -44,7 +44,6 @@ namespace mustela {
 	private:
 		friend class TX;
 		friend class Bucket;
-		friend class FreeList;
 		explicit Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name);
 
 		TX * my_txn = nullptr;

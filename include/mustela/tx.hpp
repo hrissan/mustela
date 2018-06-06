@@ -65,7 +65,8 @@ namespace mustela {
 
 		std::map<std::string, BucketDesc> bucket_descs;
 		BucketDesc * load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists);
-		
+		Bucket get_meta_bucket();
+
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid); // associated with our tx, will be available after no read tx can ever use our tid
 		bool updating_meta_bucket = false;

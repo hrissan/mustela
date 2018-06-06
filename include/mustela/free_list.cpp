@@ -180,7 +180,7 @@ void FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 	Val key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val value;
 	{
-		Cursor main_cursor(tx, &tx->meta_page.meta_bucket, Val{});
+		Cursor main_cursor = tx->get_meta_bucket().get_cursor();
 		main_cursor.seek(key);
 		if( !main_cursor.get(&key, &value) || !parse_free_record_key(key, &next_record_tid, &next_record_batch) || next_record_tid >= oldest_read_tid ){
 			next_record_tid = oldest_read_tid; // Fast subsequent checks
@@ -236,7 +236,7 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 	char keybuf[32];
 	Val free_key = fill_free_record_key(keybuf, next_record_tid, next_record_batch);
 	Val key, value;
-	Cursor main_cursor(tx, &tx->meta_page.meta_bucket, Val{});
+	Cursor main_cursor = tx->get_meta_bucket().get_cursor();
 	main_cursor.seek(free_key);
 	Tid tid;
 	uint64_t batch;
@@ -271,7 +271,7 @@ void FreeList::mark_free_in_future_page(Pid page, Pid count, bool is_from_curren
 }
 
 void FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch, std::vector<MVal> & space, size_t & space_record_count, size_t record_count){
-	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
+	Bucket meta_bucket = tx->get_meta_bucket();
 	const size_t page_records = tx->page_size / RECORD_SIZE;
 	while(space_record_count < record_count){
 		char keybuf[32];
@@ -298,7 +298,7 @@ void FreeList::ensure_have_several_pages(TX * tx, Tid oldest_read_tid){
 }
 
 void FreeList::commit_free_pages(TX * tx){
-	Bucket meta_bucket(tx, &tx->meta_page.meta_bucket);
+	Bucket meta_bucket = tx->get_meta_bucket();
 	uint32_t old_batch = 0;
 	size_t old_record_count = 0;
 	std::vector<MVal> old_space;

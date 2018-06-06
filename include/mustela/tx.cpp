@@ -552,7 +552,7 @@ void TX::commit(){
 	if(read_only)
 		return;
 	if( meta_page_dirty ) {
-		Bucket meta_bucket(this, &meta_page.meta_bucket);
+		Bucket meta_bucket = get_meta_bucket();
 		for (auto &&tit : bucket_descs) { // First write all dirty table descriptions
 			CLeafPtr dap = readable_leaf(tit.second.root_page);
 			if (dap.page->tid() != meta_page.tid) // Table not dirty
@@ -667,7 +667,7 @@ bool TX::drop_bucket(const Val & name){
 		}else
 			++cit;
 	std::string key = bucket_prefix + name.to_string();
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
+	Bucket meta_bucket = get_meta_bucket();
 	ass(meta_bucket.del(Val(key)), "Error while dropping table");
 	ass(bucket_descs.erase(name.to_string()) == 1, "bucket_desc not found during erase");
 	return true;
@@ -681,7 +681,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	}
 	const std::string key = bucket_prefix + str_name;
 	Val value;
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
+	Bucket meta_bucket = get_meta_bucket();
 	if( meta_bucket.get(Val(key), &value) ){
 		tit = bucket_descs.insert(std::make_pair(name.to_string(), BucketDesc{})).first;
 		*persistent_name = Val(tit->first);
@@ -708,6 +708,10 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	ass(meta_bucket.put(Val(key), value, true), "Writing table desc failed during bucket creation");
 	return &tit->second;
 }
+Bucket TX::get_meta_bucket(){
+	return Bucket(this, &meta_page.meta_bucket);
+}
+
 void TX::check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages){
 	Pid pa = bucket_desc->root_page;
 	size_t height = bucket_desc->height;
@@ -762,7 +766,7 @@ void TX::check_database(std::function<void(int percent)> on_progress, bool verbo
 	}
 
 	MergablePageCache meta_pages(false);
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
+	Bucket meta_bucket = get_meta_bucket();
 	check_bucket(meta_bucket.bucket_desc, &meta_pages);
 
 	if (verbose) {
@@ -857,12 +861,10 @@ std::string TX::print_db(Pid pid, size_t height, bool parse_meta){
 	return result + "]}";
 }
 std::string TX::debug_print_meta_db(){
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	return meta_bucket.debug_print_db();
+	return get_meta_bucket().debug_print_db();
 }
 std::string TX::get_meta_stats(){
-	Bucket meta_bucket(this, &meta_page.meta_bucket);
-	return meta_bucket.get_stats();
+	return get_meta_bucket().get_stats();
 }
 void TX::before_mirror_operation(){
 	debug_mirror_counter += 1;
