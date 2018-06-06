@@ -865,8 +865,9 @@ std::string TX::get_meta_stats(){
 	return meta_bucket.get_stats();
 }
 void TX::before_mirror_operation(){
-	if( debug_mirror_counter++ == 115)
-		std::cerr << "before_mirror_operation" << std::endl;
+	debug_mirror_counter += 1;
+//	if( debug_mirror_counter == 115)
+//		std::cerr << "before_mirror_operation" << std::endl;
 }
 void TX::load_mirror(){
 	mirror.clear();

@@ -6,19 +6,12 @@ using namespace mustela;
 Cursor::Cursor(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), bucket_desc(bucket_desc), persistent_name(name){
 	ass(my_txn && bucket_desc, "get_cursor called on invalid bucket");
     my_txn->my_cursors.insert_after_this(this, &Cursor::tx_cursors);
-//	path.resize(bucket_desc->height + 1);
-	end();
+	before_first();
 }
-//Cursor::Cursor(Bucket & bucket):my_txn(bucket.my_txn), bucket_desc(bucket.bucket_desc){
-//	ass(my_txn->my_cursors.insert(this).second, "Double insert");
-//	path.resize(bucket_desc->height + 1);
-//	end();
-//}
 Cursor::~Cursor(){
 	unlink();
 }
 void Cursor::unlink(){
-//	if(my_txn)
 	tx_cursors.unlink(&Cursor::tx_cursors);
 	my_txn = nullptr;
 	bucket_desc = nullptr;
@@ -58,11 +51,15 @@ bool Cursor::operator==(const Cursor & other)const{
 		return false;
 	if(!bucket_desc) // invalid cursors are equal
 		return true;
+	if(is_before_first() && other.is_before_first() )
+		return true;
+	if(is_before_first() != other.is_before_first() )
+		return false;
 	bool end1 = const_cast<Cursor &>(*this).fix_cursor_after_last_item();
 	bool end2 = const_cast<Cursor &>(other).fix_cursor_after_last_item();
 	if(end1 != end2) // fix_cursor returns end for both our end indicators
 		return false;
-	return path == other.path; // compare up to the height + 1 only
+	return path == other.path; // TODO - compare up to the height + 1 only. This code works because path is zeroed initially and on reducing bucket height
 }
 
 bool Cursor::seek(const Val & key){
@@ -85,9 +82,9 @@ bool Cursor::seek(const Val & key){
 	}
 }
 bool Cursor::fix_cursor_after_last_item(){
-	auto path_el = at(0);
-	if( path_el.first == 0 ) // fast end indicator
+	if( is_before_first() )
 		return false;
+	auto path_el = at(0);
 	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
 	if(path_el.second < dap.size())
 		return true;
@@ -128,9 +125,13 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 // true end will point to inserted item, fast end will point to new DB end
 void Cursor::end(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-	at(0).first = 0; // fast end indicator
-//	set_at_direction(bucket_desc->height, bucket_desc->root_page, 1); <- this sets to true end
+	set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 }
+void Cursor::before_first(){
+	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
+	at(0).first = 0;
+}
+
 void Cursor::first(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	set_at_direction(bucket_desc->height, bucket_desc->root_page, -1);
@@ -196,8 +197,10 @@ bool Cursor::del(){
 }
 void Cursor::next(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-	if( !fix_cursor_after_last_item() )
+	if( is_before_first())
 		return first();
+	if( !fix_cursor_after_last_item() )
+		return;
 	auto & path_el = at(0);
 	CLeafPtr dap = my_txn->readable_leaf(path_el.first);
 	ass( path_el.second < dap.size(), "fix_cursor_after_last_item failed at Cursor::next" );
@@ -205,10 +208,10 @@ void Cursor::next(){
 }
 void Cursor::prev(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
-	if(bucket_desc->count == 0)
+	if( is_before_first())
 		return;
-	if( at(0).first == 0) // fast end indicator, set at true end
-		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
+//	if( at(0).first == 0) // fast end indicator, set at true end
+//		set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 	if( at(0).second > 0 ) {
 //			CLeafPtr dap = my_txn.readable_leaf(path_el.first);
 //			ass(path_el.second > 0 && path_el.second <= dap.size(), "Cursor points beyond last leaf element");
@@ -218,10 +221,8 @@ void Cursor::prev(){
 	size_t height = 1;
 	Pid pa = 0;
 	while(true){
-		if( height == bucket_desc->height + 1 ){
-			end();
-			return;
-		}
+		if( height == bucket_desc->height + 1 )
+			return before_first();
 		CNodePtr nap = my_txn->readable_node(at(height).first);
 		if( at(height).second != -1 ){
 			at(height).second -= 1;
@@ -238,7 +239,7 @@ void Cursor::prev(){
 void Cursor::make_pages_writable(){
 	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
 	if( my_txn->read_only )
-		throw Exception("Attempt to modify read-only transaction in Cursor::del");
+		throw Exception("Attempt to modify read-only transaction in Cursor::make_pages_writable");
 	if( !fix_cursor_after_last_item() )
 		return;
 	my_txn->meta_page_dirty = true;
@@ -246,6 +247,9 @@ void Cursor::make_pages_writable(){
 }
 
 void Cursor::check_cursor_path_up(){
+	ass(bucket_desc, "Cursor not valid (using after tx commit?)");
+	if( is_before_first())
+		return;
 	for(size_t i = 0; i != bucket_desc->height; ++i){
 		auto path_pa = path.at(i+1);
 		CNodePtr nap = my_txn->readable_node(path_pa.first);
