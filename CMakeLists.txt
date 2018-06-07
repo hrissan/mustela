@@ -33,3 +33,7 @@ set(SOURCE_FILES
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin")
 
 add_executable(mustela ${SOURCE_FILES})
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+target_link_libraries(mustela Threads::Threads)

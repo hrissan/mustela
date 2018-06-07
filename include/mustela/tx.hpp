@@ -2,6 +2,7 @@
 
 #include <string>
 #include <map>
+#include <functional>
 #include "pages.hpp"
 #include "lock.hpp"
 #include "free_list.hpp"

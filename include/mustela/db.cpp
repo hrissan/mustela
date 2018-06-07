@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <iostream>
 #include <algorithm>
+#include <memory>
 
 using namespace mustela;
 	
