@@ -58,6 +58,7 @@ class MustelaTestMachine(RuleBasedStateMachine):
         self.mustela = self.open_db()
         self.committed = SortedDict()
         self.db = SortedDict()
+        self.readers = []
 
     def open_db(self):
         return subprocess.Popen([MUSTELA_BINARY, '--test', os.path.join(self.dir.name, MUSTELA_DB)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0, encoding='utf-8')
@@ -76,9 +77,15 @@ class MustelaTestMachine(RuleBasedStateMachine):
     def same_hash(self):
         self.send('ensure-hash', db_hash(self.db))
 
+    @precondition(lambda self: self.readers)
+    @invariant()
+    def same_reader_hashes(self):
+        self.send('ensure-reader-hashes', *(db_hash(r) for r in self.readers))
+
     @rule()
     def kill(self):
         self.db = clone_db(self.committed)
+        self.readers = []
         self.send('kill')
         self.mustela = self.open_db()
 
@@ -99,11 +106,13 @@ class MustelaTestMachine(RuleBasedStateMachine):
     @rule(reset=st.booleans())
     def commit(self, reset):
         self.committed = clone_db(self.db)
+        self.readers = [] if reset else self.readers
         self.send('commit-reset' if reset else 'commit')
 
     @rule(reset=st.booleans())
     def rollback(self, reset):
         self.db = clone_db(self.committed)
+        self.readers = [] if reset else self.readers
         self.send('rollback-reset' if reset else 'rollback')
 
     @precondition(lambda self: self.db)
@@ -175,6 +184,11 @@ class MustelaTestMachine(RuleBasedStateMachine):
                 break
             del self.db[bucket][k]
         self.send('del-n-rev', bucket, key, n.to_bytes(length=1, byteorder='big'))
+
+    @rule()
+    def create_reader(self):
+        self.readers.append(clone_db(self.committed))
+        self.send('create-reader')
 
 
 with settings(max_examples=100, stateful_step_count=100):
