@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 #include <mutex>
 #include "pages.hpp"
 #include "tx.hpp"

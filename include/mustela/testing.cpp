@@ -100,6 +100,7 @@ namespace {
         std::string db_path;
         std::unique_ptr<mustela::DB> db;
         std::unique_ptr<mustela::TX> tx;
+        std::vector<std::unique_ptr<mustela::TX>> read_txs;
         std::map<bytes, mustela::Bucket> buckets;
         std::map<bytes, mustela::Cursor> cursors;
 
@@ -124,6 +125,7 @@ namespace {
         }
 
         void reset() {
+            read_txs.clear();
             tx = nullptr;
             db = nullptr;
 
@@ -225,14 +227,21 @@ namespace {
                 rollback();
                 reset();
             } else if (cmd == "kill") {
-//                rollback();
                 raise(SIGKILL);
             } else if (cmd == "noop") {
                 return db_hash(*tx);
+            } else if (cmd == "create-reader") {
+                read_txs.push_back(std::make_unique<mustela::TX>(*db, true));
             } else if (cmd == "ensure-hash") {
-            	std::string s1 = db_hash(*tx);
-            	std::string s2 = get_nth_tok(tokens, 1);
+                std::string s1 = db_hash(*tx);
+                std::string s2 = get_nth_tok(tokens, 1);
                 assert(s1 == s2);
+            } else if (cmd == "ensure-reader-hashes") {
+                for (size_t i = 1; i < tokens.size(); i++) {
+                    std::string s1 = db_hash(*read_txs[i-1]);
+                    std::string s2 = get_nth_tok(tokens, i);
+                    assert(s1 == s2);
+                }
             } else {
                 std::cerr << "unknown command:" << cmd << std::endl;
             }
