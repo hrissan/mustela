@@ -35,11 +35,11 @@ ReaderTable::~ReaderTable()
 ReaderSlotDesc ReaderTable::create_reader_slot(Tid tid, int fd, size_t granularity)
 {
 	auto now = steady_now();
-	auto count = mapping_size/sizeof(ReaderSlot);
 	ReaderSlotDesc result;
 	result.rand0 = (uint64_t(rand()) << 32) + uint64_t(rand()); // TODO - better rand
 	result.rand1 = (uint64_t(rand()) << 32) + uint64_t(rand()); // TODO - better rand
 	while(true){
+		auto count = mapping_size/sizeof(ReaderSlot);
 		for(size_t i = 0; i != count; ++i){
 			if( slots[i].deadline < now ){
 				slots[i].deadline = now + READ_TX_INTERVAL;

@@ -4,8 +4,10 @@ using namespace mustela;
 
 
 Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), bucket_desc(bucket_desc), persistent_name(name) {
-	ass(my_txn && bucket_desc, "get_bucket called on invalid transaction");
-   	my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
+	if(bucket_desc)
+   		this->my_txn->my_buckets.insert_after_this(this, &Bucket::tx_buckets);
+	else
+		this->my_txn = nullptr;
 }
 Bucket::~Bucket(){
 	unlink();

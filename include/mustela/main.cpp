@@ -6,6 +6,7 @@
 #include <map>
 #include <random>
 #include <chrono>
+#include <thread>
 #include <iomanip>
 #include "mustela.hpp"
 #include "testing.hpp"
@@ -13,12 +14,14 @@ extern "C" {
 #include "blake2b.h"
 }
 
+using namespace mustela;
+
 void interactive_test(){
-	mustela::DBOptions options;
+	DBOptions options;
 	options.minimal_mapping_size = 1024;
 	options.new_db_page_size = 128;
-	mustela::DB db("test.mustella", options);
-	mustela::Val main_bucket_name("main");
+	DB db("test.mustella", options);
+	Val main_bucket_name("main");
 	
 	const int items_counter = 100000;
 	std::default_random_engine e;//{r()};
@@ -26,8 +29,8 @@ void interactive_test(){
 
 	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "d", "dr", "a", "dr", "dr", "ar"};
 	while(true){
-		mustela::TX txn(db);
-		mustela::Bucket main_bucket = txn.get_bucket(main_bucket_name);
+		TX txn(db);
+		Bucket main_bucket = txn.get_bucket(main_bucket_name);
 		std::cout << "Enter command (h for help):" << std::endl;
 		std::string input;
 		if( !cmds.empty()){
@@ -79,7 +82,7 @@ void interactive_test(){
 /*			int j = dist(e);
 			std::string key = std::to_string(j);
 			std::string val = "value" + std::to_string(j);// + std::string(j % 512, '*');
-			if( !main_bucket.put(mustela::Val(key), mustela::Val(val), true) )
+			if( !main_bucket.put(Val(key), Val(val), true) )
 				std::cout << "BAD put" << std::endl;
 			mirror[key] = val;
 			txn.commit();*/
@@ -96,11 +99,11 @@ void interactive_test(){
 			std::string val = "value" + std::to_string(j);// + std::string(j % 128, '*');
 			if(i % 10 == 0)
 				val += std::string(j % 512, '*');
-			mustela::Val got;
+			Val got;
 			if( add )
-				main_bucket.put(mustela::Val(key), mustela::Val(val), false);
+				main_bucket.put(Val(key), Val(val), false);
 			else
-				main_bucket.del(mustela::Val(key));
+				main_bucket.del(Val(key));
 			if(one)
 				break;
 		}
@@ -108,19 +111,68 @@ void interactive_test(){
 	}
 }
 
+void run_bank(const std::string & db_path){
+	DBOptions options;
+	DB db(db_path, options);
+	Random random(time(nullptr));
+	uint64_t ACCOUNTS = 1000;
+	uint64_t TOTAL_VALUE = 1000000000;
+	while(true){
+		bool read_only = (random.rand() % 7) < 5;
+		TX txn(db, read_only);
+		Bucket main_bucket = txn.get_bucket(Val("main"), false);
+		if(!main_bucket.is_valid()){
+			if(!read_only){
+				main_bucket = txn.get_bucket(Val("main"));
+				main_bucket.put(Val("bank"), Val(std::to_string(TOTAL_VALUE)), true);
+				txn.commit();
+			}
+			continue;
+		}
+		Val a_value;
+		main_bucket.get(Val("bank"), &a_value);
+		uint64_t bank = std::stoull(a_value.to_string());
+		std::cerr << (read_only ? "R/O tid=" : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << std::endl;
+		if(read_only){
+			for(uint64_t i = 0; i != ACCOUNTS; ++i){
+				if( main_bucket.get(Val(std::to_string(i)), &a_value)){
+					uint64_t aaa = std::stoull(a_value.to_string());
+					bank += aaa;
+				}
+			}
+			ass(bank == TOTAL_VALUE, "bank robbed!");
+		}else{
+			uint64_t acc = random.rand() % ACCOUNTS;
+			uint64_t aaa = 0;
+			if( main_bucket.get(Val(std::to_string(acc)), &a_value)){
+				aaa = std::stoull(a_value.to_string());
+				uint64_t prev = aaa;
+				bank += aaa / 2;
+				aaa = prev - aaa / 2;
+			}
+			uint64_t minus = bank/1000000;
+			bank -= minus;
+			aaa += minus;
+			main_bucket.put(Val(std::to_string(acc)), Val(std::to_string(aaa)), false);
+			main_bucket.put(Val("bank"), Val(std::to_string(bank)), false);
+			txn.commit();
+		}
+	}
+}
+
 void run_benchmark(const std::string & db_path){
-	mustela::DB::remove_db(db_path);
-	mustela::DBOptions options;
+	DB::remove_db(db_path);
+	DBOptions options;
 	options.minimal_mapping_size = 16*1024*1024;
 	options.new_db_page_size = 4096;
-	mustela::DB db(db_path, options);
+	DB db(db_path, options);
 
-	const int TEST_COUNT = mustela::DEBUG_MIRROR ? 2500 : 1000000;
+	const int TEST_COUNT = DEBUG_MIRROR ? 2500 : 1000000;
 
 	{
 	auto idea_start  = std::chrono::high_resolution_clock::now();
-	mustela::TX txn(db);
-	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	TX txn(db);
+	Bucket main_bucket = txn.get_bucket(Val("main"));
 	uint8_t keybuf[32] = {};
 	for(unsigned i = 0; i != TEST_COUNT; ++i){
 		unsigned hv = i * 2;
@@ -128,7 +180,7 @@ void run_benchmark(const std::string & db_path){
 		blake2b_init(&ctx, 32, nullptr, 0);
 		blake2b_update(&ctx, &hv, sizeof(hv));
 		blake2b_final(&ctx, &keybuf);
-		main_bucket.put(mustela::Val(keybuf,32), mustela::Val(keybuf, 32), false);
+		main_bucket.put(Val(keybuf,32), Val(keybuf, 32), false);
 	}
 	txn.commit();
 	auto idea_ms =
@@ -141,8 +193,8 @@ void run_benchmark(const std::string & db_path){
 	}
 	{
 	auto idea_start  = std::chrono::high_resolution_clock::now();
-	mustela::TX txn(db);
-	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	TX txn(db);
+	Bucket main_bucket = txn.get_bucket(Val("main"));
 	uint8_t keybuf[32] = {};
 	int found_counter = 0;
 	for(unsigned i = 0; i != 2 * TEST_COUNT; ++i){
@@ -150,8 +202,8 @@ void run_benchmark(const std::string & db_path){
 		blake2b_init(&ctx, 32, nullptr, 0);
 		blake2b_update(&ctx, &i, sizeof(i));
 		blake2b_final(&ctx, &keybuf);
-		mustela::Val value;
-		found_counter += main_bucket.get(mustela::Val(keybuf,32), &value) ? 1 : 0;
+		Val value;
+		found_counter += main_bucket.get(Val(keybuf,32), &value) ? 1 : 0;
 	}
 	auto idea_ms =
 	    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
@@ -159,8 +211,8 @@ void run_benchmark(const std::string & db_path){
 	}
 	{
 	auto idea_start  = std::chrono::high_resolution_clock::now();
-	mustela::TX txn(db);
-	mustela::Bucket main_bucket = txn.get_bucket(mustela::Val("main"));
+	TX txn(db);
+	Bucket main_bucket = txn.get_bucket(Val("main"));
 	uint8_t keybuf[32] = {};
 	int found_counter = 0;
 	for(unsigned i = 0; i != 2 * TEST_COUNT; ++i){
@@ -168,8 +220,8 @@ void run_benchmark(const std::string & db_path){
 		blake2b_init(&ctx, 32, nullptr, 0);
 		blake2b_update(&ctx, &i, sizeof(i));
 		blake2b_final(&ctx, &keybuf);
-		mustela::Val value;
-		found_counter += main_bucket.del(mustela::Val(keybuf,32)) ? 1 : 0;
+		Val value;
+		found_counter += main_bucket.del(Val(keybuf,32)) ? 1 : 0;
 	}
 	txn.commit();
 	auto idea_ms =
@@ -317,11 +369,11 @@ public:
 	}
 private:
 	Item tail_head;
-	mustela::Random random;
+	Random random;
 };
 
 void benchmark_skiplist(size_t TEST_COUNT){
-	mustela::Random random;
+	Random random;
 	SkipList<uint64_t> skip_list;
 	skip_list.print();
 	{
@@ -337,7 +389,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 	}
 //	skip_list.print();
 	{
-		mustela::Random random2;
+		Random random2;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		SkipList<uint64_t>::InsertPtr ptr;
@@ -350,7 +402,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 		std::cout << "skiplist get of " << TEST_COUNT << " hashes, hops " << double(found_counter)/TEST_COUNT << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
 	{
-//		mustela::Random random;
+//		Random random;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
@@ -363,7 +415,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 	}
 }
 void benchmark_stdset(size_t TEST_COUNT){
-	mustela::Random random;
+	Random random;
 	std::set<uint64_t> skip_list;
 	{
 		int found_counter = 0;
@@ -377,7 +429,7 @@ void benchmark_stdset(size_t TEST_COUNT){
 		std::cout << "std::set insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
 	{
-		mustela::Random random2;
+		Random random2;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
@@ -389,7 +441,7 @@ void benchmark_stdset(size_t TEST_COUNT){
 		std::cout << "std::set get of " << TEST_COUNT << " hashes, found_counter " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
 	}
 	{
-//		mustela::Random random;
+//		Random random;
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
@@ -417,15 +469,16 @@ int main(int argc, char * argv[]){
 
 	for(size_t i = 0; i != 9; ++i){
 		unsigned char buf[8]{};
-		mustela::pack_uint_le(buf, i, 0x0123456789ABCDEF);
+		pack_uint_le(buf, i, 0x0123456789ABCDEF);
 		uint64_t result = 0;
-		mustela::unpack_uint_le(buf, i, result);
+		unpack_uint_le(buf, i, result);
 //		std::cerr << "Aha " << std::hex << result << std::endl;
 	}
 
 	std::string test;
 	std::string benchmark;
 	std::string scenario;
+	std::string bank;
 	for(int i = 1; i < argc - 1; ++i){
 		if(std::string(argv[i]) == "--test")
 			test = argv[i+1];
@@ -433,6 +486,15 @@ int main(int argc, char * argv[]){
 			scenario = argv[i+1];
 		if(std::string(argv[i]) == "--benchmark")
 			benchmark = argv[i+1];
+		if(std::string(argv[i]) == "--bank")
+			bank = argv[i+1];
+	}
+	if(!bank.empty()){
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i != 100; ++i)
+			threads.emplace_back(&run_bank, bank);
+		run_bank(bank);
+		return 0;
 	}
 	if(!benchmark.empty()){
 		run_benchmark(benchmark);
@@ -447,8 +509,8 @@ int main(int argc, char * argv[]){
 		return 0;
 	}
 	
-//	mustela::FreeList::test();
-//	mustela::test_data_pages();
+//	FreeList::test();
+//	test_data_pages();
 	interactive_test();
 	return 0;
 }

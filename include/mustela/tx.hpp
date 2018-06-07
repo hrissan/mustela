@@ -35,6 +35,7 @@ namespace mustela {
 			free_list.debug_print_db();
 		}
 		int debug_get_mirror_counter()const { return debug_mirror_counter; }
+		Tid debug_get_oldest_reader_tid()const { return oldest_reader_tid; }
 	private:
 		friend class Cursor;
 		friend class FreeList;

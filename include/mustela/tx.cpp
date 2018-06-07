@@ -3,6 +3,8 @@
 #include <iostream>
 #include <sys/mman.h>
 
+// MEGA TODO - check all cursor updates for order invariance
+
 using namespace mustela;
 
 static const bool BULK_LOADING = true;
