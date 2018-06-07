@@ -41,10 +41,15 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 	if((options.new_db_page_size & (options.new_db_page_size - 1)) != 0)
 		throw Exception("new_db_page_size must be power of 2");
 	if( fd.fd == -1)
-		throw Exception("file open failed");
+		throw Exception("file open failed for {" + file_path + "}");
+	FileLock wr_lock(fd.fd);
 	file_size = static_cast<uint64_t>(lseek(fd.fd, 0, SEEK_END));
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
+	lock_fd.fd = open((file_path + ".lock").c_str(), O_RDWR | O_CREAT, (mode_t)0600);
+	if( lock_fd.fd == -1)
+		throw Exception("file open failed for {" + file_path + ".lock}");
+	FileLock reader_table_lock(lock_fd.fd);
 	if( file_size == 0 ){
 		page_size = options.new_db_page_size == 0 ? GOOD_PAGE_SIZE : options.new_db_page_size;
 		create_db();
@@ -67,14 +72,13 @@ DB::DB(const std::string & file_path, DBOptions options):fd(open(file_path.c_str
 		if(page_size > MAX_PAGE_SIZE)
 			throw Exception("Failed to find valid meta page of any supported page size");
 	}
-//	print_db();
+	debug_print_db();
 	if(newest_meta->version != OUR_VERSION)
 		throw Exception("Incompatible database version");
 	if(newest_meta->pid_size != NODE_PID_SIZE)
 		throw Exception("Incompatible pid size");
 	if( !get_newest_meta_page(&oldest_index, &earliest_tid, true))
 		throw Exception("Database corrupted (possibly truncated or meta pages are mismatched)");
-	lock_fd.fd = open((file_path + ".lock").c_str(), O_RDWR | O_CREAT, (mode_t)0600);
 }
 DB::~DB(){
 	for(auto && ma : c_mappings)
@@ -139,12 +143,16 @@ void DB::start_transaction(TX * tx){
 		local_wr_guard = std::make_unique<std::lock_guard<std::mutex>>(wr_mut);
 		// write TX from different DB (same or different process) wait on file lock
 		local_wr_file_lock = std::make_unique<FileLock>(fd.fd);
+		std::cerr << "Obtained main file write lock " << (size_t)this << std::endl;
+//		sleep(3);
 	}
 	std::unique_lock<std::mutex> lock(mu);
 	ass((!wr_transaction && !wr_file_lock) || tx->read_only, "We can have only one write transaction");
 	ass(!c_mappings.empty(), "c_mappings should not be empty after db is open");
 	{ // Shortest possible lock
 		FileLock reader_table_lock(lock_fd.fd);
+		std::cerr << "Obtained reader table lock " << (size_t)this << std::endl;
+//		sleep(2);
 		Pid oldest_meta_index = 0;
 		const MetaPage * newest_meta_page = get_newest_meta_page(&oldest_meta_index, &tx->oldest_reader_tid, true);
 		ass(newest_meta_page, "No meta found in start_transaction - hot corruption of DB");
@@ -156,9 +164,11 @@ void DB::start_transaction(TX * tx){
 		} else {
 			wr_transaction = tx;
 			tx->meta_page.tid += 1;
-			tx->oldest_reader_tid = reader_table.find_oldest_tid(tx->meta_page.tid);
+//			tx->oldest_reader_tid = reader_table.find_oldest_tid(tx->meta_page.tid);
+			tx->oldest_reader_tid = 0;
 			ass(tx->meta_page.tid >= tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
 		}
+		std::cerr << "Freeing reader table lock " << (size_t)this << std::endl;
 	}
 	if(!tx->read_only){
 		grow_wr_mappings(false);
@@ -237,6 +247,7 @@ void DB::finish_transaction(TX * tx){
 		munmap(wr_mappings.back().addr, wr_mappings.back().end_addr);
 		wr_mappings.pop_back();
 	}
+	std::cerr << "Freeing main file write lock " << (size_t)this << std::endl;
 	wr_file_lock.reset();
 	wr_guard.reset();
 }
@@ -296,6 +307,7 @@ void DB::create_db(){
 	file_size = static_cast<uint64_t>(lseek(fd.fd, 0, SEEK_END));
 	if( file_size == uint64_t(-1))
 		throw Exception("file lseek SEEK_END failed");
+	fsync(fd.fd);
 //	grow_c_mappings();
 }
 

@@ -113,6 +113,7 @@ void interactive_test(){
 
 void run_bank(const std::string & db_path){
 	DBOptions options;
+	options.minimal_mapping_size = 16*1024*1024;
 	DB db(db_path, options);
 	Random random(time(nullptr));
 	uint64_t ACCOUNTS = 1000;
@@ -120,6 +121,7 @@ void run_bank(const std::string & db_path){
 	while(true){
 		bool read_only = (random.rand() % 7) < 5;
 		TX txn(db, read_only);
+		txn.check_database([&](int progress){}, false);
 		Bucket main_bucket = txn.get_bucket(Val("main"), false);
 		if(!main_bucket.is_valid()){
 			if(!read_only){
@@ -153,8 +155,8 @@ void run_bank(const std::string & db_path){
 			uint64_t minus = bank/1000000;
 			bank -= minus;
 			aaa += minus;
-			main_bucket.put(Val(std::to_string(acc)), Val(std::to_string(aaa)), false);
-			main_bucket.put(Val("bank"), Val(std::to_string(bank)), false);
+			ass(main_bucket.put(Val(std::to_string(acc)), Val(std::to_string(aaa)), false), "Bad put in bank");
+			ass(main_bucket.put(Val("bank"), Val(std::to_string(bank)), false), "Bad put in bank");
 			txn.commit();
 		}
 	}
