@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <iomanip>
+#include <unistd.h>
 #include "mustela.hpp"
 #include "testing.hpp"
 extern "C" {
@@ -118,10 +119,12 @@ void run_bank(const std::string & db_path){
 	Random random(time(nullptr));
 	uint64_t ACCOUNTS = 1000;
 	uint64_t TOTAL_VALUE = 1000000000;
+	int reader_counter = 0;
 	while(true){
-		bool read_only = (random.rand() % 7) < 5;
+		bool read_only = (random.rand() % 64) != 0;
+		reader_counter += read_only;
 		TX txn(db, read_only);
-		txn.check_database([&](int progress){}, false);
+//		txn.check_database([&](int progress){}, false);
 		Bucket main_bucket = txn.get_bucket(Val("main"), false);
 		if(!main_bucket.is_valid()){
 			if(!read_only){
@@ -134,9 +137,12 @@ void run_bank(const std::string & db_path){
 		Val a_value;
 		main_bucket.get(Val("bank"), &a_value);
 		uint64_t bank = std::stoull(a_value.to_string());
-		std::cerr << (read_only ? "R/O tid=" : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << std::endl;
+		std::cerr << (read_only ? ("R/O " + std::to_string(reader_counter) + " tid=") : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << std::endl;
 		if(read_only){
+			uint64_t wa = rand() % ACCOUNTS;
 			for(uint64_t i = 0; i != ACCOUNTS; ++i){
+//				if( i == wa)
+//					sleep(1);
 				if( main_bucket.get(Val(std::to_string(i)), &a_value)){
 					uint64_t aaa = std::stoull(a_value.to_string());
 					bank += aaa;
@@ -493,7 +499,7 @@ int main(int argc, char * argv[]){
 	}
 	if(!bank.empty()){
 		std::vector<std::thread> threads;
-		for (size_t i = 0; i != 100; ++i)
+		for (size_t i = 0; i != 10; ++i)
 			threads.emplace_back(&run_bank, bank);
 		run_bank(bank);
 		return 0;

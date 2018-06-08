@@ -5,10 +5,6 @@
 
 using namespace mustela;
 
-static uint64_t grow_to_granularity(uint64_t value, uint64_t page_size){
-	return ((value + page_size - 1) / page_size) * page_size;
-}
-
 constexpr uint64_t READ_TX_INTERVAL = 1000000 * 10 * 60; // 10 minutes
 
 // TODO - probably move to CAS operations
@@ -32,7 +28,7 @@ ReaderTable::~ReaderTable()
 	}
 }
 
-ReaderSlotDesc ReaderTable::create_reader_slot(Tid tid, int fd, size_t granularity)
+ReaderSlotDesc ReaderTable::create_reader_slot(Tid tid, os::File & lock_file, size_t granularity)
 {
 	auto now = steady_now();
 	ReaderSlotDesc result;
@@ -56,18 +52,10 @@ ReaderSlotDesc ReaderTable::create_reader_slot(Tid tid, int fd, size_t granulari
 			mapping_size = 0;
 			slots = nullptr;
 		}
-		uint64_t old_file_size = static_cast<uint64_t>(lseek(fd, 0, SEEK_END));
-		uint64_t new_fs = grow_to_granularity(old_file_size + 4096, granularity);
-		if(new_fs != old_file_size){
-			if( ftruncate(fd, static_cast<off_t>(new_fs)) == -1)
-				throw Exception("failed to grow db file using ftruncate");
-			uint64_t file_size = static_cast<uint64_t>(lseek(fd, 0, SEEK_END));
-			if( new_fs != file_size )
-				throw Exception("file failed to grow in grow_file");
-		}
-		slots = (ReaderSlot *)mmap(0, new_fs, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-		if (slots == MAP_FAILED)
-			throw Exception("mmap PROT_READ | PROT_WRITE failed");
+		uint64_t old_file_size = lock_file.get_size();
+		uint64_t new_fs = os::grow_to_granularity(old_file_size + granularity, granularity);
+		lock_file.set_size(new_fs);
+		slots = (ReaderSlot *)lock_file.mmap(0, new_fs, true, true);
 		memset((char *)slots + old_file_size, 0, new_fs - old_file_size);
 		mapping_size = new_fs;
 	}

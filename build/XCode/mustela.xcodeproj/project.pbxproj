@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86541F7D8F80008F5E05 /* main.cpp */; };
 		6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E86561F7F092F008F5E05 /* pages.cpp */; };
+		6E62FBDF20C9DCCD0022A088 /* os.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E62FBDE20C9DCCD0022A088 /* os.cpp */; };
 		6E7255471F8FC87C0033EF74 /* tx.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E7255431F8FC87B0033EF74 /* tx.cpp */; };
 		6E7255481F8FC87C0033EF74 /* free_list.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E7255441F8FC87B0033EF74 /* free_list.cpp */; };
 		6E72554B1F8FCACB0033EF74 /* lock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6E72554A1F8FCACB0033EF74 /* lock.cpp */; };
@@ -39,6 +40,8 @@
 		6E4E86541F7D8F80008F5E05 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		6E4E86561F7F092F008F5E05 /* pages.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pages.cpp; sourceTree = "<group>"; };
 		6E4E86571F7F092F008F5E05 /* pages.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pages.hpp; sourceTree = "<group>"; };
+		6E62FBDD20C9DCCC0022A088 /* os.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = os.hpp; sourceTree = "<group>"; };
+		6E62FBDE20C9DCCD0022A088 /* os.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = os.cpp; sourceTree = "<group>"; };
 		6E7255431F8FC87B0033EF74 /* tx.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = tx.cpp; sourceTree = "<group>"; };
 		6E7255441F8FC87B0033EF74 /* free_list.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = free_list.cpp; sourceTree = "<group>"; };
 		6E7255451F8FC87B0033EF74 /* tx.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = tx.hpp; sourceTree = "<group>"; };
@@ -103,11 +106,13 @@
 				6E7255461F8FC87B0033EF74 /* free_list.hpp */,
 				6E72554A1F8FCACB0033EF74 /* lock.cpp */,
 				6E7255491F8FCACB0033EF74 /* lock.hpp */,
+				6E4E86521F7D8F67008F5E05 /* mustela.hpp */,
+				6E62FBDE20C9DCCD0022A088 /* os.cpp */,
+				6E62FBDD20C9DCCC0022A088 /* os.hpp */,
 				6E7C8A0F20C05D5D0028B79F /* testing.cpp */,
 				6E7C8A1020C05D5D0028B79F /* testing.hpp */,
 				6E7255431F8FC87B0033EF74 /* tx.cpp */,
 				6E7255451F8FC87B0033EF74 /* tx.hpp */,
-				6E4E86521F7D8F67008F5E05 /* mustela.hpp */,
 				6E4E86541F7D8F80008F5E05 /* main.cpp */,
 				6E4E86561F7F092F008F5E05 /* pages.cpp */,
 				6E4E86571F7F092F008F5E05 /* pages.hpp */,
@@ -191,6 +196,7 @@
 				6E72554B1F8FCACB0033EF74 /* lock.cpp in Sources */,
 				6E7C8A0C20BD58A30028B79F /* db.cpp in Sources */,
 				6E4E86551F7D8F80008F5E05 /* main.cpp in Sources */,
+				6E62FBDF20C9DCCD0022A088 /* os.cpp in Sources */,
 				6E4E86581F7F092F008F5E05 /* pages.cpp in Sources */,
 				6E82E1761F8705F80081863E /* utils.cpp in Sources */,
 			);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pages.hpp"
+#include "os.hpp"
 
 namespace mustela {
 	
@@ -25,7 +26,7 @@ namespace mustela {
 		explicit ReaderTable();
 		~ReaderTable();
 
-		ReaderSlotDesc create_reader_slot(Tid tid, int fd, size_t granularity);
+		ReaderSlotDesc create_reader_slot(Tid tid, os::File & lock_file, size_t granularity);
 		void update_reader_slot(const ReaderSlotDesc & slot);
 		void release_reader_slot(const ReaderSlotDesc & slot);
 		Tid find_oldest_tid(Tid writer_tid);
