@@ -39,10 +39,10 @@ namespace mustela {
 	private:
 		// Mappings cannot be in chunks, because count pages could fall onto the edge between chunks
 		struct Mapping {
-			size_t end_addr;
+			size_t size;
 			char * addr;
 			int ref_count;
-			explicit Mapping(size_t end_addr, char * addr, int ref_count):end_addr(end_addr), addr(addr), ref_count(ref_count)
+			explicit Mapping(size_t size, char * addr, int ref_count):size(size), addr(addr), ref_count(ref_count)
 			{}
 		};
 		const bool readonly_fs;
@@ -61,6 +61,7 @@ namespace mustela {
 		// c_mapping.at(0).end >= file_size
 		std::vector<Mapping> wr_mappings;
 		// empty() || wr_mapping.at(0).end <= file_size
+		// ref_count is not used in wr_mappings
 		
 		ReaderTable reader_table;
 

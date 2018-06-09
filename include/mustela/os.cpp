@@ -23,15 +23,15 @@ uint64_t os::File::get_size()const{
 	auto was = lseek(fd, 0, SEEK_CUR);
 	auto result = lseek(fd, 0, SEEK_END);
 	auto was2 = lseek(fd, was, SEEK_SET);
-	if( result > 1000000000)
-		result = 1000000000;
+//	if( result > 1000000000)
+//		result = 1000000000;
 	if( was < 0 || result < 0 || was2 < 0)
 		throw Exception("getting file size error");
 	return static_cast<uint64_t>(result);
 }
 void os::File::set_size(uint64_t new_fs){
-	if( new_fs > 1000000000)
-		new_fs = 1000000000;
+//	if( new_fs > 1000000000)
+//		new_fs = 1000000000;
 	int result = 0;
 	do{
 		result = ftruncate(fd, static_cast<off_t>(new_fs));
