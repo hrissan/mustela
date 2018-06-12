@@ -15,7 +15,10 @@ using namespace mustela;
 
 // TODO - all syscalls on unix should check for EINTR???
 
-os::File::File(const std::string & file_path, bool read_only):fd(open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR | O_CREAT), (mode_t)0600)){
+os::File::File(const std::string & file_path, bool read_only){
+	do{
+		fd = open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR | O_CREAT), (mode_t)0600);
+ 	}while(fd < 0 && errno == EINTR);
 	if( fd == -1)
 		throw Exception("file open failed for {" + file_path + "}");
 }
@@ -23,19 +26,15 @@ uint64_t os::File::get_size()const{
 	auto was = lseek(fd, 0, SEEK_CUR);
 	auto result = lseek(fd, 0, SEEK_END);
 	auto was2 = lseek(fd, was, SEEK_SET);
-//	if( result > 1000000000)
-//		result = 1000000000;
 	if( was < 0 || result < 0 || was2 < 0)
 		throw Exception("getting file size error");
 	return static_cast<uint64_t>(result);
 }
 void os::File::set_size(uint64_t new_fs){
-//	if( new_fs > 1000000000)
-//		new_fs = 1000000000;
 	int result = 0;
 	do{
 		result = ftruncate(fd, static_cast<off_t>(new_fs));
- 	}while(result < 0 && errno == 4);
+ 	}while(result < 0 && errno == EINTR);
 	ass(result == 0, "failed to grow db file using ftruncate");
 }
 char * os::File::mmap(uint64_t offset, uint64_t size, bool read, bool write){
@@ -59,26 +58,32 @@ os::FileLock::FileLock(File & file):fd(file.fd){
 	int result = 0;
 	do{
  		result = flock(fd, LOCK_EX);
- 	}while(result < 0 && errno == 4);
+ 	}while(result < 0 && errno == EINTR);
 	ass(result == 0, "Failed to exclusively lock file");
 }
 
 os::FileLock::~FileLock(){
 	int result = 0;
 	do{
- 		result = flock(fd, LOCK_EX);
- 	}while(errno == 4);
+ 		result = flock(fd, LOCK_UN);
+ 	}while(errno == EINTR);
 	ass(result == 0, "Failed to exclusively lock file");
 }
 
 bool mustela::os::file_exists_on_readonly_partition(const std::string & file_path){
-	int fd = open(file_path.c_str(), O_RDONLY, 0);
+	int fd;
+	do{
+		fd = open(file_path.c_str(), O_RDONLY, 0);
+ 	}while(fd < 0 && errno == EINTR);
 	if( fd == -1 )
 		return false;
 	struct statvfs buf;
-	bool result = (fstatvfs(fd, &buf) != -1) && (buf.f_flag & ST_RDONLY);
+	int result = 0;
+	do{
+		result = fstatvfs(fd, &buf);
+ 	}while(result < 0 && errno == EINTR);
 	close(fd);
-	return result;
+	return (result >= 0) && (buf.f_flag & ST_RDONLY);
 }
 
 size_t mustela::os::get_physical_page_size(){

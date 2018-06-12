@@ -72,13 +72,11 @@ namespace mustela {
 		{}
 	};
 
-#define ass(expr, what) mustela::do_assert(expr, __FILE__, __LINE__, what)
-#define ass2(expr, what, expr2) mustela::do_assert(!(expr2) || (expr), __FILE__, __LINE__, what)
-	inline void do_assert(bool expr, const char* file, int line, const char * what){
-		if( !expr ) {
-			std::cerr << file << ":" << line << ": " << what << std::endl;
-			throw Exception(what);
-		}
+#define ass(expr, what) do{ if(!(expr)) mustela::do_assert(#expr, __FILE__, __LINE__, what); }while(0)
+#define ass2(expr, what, expr2) do{ if((expr2) && !(expr)) mustela::do_assert(#expr, __FILE__, __LINE__, what); }while(0)
+	inline void do_assert(const char * expr, const char* file, int line, const char * what){
+		std::cerr << "ass " << expr << " " << file << ":" << line << " " << what << std::endl;
+		throw Exception(what);
 	}
 	struct MVal {
 		char * data;

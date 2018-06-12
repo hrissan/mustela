@@ -647,7 +647,7 @@ bool TX::drop_bucket(const Val & name){
 		// TODO - delete page by page
 		Cursor cursor(this, bucket_desc, persistent_name);
 		cursor.first();
-		while(bucket_desc->count != 0){
+		while(bucket_desc->item_count != 0){
 			cursor.del();
 		}
 		ass(bucket_desc->leaf_page_count == 1 && bucket_desc->node_page_count == 0 && bucket_desc->overflow_page_count == 0 && bucket_desc->height == 0, "Bucket in wrong state after deleting all keys");
@@ -726,7 +726,7 @@ void TX::check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages){
 	BucketDesc stat_bucket_desc{};
 	std::string largest_element(my_db.max_key_size(), char(0xFF));
 	check_bucket_page(bucket_desc, &stat_bucket_desc, pa, height, Val(), Val(largest_element), pages);
-	ass(stat_bucket_desc.count == bucket_desc->count && stat_bucket_desc.leaf_page_count == bucket_desc->leaf_page_count &&
+	ass(stat_bucket_desc.item_count == bucket_desc->item_count && stat_bucket_desc.leaf_page_count == bucket_desc->leaf_page_count &&
 		stat_bucket_desc.node_page_count == bucket_desc->node_page_count && stat_bucket_desc.overflow_page_count == bucket_desc->overflow_page_count, "Bucket stats differ");
 }
 void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_bucket_desc, Pid pa, size_t height, Val left_limit, Val right_limit, MergablePageCache * pages){
@@ -735,7 +735,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 		stat_bucket_desc->leaf_page_count += 1;
 		CLeafPtr dap = readable_leaf(pa);
 		ass(bucket_desc->height == 0 || dap.size() > 0, "leaf with 0 keys found");
-		stat_bucket_desc->count += static_cast<size_t>(dap.size());
+		stat_bucket_desc->item_count += static_cast<size_t>(dap.size());
 		Val prev_key;
 		for(int pi = 0; pi != dap.size(); ++pi){
 			Pid overflow_page = 0;
@@ -751,7 +751,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 				ass(val.key > prev_key, "leaf elements are in wrong order");
 			prev_key = val.key;
 		}
-		ass(stat_bucket_desc->count == bucket_desc->count || prev_key < right_limit, "last leaf element >= right_limit");
+		ass(stat_bucket_desc->item_count == bucket_desc->item_count || prev_key < right_limit, "last leaf element >= right_limit");
 		// last element is the only one allowed to be equal to largest possible key
 		return;
 	}

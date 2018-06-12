@@ -17,7 +17,7 @@ void BucketDesc::unpack(const char * buf, size_t size){
 	ass(size == sizeof(BucketDesc), "Wrong size of BucketDesc in unpack");
 	buf += unpack_uint_le(buf, sizeof(root_page), root_page);
 	buf += unpack_uint_le(buf, sizeof(height), height);
-	buf += unpack_uint_le(buf, sizeof(count), count);
+	buf += unpack_uint_le(buf, sizeof(item_count), item_count);
 	buf += unpack_uint_le(buf, sizeof(leaf_page_count), leaf_page_count);
 	buf += unpack_uint_le(buf, sizeof(node_page_count), node_page_count);
 	buf += unpack_uint_le(buf, sizeof(overflow_page_count), overflow_page_count);
@@ -26,7 +26,7 @@ void BucketDesc::pack(char * buf, size_t size){
 	ass(size == sizeof(BucketDesc), "Wrong size of BucketDesc in pack");
 	buf += pack_uint_le(buf, sizeof(root_page), root_page);
 	buf += pack_uint_le(buf, sizeof(height), height);
-	buf += pack_uint_le(buf, sizeof(count), count);
+	buf += pack_uint_le(buf, sizeof(item_count), item_count);
 	buf += pack_uint_le(buf, sizeof(leaf_page_count), leaf_page_count);
 	buf += pack_uint_le(buf, sizeof(node_page_count), node_page_count);
 	buf += pack_uint_le(buf, sizeof(overflow_page_count), overflow_page_count);

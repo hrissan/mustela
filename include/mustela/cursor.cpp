@@ -117,7 +117,7 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 	while(true){
 		if( height == 0 ){
 			CLeafPtr dap = my_txn->readable_leaf(pa);
-			ass(bucket_desc->count == 0 || dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
+			ass(bucket_desc->item_count == 0 || dap.size() > 0, "Empty leaf page in Cursor::set_at_direction");
 			at(height) = Element{pa, dir > 0 ? dap.size() : 0};
 			break;
 		}
@@ -195,7 +195,7 @@ bool Cursor::del(){
 	my_txn->start_update(bucket_desc);
 	my_txn->new_merge_leaf(*this, wr_dap);
 	my_txn->finish_update(bucket_desc);
-	bucket_desc->count -= 1;
+	bucket_desc->item_count -= 1;
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket)
 		my_txn->check_mirror();
 	return true;

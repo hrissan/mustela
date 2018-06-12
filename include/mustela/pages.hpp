@@ -11,7 +11,7 @@ namespace mustela {
 	struct BucketDesc {
 		uint64_t root_page;
 		uint64_t height; // 0 when root is leaf
-		uint64_t count;
+		uint64_t item_count;
 		uint64_t leaf_page_count;
 		uint64_t node_page_count;
 		uint64_t overflow_page_count;

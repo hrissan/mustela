@@ -19,6 +19,8 @@ set(SOURCE_FILES
         include/mustela/lock.cpp
         include/mustela/main.cpp
         include/mustela/mustela.hpp
+        include/mustela/os.cpp
+        include/mustela/os.hpp
         include/mustela/pages.cpp
         include/mustela/pages.hpp
         include/mustela/tx.cpp

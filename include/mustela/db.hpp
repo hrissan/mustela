@@ -37,6 +37,7 @@ namespace mustela {
 		void commit_transaction(TX * tx, MetaPage meta_page);
 		void finish_transaction(TX * tx);
 	private:
+		void debug_print_meta_page(Pid i, const MetaPage * mp)const;
 		// Mappings cannot be in chunks, because count pages could fall onto the edge between chunks
 		struct Mapping {
 			size_t size;

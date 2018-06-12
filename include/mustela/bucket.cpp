@@ -94,7 +94,7 @@ char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	}
 	my_txn->finish_update(bucket_desc);
 	if( !same_key )
-		bucket_desc->count += 1;
+		bucket_desc->item_count += 1;
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
 		if(same_key) // Update only value, existing cursor should stay pointing to the same key-value
 			bu->at(key.to_string()).first = std::string();
@@ -141,7 +141,7 @@ std::string Bucket::get_stats()const{
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	result += "{'branch_pages': " + std::to_string(bucket_desc->node_page_count) +
 	",\n\t'depth': " + std::to_string(bucket_desc->height) +
-	",\n\t'entries': " + std::to_string(bucket_desc->count) +
+	",\n\t'entries': " + std::to_string(bucket_desc->item_count) +
 	",\n\t'leaf_pages': " + std::to_string(bucket_desc->leaf_page_count) +
 	",\n\t'overflow_pages': " + std::to_string(bucket_desc->overflow_page_count) +
 	",\n\t'psize': " + std::to_string(my_txn->page_size) +

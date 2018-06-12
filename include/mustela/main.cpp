@@ -112,17 +112,24 @@ void interactive_test(){
 	}
 }
 
+std::atomic<int> reader_counter{};
+std::atomic<int> writer_counter{};
+std::atomic<uint64_t> last_tid{};
+
 void run_bank(const std::string & db_path){
 	DBOptions options;
-	options.minimal_mapping_size = 16*1024*1024;
+	options.minimal_mapping_size = 16*1024;
+	options.meta_sync = false;
 	DB db(db_path, options);
 	Random random(time(nullptr));
 	uint64_t ACCOUNTS = 1000;
 	uint64_t TOTAL_VALUE = 1000000000;
-	int reader_counter = 0;
 	while(true){
 		bool read_only = (random.rand() % 64) != 0;
-		reader_counter += read_only;
+		if(read_only)
+			++reader_counter;
+		else
+			++writer_counter;
 		TX txn(db, read_only);
 //		txn.check_database([&](int progress){}, false);
 		Bucket main_bucket = txn.get_bucket(Val("main"), false);
@@ -137,7 +144,8 @@ void run_bank(const std::string & db_path){
 		Val a_value;
 		main_bucket.get(Val("bank"), &a_value);
 		uint64_t bank = std::stoull(a_value.to_string());
-		std::cerr << (read_only ? ("R/O " + std::to_string(reader_counter) + " tid=") : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << std::endl;
+		if(!read_only && writer_counter % 100 == 0)
+			std::cerr << (read_only ? ("R/O " + std::to_string(reader_counter) + " tid=") : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << " reader_counter=" << reader_counter << std::endl;
 		if(read_only){
 			uint64_t wa = rand() % ACCOUNTS;
 			for(uint64_t i = 0; i != ACCOUNTS; ++i){
@@ -150,13 +158,18 @@ void run_bank(const std::string & db_path){
 			}
 			ass(bank == TOTAL_VALUE, "bank robbed!");
 		}else{
+			if( last_tid != 0 ){
+				if(last_tid + 1 != txn.tid())
+					std::cerr << "Aha" << std::endl;
+			}
+			last_tid = txn.tid();
 			uint64_t acc = random.rand() % ACCOUNTS;
 			uint64_t aaa = 0;
 			if( main_bucket.get(Val(std::to_string(acc)), &a_value)){
 				aaa = std::stoull(a_value.to_string());
-				uint64_t prev = aaa;
-				bank += aaa / 2;
-				aaa = prev - aaa / 2;
+//				uint64_t prev = aaa;
+//				bank += aaa / 2;
+//				aaa = prev - aaa / 2;
 			}
 			uint64_t minus = bank/1000000;
 			bank -= minus;
@@ -167,6 +180,7 @@ void run_bank(const std::string & db_path){
 		}
 	}
 }
+
 
 void run_benchmark(const std::string & db_path){
 	DB::remove_db(db_path);
@@ -499,7 +513,7 @@ int main(int argc, char * argv[]){
 	}
 	if(!bank.empty()){
 		std::vector<std::thread> threads;
-		for (size_t i = 0; i != 10; ++i)
+		for (size_t i = 0; i != 100; ++i)
 			threads.emplace_back(&run_bank, bank);
 		run_bank(bank);
 		return 0;
