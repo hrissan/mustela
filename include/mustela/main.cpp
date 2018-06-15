@@ -17,6 +17,122 @@ extern "C" {
 
 using namespace mustela;
 
+
+struct MiniMeta {
+	uint64_t tid;
+	uint64_t body01;
+	uint64_t body02;
+	uint64_t tid2;
+};
+
+struct AtomicMeta {
+	std::atomic<uint64_t> tid;
+	std::atomic<uint64_t> body01;
+	std::atomic<uint64_t> body02;
+	std::atomic<uint64_t> tid2;
+};
+
+struct MiniReaderSlot {
+	std::atomic<uint64_t> rid_deadline;
+	uint64_t tid;
+};
+
+AtomicMeta metas[2]{};
+enum { MAX_SLOTS = 4096 };
+std::atomic<uint64_t> next_rid{};
+std::atomic<uint64_t> next_wrid{};
+MiniReaderSlot slots[MAX_SLOTS]{};
+std::mutex wr_mut;
+
+std::pair<size_t, MiniMeta> grab_newest_meta(){
+	MiniMeta newest_meta{};
+	for(int i = 0; i != 100;){
+		uint64_t tid0 = metas[0].tid;
+		uint64_t tid1 = metas[1].tid;
+		size_t pid = 0;
+		if(tid1 > tid0){
+			newest_meta.tid = tid1;
+			newest_meta.body01 = metas[1].body01;
+			newest_meta.body02 = metas[1].body02;
+			newest_meta.tid2 = metas[1].tid2;
+			pid = 1;
+		}else{
+			newest_meta.tid = tid0;
+			newest_meta.body01 = metas[0].body01;
+			newest_meta.body02 = metas[0].body02;
+			newest_meta.tid2 = metas[0].tid2;
+			pid = 0;
+		}
+		if(newest_meta.tid2 != newest_meta.tid)
+			continue;
+		if(newest_meta.body01 != newest_meta.body02)
+			continue;
+		return std::make_pair(pid, newest_meta);
+	}
+	std::cout << "Reader grab meta failed" << std::endl;
+	ass(false, "Reader grab meta failed");
+	return std::make_pair(0, MiniMeta{});
+}
+
+int grab_slot(uint64_t my_rid){
+	int jump = rand() % MAX_SLOTS;
+	for(int i = 0; i != MAX_SLOTS; ++i){
+		int slot = (i + jump) % MAX_SLOTS;
+		uint64_t rid_deadline = slots[slot].rid_deadline;
+		if( rid_deadline != 0)
+			continue;
+		uint64_t prev = 0;
+		if( slots[slot].rid_deadline.compare_exchange_strong(prev, my_rid) )
+			return slot;
+	}
+	ass(false, "Reader grab slot failed");
+	return 0;
+}
+
+void run_lockless() {
+	while(true){
+		const bool reader = rand() % 16 != 0;
+		if(reader){
+			const uint64_t my_rid = ++next_rid;
+			while(true){
+				auto grab = grab_newest_meta();
+				int slot = grab_slot(my_rid);
+				slots[slot].tid = grab.second.tid;
+				const uint64_t still_my_rid = slots[slot].rid_deadline;
+				if(still_my_rid != my_rid)
+					continue;
+				grab = grab_newest_meta();
+				// Reading is safe here
+//				sleep(1);
+				uint64_t prev = my_rid;
+				bool freed = slots[slot].rid_deadline.compare_exchange_strong(prev, 0);
+				break;
+			}
+		}else{
+			const uint64_t my_wrrid = ++next_wrid;
+			std::unique_lock<std::mutex> lock(wr_mut);
+			if(my_wrrid % 100000 == 0)
+				std::cout << my_wrrid << " " << next_rid << std::endl;
+			auto grab = grab_newest_meta();
+			uint64_t oldest_tid = grab.second.tid;
+			for(int i = 0; i != MAX_SLOTS; ++i){
+				uint64_t rid_deadline = slots[i].rid_deadline;
+				if( rid_deadline < 100){ // < now
+					slots[i].rid_deadline.compare_exchange_strong(rid_deadline, 0);
+					continue;
+				}
+				oldest_tid = std::max(oldest_tid, slots[i].tid);
+			}
+			uint64_t new_val = static_cast<uint64_t>(rand());
+			metas[1 - grab.first].body01 = new_val;
+			metas[1 - grab.first].body02 = new_val;
+			__sync_synchronize();
+			metas[1 - grab.first].tid = grab.second.tid + 1;
+			metas[1 - grab.first].tid2 = grab.second.tid + 1;
+		}
+	}
+}
+
 void interactive_test(){
 	DBOptions options;
 	options.minimal_mapping_size = 1024;
@@ -501,6 +617,7 @@ int main(int argc, char * argv[]){
 	std::string benchmark;
 	std::string scenario;
 	std::string bank;
+	std::string lockless;
 	for(int i = 1; i < argc - 1; ++i){
 		if(std::string(argv[i]) == "--test")
 			test = argv[i+1];
@@ -510,12 +627,21 @@ int main(int argc, char * argv[]){
 			benchmark = argv[i+1];
 		if(std::string(argv[i]) == "--bank")
 			bank = argv[i+1];
+		if(std::string(argv[i]) == "--lockless")
+			lockless = argv[i+1];
 	}
 	if(!bank.empty()){
 		std::vector<std::thread> threads;
 		for (size_t i = 0; i != 100; ++i)
 			threads.emplace_back(&run_bank, bank);
 		run_bank(bank);
+		return 0;
+	}
+	if(!lockless.empty()){
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i != 1000; ++i)
+			threads.emplace_back(&run_lockless);
+		run_lockless();
 		return 0;
 	}
 	if(!benchmark.empty()){
