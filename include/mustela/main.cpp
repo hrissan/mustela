@@ -41,6 +41,7 @@ AtomicMeta metas[2]{};
 enum { MAX_SLOTS = 4096 };
 std::atomic<uint64_t> next_rid{};
 std::atomic<uint64_t> next_wrid{};
+std::atomic<uint64_t> work_result{};
 MiniReaderSlot slots[MAX_SLOTS]{};
 std::mutex wr_mut;
 
@@ -91,7 +92,7 @@ int grab_slot(uint64_t my_rid){
 
 void run_lockless() {
 	while(true){
-		const bool reader = rand() % 16 != 0;
+		const bool reader = rand() % 128 != 0;
 		if(reader){
 			const uint64_t my_rid = ++next_rid;
 			while(true){
@@ -102,6 +103,11 @@ void run_lockless() {
 				if(still_my_rid != my_rid)
 					continue;
 				grab = grab_newest_meta();
+				uint64_t wr = work_result;
+				for(int i = 0; i != 900000*slot; ++i){
+					wr = (wr + 0x123456789) + 0x987654321;
+				}
+				work_result += wr;
 				// Reading is safe here
 //				sleep(1);
 				uint64_t prev = my_rid;
@@ -631,6 +637,9 @@ int main(int argc, char * argv[]){
 			lockless = argv[i+1];
 	}
 	if(!bank.empty()){
+//		DBOptions options;
+//		options.minimal_mapping_size = 1;
+//		DB db(bank, options);
 		std::vector<std::thread> threads;
 		for (size_t i = 0; i != 100; ++i)
 			threads.emplace_back(&run_bank, bank);

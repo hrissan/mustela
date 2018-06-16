@@ -47,10 +47,10 @@ Bucket & Bucket::operator=(const Bucket & other){
 
 char * Bucket::put(const Val & key, size_t value_size, bool nooverwrite){
 	if( my_txn->read_only )
-		throw Exception("Attempt to modify read-only transaction");
+		Exception::th("Attempt to modify read-only transaction");
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	if(key.size > max_key_size(my_txn->page_size))
-		throw Exception("Key size too big in Bucket::put");
+		Exception::th("Key size too big in Bucket::put");
 	Cursor main_cursor(my_txn, bucket_desc, persistent_name);
 	const bool same_key = main_cursor.seek(key);
 //		CLeafPtr dap = my_txn.readable_leaf(main_cursor.path.at(0).first);
@@ -124,7 +124,7 @@ bool Bucket::get(const Val & key, Val * value)const{
 }
 bool Bucket::del(const Val & key){
 	if( my_txn->read_only )
-		throw Exception("Attempt to modify read-only transaction");
+		Exception::th("Attempt to modify read-only transaction");
 	ass(bucket_desc, "Bucket not valid (using after tx commit?)");
 	Cursor main_cursor(my_txn, bucket_desc, persistent_name);
 	if( !main_cursor.seek(key) )

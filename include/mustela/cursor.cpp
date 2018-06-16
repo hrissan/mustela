@@ -165,7 +165,7 @@ bool Cursor::get(Val * key, Val * value){
 bool Cursor::del(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
 	if( my_txn->read_only )
-		throw Exception("Attempt to modify read-only transaction in Cursor::del");
+		Exception::th("Attempt to modify read-only transaction in Cursor::del");
 	if( !fix_cursor_after_last_item() )
 		return false;
 	if(DEBUG_MIRROR && bucket_desc != &my_txn->meta_page.meta_bucket){
@@ -243,7 +243,7 @@ void Cursor::prev(){
 void Cursor::debug_make_pages_writable(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
 	if( my_txn->read_only )
-		throw Exception("Attempt to modify read-only transaction in Cursor::make_pages_writable");
+		Exception::th("Attempt to modify read-only transaction in Cursor::make_pages_writable");
 	if( !fix_cursor_after_last_item() )
 		return;
 	my_txn->meta_page_dirty = true;

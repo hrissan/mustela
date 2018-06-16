@@ -14,7 +14,7 @@ namespace mustela {
 	constexpr int MIN_KEY_COUNT = 2;
 	static_assert(MIN_KEY_COUNT == 2, "Should be 2 for invariants, do not change");
 
-	constexpr uint32_t OUR_VERSION = 4;
+	constexpr uint32_t OUR_VERSION = 5;
 
 	constexpr uint64_t META_MAGIC = 0x58616c657473754d; // MustelaX in LE
 	

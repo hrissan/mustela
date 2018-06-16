@@ -19,11 +19,11 @@ namespace mustela {
 		void pack(char * buf, size_t size);
 	};
 	struct MetaPage { // We use uint64_t here independent of Page and PageOffset to make meta pages readable across platforms
-		uint64_t pid;
 		uint64_t tid;
 		uint64_t magic;
 		uint64_t page_count; // excess pages in file are all free
 		BucketDesc meta_bucket; // All other bucket descs are stored in meta_bucket together with freelist
+		uint64_t pid;
 		uint32_t version;
 		uint32_t page_size;
 		uint32_t pid_size; // TODO - implement

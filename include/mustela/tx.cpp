@@ -15,7 +15,7 @@ int TX::debug_mirror_counter = 0;
 
 TX::TX(DB & my_db, bool read_only):my_db(my_db), read_only(read_only), page_size(my_db.page_size) {
 	if( !read_only && my_db.options.read_only)
-		throw Exception("Read-write transaction impossible on read-only DB");
+		Exception::th("Read-write transaction impossible on read-only DB");
 	my_db.start_transaction(this);
 	if(DEBUG_MIRROR)
 		load_mirror();
@@ -633,7 +633,7 @@ Bucket TX::get_bucket(const Val & name, bool create_if_not_exists){
 
 bool TX::drop_bucket(const Val & name){
 	if( read_only )
-		throw Exception("Attempt to modify read-only transaction");
+		Exception::th("Attempt to modify read-only transaction");
 	Val persistent_name;
 	BucketDesc * bucket_desc = load_bucket_desc(name, &persistent_name, false);
 	if(DEBUG_MIRROR){
@@ -699,7 +699,7 @@ BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool 
 	if(!create_if_not_exists)
 		return nullptr;
 	if( read_only )
-		throw Exception("Attempt to modify read-only transaction");
+		Exception::th("Attempt to modify read-only transaction");
 	if(DEBUG_MIRROR){
 		ass(debug_mirror.insert(std::make_pair(name.to_string(), BucketMirror{})).second, "mirror violation in load_bucket");
 		before_mirror_operation(meta_bucket.bucket_desc, meta_bucket.persistent_name);

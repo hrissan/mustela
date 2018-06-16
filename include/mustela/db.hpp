@@ -37,7 +37,7 @@ namespace mustela {
 		void commit_transaction(TX * tx, MetaPage meta_page);
 		void finish_transaction(TX * tx);
 	private:
-		void debug_print_meta_page(Pid i, const MetaPage * mp)const;
+		void debug_print_meta_page(Pid i, const MetaPage & mp)const;
 		// Mappings cannot be in chunks, because count pages could fall onto the edge between chunks
 		struct Mapping {
 			size_t size;
@@ -70,17 +70,19 @@ namespace mustela {
 		std::unique_ptr<std::lock_guard<std::mutex>> wr_guard;
 		std::unique_ptr<os::FileLock> wr_file_lock;
 		
-		bool is_valid_meta(Pid index, const MetaPage * mp)const;
-		bool is_valid_meta_strict(const MetaPage * mp)const;
-		const MetaPage * get_newest_meta_page(Pid * oldest_meta_index, Tid * earliest_tid, bool strict)const;
-		
+		bool is_valid_meta(Pid index, const MetaPage & mp)const;
+		bool is_valid_meta_strict(const MetaPage & mp)const;
+		bool get_newest_meta_page(MetaPage * newest_mp, Tid * earliest_tid, bool strict);
+		Pid get_worst_meta_page(Tid * earliest_tid)const;
+
 		void grow_c_mappings();
 		void grow_wr_mappings(Pid new_file_page_count, bool grow_more);
 
-		const MetaPage * readable_meta_page(Pid index)const;
-		MetaPage * writable_meta_page(Pid index);
+		MetaPage read_meta_page(Pid index)const;
+		Tid read_meta_page_tid(Pid index)const;
+		void write_meta_page(Pid index, const MetaPage & new_mp);
 		void create_db();
-		bool open_db();
+		bool open_db(MetaPage * newest_mp);
 	};
 }
 

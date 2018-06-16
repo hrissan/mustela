@@ -70,8 +70,11 @@ namespace mustela {
 	public:
 		explicit Exception(const std::string & what)
 		{}
+		static void th(const std::string & what){
+			std::cout << "throw Exception " << what << std::endl;
+			throw Exception(what);
+		}
 	};
-
 #define ass(expr, what) do{ if(!(expr)) mustela::do_assert(#expr, __FILE__, __LINE__, what); }while(0)
 #define ass2(expr, what, expr2) do{ if((expr2) && !(expr)) mustela::do_assert(#expr, __FILE__, __LINE__, what); }while(0)
 	inline void do_assert(const char * expr, const char* file, int line, const char * what){
