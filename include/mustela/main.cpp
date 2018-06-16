@@ -234,20 +234,22 @@ void interactive_test(){
 	}
 }
 
-std::atomic<int> reader_counter{};
-std::atomic<int> writer_counter{};
+std::atomic<uint64_t> reader_counter{};
+std::atomic<uint64_t> writer_counter{};
 std::atomic<uint64_t> last_tid{};
 
-void run_bank(const std::string & db_path){
+void run_bank(const std::string & db_path, size_t thread_counter){
 	DBOptions options;
 	options.minimal_mapping_size = 16*1024;
 	options.meta_sync = false;
+//	options.data_sync = false;
 	DB db(db_path, options);
-	Random random(time(nullptr));
+	Random random(++reader_counter);
 	uint64_t ACCOUNTS = 1000;
 	uint64_t TOTAL_VALUE = 1000000000;
+	const bool read_only = (thread_counter != 0);
 	while(true){
-		bool read_only = (random.rand() % 64) != 0;
+//		const bool read_only = (random.rnd() % 64) != 0;
 		if(read_only)
 			++reader_counter;
 		else
@@ -266,26 +268,29 @@ void run_bank(const std::string & db_path){
 		Val a_value;
 		main_bucket.get(Val("bank"), &a_value);
 		uint64_t bank = std::stoull(a_value.to_string());
+		uint64_t all_accs = 0;
 		if(!read_only && writer_counter % 100 == 0)
 			std::cerr << (read_only ? ("R/O " + std::to_string(reader_counter) + " tid=") : "R/W tid=") << txn.tid() << " oldest reader=" << txn.debug_get_oldest_reader_tid() << " bank=" << bank << " reader_counter=" << reader_counter << std::endl;
 		if(read_only){
-			uint64_t wa = rand() % ACCOUNTS;
 			for(uint64_t i = 0; i != ACCOUNTS; ++i){
-//				if( i == wa)
-//					sleep(1);
+	//			if( i == wa)
+	//				sleep(1);
+	//			if(thread_counter == 1 && i % 100 == 0)
+	//				sleep(1);
 				if( main_bucket.get(Val(std::to_string(i)), &a_value)){
 					uint64_t aaa = std::stoull(a_value.to_string());
-					bank += aaa;
+					all_accs += aaa;
 				}
 			}
-			ass(bank == TOTAL_VALUE, "bank robbed!");
-		}else{
+			ass(bank + all_accs == TOTAL_VALUE, "bank robbed!");
+		}
+		if(!read_only){
 			if( last_tid != 0 ){
 				if(last_tid + 1 != txn.tid())
 					std::cerr << "Aha" << std::endl;
 			}
 			last_tid = txn.tid();
-			uint64_t acc = random.rand() % ACCOUNTS;
+			uint64_t acc = random.rnd() % ACCOUNTS;
 			uint64_t aaa = 0;
 			if( main_bucket.get(Val(std::to_string(acc)), &a_value)){
 				aaa = std::stoull(a_value.to_string());
@@ -299,6 +304,7 @@ void run_bank(const std::string & db_path){
 			ass(main_bucket.put(Val(std::to_string(acc)), Val(std::to_string(aaa)), false), "Bad put in bank");
 			ass(main_bucket.put(Val("bank"), Val(std::to_string(bank)), false), "Bad put in bank");
 			txn.commit();
+//			sleep(1);
 		}
 	}
 }
@@ -441,7 +447,7 @@ public:
 		Item * next_curr = insert_ptr.next();
 		if(next_curr != &tail_head && next_curr->value == value)
 			return std::make_pair(next_curr, false);
-		const size_t height = std::min<size_t>(LEVELS, 1 + count_zeroes(random.rand()));
+		const size_t height = std::min<size_t>(LEVELS, 1 + count_zeroes(random.rnd()));
 		Item * new_item = (Item *)malloc(sizeof(Item) - (LEVELS - height) * sizeof(Item *)); //new Item{};
 		new_item->prev = insert_ptr.previous_levels.at(0);
 		next_curr->prev = new_item;
@@ -524,7 +530,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rand()%TEST_COUNT;
+			uint64_t val = random.rnd()%TEST_COUNT;
 			found_counter += skip_list.insert(val).second;
 		}
 		auto idea_ms =
@@ -538,7 +544,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		SkipList<uint64_t>::InsertPtr ptr;
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random2.rand()%TEST_COUNT;
+			uint64_t val = random2.rnd()%TEST_COUNT;
 			found_counter += skip_list.lower_bound(val, &ptr);
 		}
 		auto idea_ms =
@@ -550,7 +556,7 @@ void benchmark_skiplist(size_t TEST_COUNT){
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rand()%TEST_COUNT;
+			uint64_t val = random.rnd()%TEST_COUNT;
 			found_counter += skip_list.erase(val);
 		}
 		auto idea_ms =
@@ -565,7 +571,7 @@ void benchmark_stdset(size_t TEST_COUNT){
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rand()%TEST_COUNT;
+			uint64_t val = random.rnd()%TEST_COUNT;
 			found_counter += skip_list.insert(val).second;
 		}
 		auto idea_ms =
@@ -577,7 +583,7 @@ void benchmark_stdset(size_t TEST_COUNT){
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random2.rand()%TEST_COUNT;
+			uint64_t val = random2.rnd()%TEST_COUNT;
 			found_counter += skip_list.count(val);
 		}
 		auto idea_ms =
@@ -589,7 +595,7 @@ void benchmark_stdset(size_t TEST_COUNT){
 		int found_counter = 0;
 		auto idea_start  = std::chrono::high_resolution_clock::now();
 		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rand()%TEST_COUNT;
+			uint64_t val = random.rnd()%TEST_COUNT;
 			found_counter += skip_list.erase(val);
 		}
 		auto idea_ms =
@@ -641,9 +647,9 @@ int main(int argc, char * argv[]){
 //		options.minimal_mapping_size = 1;
 //		DB db(bank, options);
 		std::vector<std::thread> threads;
-		for (size_t i = 0; i != 100; ++i)
-			threads.emplace_back(&run_bank, bank);
-		run_bank(bank);
+		for (size_t i = 0; i != 8; ++i)
+			threads.emplace_back(&run_bank, bank, i + 1);
+		run_bank(bank, 0);
 		return 0;
 	}
 	if(!lockless.empty()){

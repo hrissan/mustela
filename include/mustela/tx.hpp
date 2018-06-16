@@ -69,8 +69,17 @@ namespace mustela {
 		Pid get_free_page(Pid contigous_count);
 		void mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid); // associated with our tx, will be available after no read tx can ever use our tid
 		bool updating_meta_bucket = false;
+		
 		void start_update(BucketDesc * bucket_desc);
 		void finish_update(BucketDesc * bucket_desc);
+		void update_reader_slot(){
+			if( !read_only )
+				return;
+			uint32_t now = ReaderTable::now();
+			if(now != reader_slot.now)
+				update_reader_slot_slow(now);
+		}
+		void update_reader_slot_slow(uint32_t now);
 
 		DataPage * make_pages_writable(Cursor & cur, size_t height);
 		

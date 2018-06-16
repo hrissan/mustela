@@ -71,6 +71,7 @@ Bucket Cursor::get_bucket(){
 
 bool Cursor::seek(const Val & key){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
+	my_txn->update_reader_slot();
 	Pid pa = bucket_desc->root_page;
 	size_t height = bucket_desc->height;
 	while(true){
@@ -91,6 +92,7 @@ bool Cursor::seek(const Val & key){
 bool Cursor::fix_cursor_after_last_item(){
 	if( is_before_first() )
 		return false;
+	my_txn->update_reader_slot();
 	auto path_el = at(0);
 	CLeafPtr dap = my_txn->readable_leaf(path_el.pid);
 	if(path_el.item < dap.size())
@@ -130,6 +132,7 @@ void Cursor::set_at_direction(size_t height, Pid pa, int dir){
 }
 void Cursor::end(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
+	my_txn->update_reader_slot();
 	set_at_direction(bucket_desc->height, bucket_desc->root_page, 1);
 }
 void Cursor::before_first(){
@@ -139,6 +142,7 @@ void Cursor::before_first(){
 
 void Cursor::first(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
+	my_txn->update_reader_slot();
 	set_at_direction(bucket_desc->height, bucket_desc->root_page, -1);
 }
 void Cursor::last(){
@@ -215,6 +219,7 @@ void Cursor::prev(){
 	ass(is_valid(), "Cursor not valid (using after tx commit?)");
 	if( is_before_first())
 		return;
+	my_txn->update_reader_slot();
 	if( at(0).item > 0 ) {
 		// TODO - fast check here
 //			CLeafPtr dap = my_txn.readable_leaf(path_el.first);

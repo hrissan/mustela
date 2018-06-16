@@ -263,17 +263,18 @@ ValVal CLeafPtr::get_kv(int item, Pid & overflow_page)const{
 }
 
 void test_node_page(){
+	Random random;
 	const size_t page_size = 128;
 	NodePtr pa(page_size, (NodePage *)malloc(page_size));
 	pa.init_dirty(10);
 	std::map<std::string, Pid> mirror;
 	pa.set_value(-1, 123456);
 	for(int i = 0; i != 1000; ++i){
-		std::string key = "key" + std::to_string(rand() % 100);
-		Pid val = rand() % 100000;
+		std::string key = "key" + std::to_string(random.rnd() % 100);
+		Pid val = random.rnd() % 100000;
 		bool same_key;
 		int existing_item = pa.lower_bound_item(Val(key), &same_key);
-		bool remove_existing = rand() % 2;
+		bool remove_existing = random.rnd() % 2;
 		if( same_key ){
 			if( !remove_existing )
 				continue;
@@ -281,7 +282,7 @@ void test_node_page(){
 			mirror.erase(key);
 		}
 		size_t new_kvsize = get_item_size(page_size, Val(key), val);
-		bool add_new = rand() % 2;
+		bool add_new = random.rnd() % 2;
 		if( add_new && pa.free_capacity() >= new_kvsize ){
 			pa.insert_at(existing_item, Val(key), val);
 			mirror[key] = val;
@@ -306,17 +307,18 @@ void test_node_page(){
 		}
 }
 void mustela::test_data_pages(){
+	Random random;
 	test_node_page();
 	const size_t page_size = 256;
 	LeafPtr pa(page_size, (LeafPage *)malloc(page_size));
 	pa.init_dirty(10);
 	std::map<std::string, std::string> mirror;
 	for(int i = 0; i != 1000; ++i){
-		std::string key = "key" + std::to_string(rand() % 100);
-		std::string val = "value" + std::to_string(rand() % 100000);
+		std::string key = "key" + std::to_string(random.rnd() % 100);
+		std::string val = "value" + std::to_string(random.rnd() % 100000);
 		bool same_key;
 		int existing_item = pa.lower_bound_item(Val(key), &same_key);
-		bool remove_existing = rand() % 2;
+		bool remove_existing = random.rnd() % 2;
 		if( same_key ){
 			if( !remove_existing )
 				continue;
@@ -329,7 +331,7 @@ void mustela::test_data_pages(){
 		bool overflow;
 		size_t new_kvsize = pa.get_item_size(Val(key), Val(val).size, overflow);
 		ass(!overflow, "This test should not use overflow");
-		bool add_new = rand() % 2;
+		bool add_new = random.rnd() % 2;
 		if( add_new && new_kvsize <= pa.free_capacity() ){
 			pa.insert_at(existing_item, Val(key), Val(val));
 			mirror[key] = val;

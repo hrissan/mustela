@@ -30,6 +30,8 @@ namespace mustela {
 	constexpr int MAX_HEIGHT = 40; // TODO - calculate from NODE_PID_SIZE?
 	// fixed pid size allows simple logic when replacing page in node index
 	
+	constexpr int READER_SLOT_SIZE = 64; // 1 per cache line
+
 // turn on/off health checks
 	constexpr bool CLEAR_FREE_SPACE = true;
 	constexpr bool DEBUG_PAGES = true;

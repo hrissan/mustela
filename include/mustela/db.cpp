@@ -217,7 +217,7 @@ void DB::start_transaction(TX * tx){
 		ass(get_newest_meta_page(&tx->meta_page, &tx->oldest_reader_tid, true), "No meta found in start_transaction - hot corruption of DB");
 		if(tx->read_only){
 			r_transactions_counter += 1;
-			tx->reader_slot = reader_table.create_reader_slot(tx->meta_page.tid, lock_file, map_granularity);
+			tx->reader_slot = reader_table.create_reader_slot(tx->meta_page.tid, options.reader_timeout_seconds, lock_file, map_granularity);
 			// Now we read newest meta page again, because it could change while we were grabbing the slot
 			ass(get_newest_meta_page(&tx->meta_page, &tx->oldest_reader_tid, true), "No meta found in start_transaction 2 - hot corruption of DB");
 		} else {
@@ -258,7 +258,8 @@ void DB::commit_transaction(TX * tx, MetaPage meta_page){
 	// TODO - do not take this lock on long operation (msync)
 	std::unique_lock<std::mutex> lock(mu);
 	ass(tx == wr_transaction, "We can only commit write transaction if it started");
-	data_file.msync(wr_mappings.at(0).addr, wr_mappings.at(0).size);
+	if(options.data_sync)
+		data_file.msync(wr_mappings.at(0).addr, wr_mappings.at(0).size);
 	__sync_synchronize();
 	
 	Pid oldest_meta_index = 0;
@@ -275,7 +276,7 @@ void DB::commit_transaction(TX * tx, MetaPage meta_page){
 		tx->oldest_reader_tid = reader_table.find_oldest_tid(tx->oldest_reader_tid, lock_file, map_granularity);
 		ass(tx->meta_page.tid >= tx->oldest_reader_tid, "We should not be able to treat our own pages as free");
 	
-		if(options.meta_sync){
+		if(options.data_sync && options.meta_sync){
 			// We can only msync on granularity, find limits
 			size_t low = oldest_meta_index * page_size;
 			size_t high = (oldest_meta_index + 1) * page_size;

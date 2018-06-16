@@ -59,7 +59,7 @@ namespace mustela {
 	struct Random {
 		explicit Random(uint64_t random_seed = 0):random_seed(random_seed)
 		{}
-		uint64_t rand() { // MMIX by Donald Knuth
+		uint64_t rnd() { // MMIX by Donald Knuth
 			random_seed = 6364136223846793005 * random_seed + 1442695040888963407;
 			return random_seed;
 		}

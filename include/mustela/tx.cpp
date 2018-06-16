@@ -60,6 +60,11 @@ void TX::finish_update(BucketDesc * bucket_desc){
 	updating_meta_bucket = false;
 }
 
+void TX::update_reader_slot_slow(uint32_t now){
+	if( !my_db.reader_table.update_reader_slot(reader_slot, now, my_db.options.reader_timeout_seconds) )
+		Exception::th("Timeout in reader transaction - consider increasing read interval in DBOptions");
+}
+
 Pid TX::get_free_page(Pid contigous_count){
 	Pid pa = free_list.get_free_page(this, contigous_count, oldest_reader_tid, updating_meta_bucket);
 	if( !pa ){
@@ -681,6 +686,7 @@ bool TX::drop_bucket(const Val & name){
 	return true;
 }
 BucketDesc * TX::load_bucket_desc(const Val & name, Val * persistent_name, bool create_if_not_exists){
+	update_reader_slot();
 	const std::string str_name = name.to_string();
 	auto tit = bucket_descs.find(str_name);
 	if( tit != bucket_descs.end() ){

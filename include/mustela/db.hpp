@@ -13,9 +13,11 @@ namespace mustela {
 	
 	struct DBOptions {
 		bool read_only = false;
+		bool data_sync = true; // Warning! Setting to false will lead to DB inconsistency if OS/Hardware freezes
 		bool meta_sync = true;
 		size_t new_db_page_size = 0; // 0 - select automatically. Used only when creating file
 		size_t minimal_mapping_size = 1024; // Good for test, TODO - set to larger value closer to release
+		uint32_t reader_timeout_seconds = 60; // Reader transaction will throw if nothing is read during this period
 	};
 
 	class DB {
