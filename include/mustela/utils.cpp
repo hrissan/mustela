@@ -98,9 +98,10 @@ namespace mustela {
 // CRC-32 (Ethernet, ZIP, etc.) polynomial in reversed bit order.
 // #define POLY 0xedb88320
 
+	// TODO - this is bottleneck for short write transactions
 	uint32_t crc32c(uint32_t crc, const unsigned char *buf, size_t len)
 	{
-		return 0;
+//		return 0;
 		int k;
 
 		crc = ~crc;

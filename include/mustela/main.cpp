@@ -143,14 +143,14 @@ void interactive_test(){
 	DBOptions options;
 	options.minimal_mapping_size = 1024;
 	options.new_db_page_size = 128;
-	DB db("test.mustella", options);
+	DB db("test.mustela", options);
 	Val main_bucket_name("main");
 	
 	const int items_counter = 100000;
 	std::default_random_engine e;//{r()};
 	std::uniform_int_distribution<int> dist(0, 10*items_counter - 1);
 
-	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "dr", "ar", "d", "dr", "a", "dr", "dr", "ar"};
+	std::vector<std::string> cmds{"ar", "db", "ar", "dr", "ar", "dr", "d", "a", "dr", "ar", "dr", "ar", "d", "ab", "dr", "dr", "dr", "dr", "dr", "dr"};
 	while(true){
 		TX txn(db);
 		Bucket main_bucket = txn.get_bucket(main_bucket_name);
@@ -630,6 +630,7 @@ int main(int argc, char * argv[]){
 	std::string scenario;
 	std::string bank;
 	std::string lockless;
+	std::string backup;
 	for(int i = 1; i < argc - 1; ++i){
 		if(std::string(argv[i]) == "--test")
 			test = argv[i+1];
@@ -641,6 +642,26 @@ int main(int argc, char * argv[]){
 			bank = argv[i+1];
 		if(std::string(argv[i]) == "--lockless")
 			lockless = argv[i+1];
+		if(std::string(argv[i]) == "--backup")
+			backup = argv[i+1];
+	}
+	if(!backup.empty()){
+		DBOptions options;
+		options.read_only = true;
+		DB src(backup, options);
+		options.read_only = false;
+		DB dst(backup + "_backup", options);
+		TX src_tx(src, true);
+		TX dst_tx(dst);
+		for(auto buname : src_tx.get_bucket_names()){
+			Bucket src_bucket = src_tx.get_bucket(buname, false);
+			Bucket dst_bucket = dst_tx.get_bucket(buname);
+			Cursor cur = src_bucket.get_cursor();
+			Val key, value;
+			for(cur.first(); cur.get(&key, &value); cur.next())
+				ass(dst_bucket.put(key, value, true), "put failed");
+		}
+		return 0;
 	}
 	if(!bank.empty()){
 //		DBOptions options;

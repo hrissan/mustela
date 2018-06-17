@@ -34,6 +34,7 @@ namespace mustela {
 		void debug_print_free_list(){
 			free_list.load_all_free_pages(this, oldest_reader_tid);
 			free_list.debug_print_db();
+			std::cerr << "meta_page.page_count=" << meta_page.page_count << std::endl;
 		}
 		int debug_get_mirror_counter()const { return debug_mirror_counter; }
 		Tid debug_get_oldest_reader_tid()const { return oldest_reader_tid; }

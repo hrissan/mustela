@@ -66,7 +66,16 @@ namespace mustela {
 		void set_free_end_offset(size_t c) { pack_page_object(c, &s_free_end_offset); }
 		size_t item_offsets(int item)const { return unpack_page_object(static_cast<const PageOffset *>(s_item_offsets) + item); }
 		void set_item_offsets(int item, size_t c) { pack_page_object(c, static_cast<PageOffset *>(s_item_offsets) + item); }
-
+/*
+		int item_count()const { return s_item_count; }
+		void set_item_count(int c) { s_item_count = static_cast<PageIndex>(c);; }
+		size_t items_size()const { return s_items_size; }
+		void set_items_size(size_t c) { s_items_size = static_cast<PageOffset>(c); }
+		size_t free_end_offset()const { return s_free_end_offset; }
+		void set_free_end_offset(size_t c) { s_free_end_offset = static_cast<PageOffset>(c); }
+		size_t item_offsets(int item)const { return *(static_cast<const PageOffset *>(s_item_offsets) + item); }
+		void set_item_offsets(int item, size_t c) { *(static_cast<PageOffset *>(s_item_offsets) + item) = static_cast<PageOffset>(c); }
+*/
 		MVal get_item_key(size_t page_size, int item);
 		Val get_item_key(size_t page_size, int item)const;
 		Val get_item_key_no_check(size_t page_size, int item)const;

@@ -20,8 +20,10 @@ void MergablePageCache::clear(){
 	cache.clear();
 	record_count = 0;
 	page_count = 0;
+	lo_page_count = 0;
 	packed_size = 0;
-	size_index.clear();
+	size_index_lo.clear();
+	size_index_hi.clear();
 }
 
 Pid MergablePageCache::get_packed_page_count(size_t page_size)const{
@@ -29,20 +31,34 @@ Pid MergablePageCache::get_packed_page_count(size_t page_size)const{
 	return (packed_size + reduced_size - 1)/reduced_size;
 }
 
-void MergablePageCache::add_to_size_index(Pid page, Pid count){
+void MergablePageCache::add_to_size_index(Pid page, Pid count, Pid meta_page_count){
+	bool high = page >= meta_page_count*3/4;
+	if(!high)
+		lo_page_count += count;
+	auto & size_index = high ? size_index_hi : size_index_lo;
 	auto & sitem = size_index[count];
 	bool ins = sitem.insert(page).second;
 	ass(ins, "Page is twice in size_index");
 }
-void MergablePageCache::remove_from_size_index(Pid page, Pid count){
+bool MergablePageCache::remove_from_size_index(std::map<Pid, std::set<Pid>> &size_index, Pid page, Pid count){
 	auto siit = size_index.find(count);
-	ass(siit != size_index.end(), "Size index find count failed");
-	ass(siit->second.erase(page) == 1, "Size index erase page failed");
+	if(siit == size_index.end() || siit->second.erase(page) == 0)
+		return false;
+//	ass(siit != size_index.end(), "Size index find count failed");
+//	ass(, "Size index erase page failed");
 	if(siit->second.empty())
 		size_index.erase(siit);
+	return true;
+}
+void MergablePageCache::remove_from_size_index(Pid page, Pid count){
+	if(remove_from_size_index(size_index_lo, page, count)){
+		lo_page_count -= count;
+		return;
+	}
+	ass(remove_from_size_index(size_index_hi, page, count), "Page is neither in lo nor in hi size index");
 }
 
-void MergablePageCache::add_to_cache(Pid page, Pid count){
+void MergablePageCache::add_to_cache(Pid page, Pid count, Pid meta_page_count){
 //	if( count == 255 )
 //		std::cerr << "MergablePageCache::add_to_cache i=" << int(update_index) << " " << page << ":" << count << std::endl;
 	auto it = cache.lower_bound(page);
@@ -76,10 +92,11 @@ void MergablePageCache::add_to_cache(Pid page, Pid count){
 	packed_size += get_record_packed_size(page, count);
 	cache.insert(std::make_pair(page, count));
 	if( update_index)
-		add_to_size_index(page, count);
+		add_to_size_index(page, count, meta_page_count);
 }
 
-void MergablePageCache::remove_from_cache(Pid page, Pid count){
+// TODO - 2 size indexes
+void MergablePageCache::remove_from_cache(Pid page, Pid count, Pid meta_page_count){
 	auto it = cache.find(page);
 	ass(it != cache.end() && it->second >= count, "invalid remove from cache");
 	if( update_index )
@@ -98,21 +115,39 @@ void MergablePageCache::remove_from_cache(Pid page, Pid count){
 	cache.erase(it);
 	old_count -= count;
 	page += count;
-	if( update_index )
-		add_to_size_index(page, old_count);
+	if( update_index)
+		add_to_size_index(page, old_count, meta_page_count);
 	record_count += 1;
 	page_count += old_count;
 	packed_size += get_record_packed_size(page, old_count);
 	cache.insert(std::make_pair(page, old_count));
 }
-Pid MergablePageCache::get_free_page(Pid contigous_count){
+
+static size_t lala_counter = 0;
+
+Pid MergablePageCache::get_free_page(Pid contigous_count, bool high, Pid meta_page_count){
+	auto & size_index = high ? size_index_hi : size_index_lo;
 	auto siit = size_index.lower_bound(contigous_count);
 	if( siit == size_index.end() )
 		return 0;
 	Pid pa = *(siit->second.begin());
-	if(contigous_count == 1)
-		pa = cache.begin()->first; // TODO - take from first half of file
-	remove_from_cache(pa, contigous_count);
+	++siit;
+	size_t cou = 0;
+	for(;siit != size_index.end(); ++siit){
+		Pid try_pa = *(siit->second.begin());
+		if( try_pa < pa )
+			pa = try_pa;
+		cou += 1;
+		if( cou > 4)
+			break;
+	}
+	if( contigous_count == 1 && cache.begin()->first < pa )
+		pa = cache.begin()->first;
+	if(cou > lala_counter){
+		lala_counter = cou;
+		std::cout << "lala_counter=" << lala_counter << std::endl;
+	}
+	remove_from_cache(pa, contigous_count, meta_page_count);
 	ass(pa >= META_PAGES_COUNT, "Meta somehow got into freelist");
 	// TODO - check tid of the page?
 	return pa;
@@ -127,20 +162,41 @@ Pid MergablePageCache::defrag_end(Pid meta_page_count){
 	ass(last_page + last_count <= meta_page_count, "free list spans last page");
 	if( last_page + last_count != meta_page_count)
 		return 0;
-	remove_from_cache(last_page, last_count);
+	remove_from_cache(last_page, last_count, meta_page_count);
 	return last_count;
 }
 void MergablePageCache::debug_print_db()const{
 	int counter = 0;
+	std::vector<Pid> histogram;
+	Pid last_page = cache.empty() ? 0 : (--cache.end())->first + (--cache.end())->second;
+	const size_t CHUNK = 10000;
+	histogram.resize((last_page + CHUNK - 1)/CHUNK);
 	for(auto && it : cache){
-		if( counter != 0 && counter++ % 10 == 0)
+		if( ++counter % 100 == 0)
 			std::cerr << std::endl;
 		std::cerr << "[" << it.first << ":" << it.second << "] ";
+		for(size_t hi = 0; hi != histogram.size(); ++hi){
+			Pid start = hi * CHUNK;
+			Pid finish = (hi + 1) * CHUNK;
+//			if(it.first >= finish || it.first + it.second < start)
+//				continue;
+			Pid mi = std::max(it.first, start);
+			Pid ma = std::min(it.first + it.second, finish);
+			if( ma > mi)
+				histogram[hi] += ma - mi;
+		}
+//		histogram[histogram.size() * it.first / last_page] += it.second;
 	}
+	Pid sum = 0;
 	std::cerr << std::endl;
+	for(auto && hi : histogram){
+		std::cerr << hi << std::endl;
+		sum += hi;
+	}
+	std::cerr << "Total free=" << sum << std::endl;
 }
 
-void MergablePageCache::read_packed_page(Val value){
+void MergablePageCache::read_packed_page(Val value, Pid meta_page_count){
 	size_t pos = 0;
 	while(pos + get_max_record_packed_size() <= value.size) {
 		Pid page;
@@ -150,7 +206,7 @@ void MergablePageCache::read_packed_page(Val value){
 		if( count == 0) // Marker of unused space
 			break;
 		ass(page >= META_PAGES_COUNT, "Meta somehow got into freelist - detected while reading");
-		add_to_cache(page, count);
+		add_to_cache(page, count, meta_page_count);
 	}
 }
 
@@ -191,7 +247,7 @@ void MergablePageCache::merge_from(const MergablePageCache & other){
 	for(auto && pa : other.cache){
 		Pid pid = pa.first;
 		Pid count = pa.second;
-		add_to_cache(pid, count);
+		add_to_cache(pid, count, 0);
 	}
 }
 
@@ -232,7 +288,7 @@ bool FreeList::read_record_space(TX * tx, Tid oldest_read_tid){
 		std::cerr << "FreeList read " << next_record_tid << ":" << next_record_batch << std::endl;
 	records_to_delete.push_back(std::make_pair(next_record_tid, next_record_batch));
 	next_record_batch += 1;
-	free_pages.read_packed_page(value);
+	free_pages.read_packed_page(value, tx->meta_page.page_count);
 	Pid defrag = free_pages.defrag_end(tx->meta_page.page_count);
 	tx->meta_page.page_count -= defrag;
 	if(defrag != 0 && FREE_LIST_VERBOSE_PRINT)
@@ -248,16 +304,25 @@ void FreeList::load_all_free_pages(TX * tx, Tid oldest_read_tid){
 }
 
 Pid FreeList::get_free_page(TX * tx, Pid contigous_count, Tid oldest_read_tid, bool updating_meta_bucket){
+//	load_all_free_pages(tx, oldest_read_tid); // TODO - remove
 	while( true ){
-		Pid pa = free_pages.get_free_page(contigous_count);
+		Pid pa = free_pages.get_free_page(contigous_count, false, tx->meta_page.page_count);
 		if( pa != 0){
 			ass(debug_back_from_future_pages.insert(pa).second, "Back from Future double addition");
 			return pa;
 		}
 		if( updating_meta_bucket) // We want to prevent reading while putting
 			return 0;
-		if( !read_record_space(tx, oldest_read_tid) )
-			return 0;
+		for(size_t j = 0; j != page_jump_counter - 1; ++j)
+			if( !read_record_space(tx, oldest_read_tid) )
+				break;
+		if( !read_record_space(tx, oldest_read_tid) ){
+			pa = free_pages.get_free_page(contigous_count, true, tx->meta_page.page_count);
+			if( pa != 0)
+				ass(debug_back_from_future_pages.insert(pa).second, "Back from Future double addition");
+			return pa;
+		}else
+			page_jump_counter = page_jump_counter * 2;
 	}
 }
 
@@ -273,23 +338,23 @@ void FreeList::get_all_free_pages(TX * tx, MergablePageCache * pages)const{
 	Tid tid;
 	uint64_t batch;
 	for(;main_cursor.get(&key, &value) && parse_free_record_key(key, &tid, &batch); main_cursor.next() )
-		pages->read_packed_page(value);
+		pages->read_packed_page(value, tx->meta_page.page_count);
 }
 
 void FreeList::add_to_future_from_end_of_file(Pid page){
 	ass(debug_back_from_future_pages.insert(page).second, "Back from Future double addition from end of file");
 }
 
-void FreeList::mark_free_in_future_page(Pid page, Pid count, bool is_from_current_tid){
+void FreeList::mark_free_in_future_page(TX * tx, Pid page, Pid count, bool is_from_current_tid){
 	ass(page >= META_PAGES_COUNT, "Adding meta to freelist"); // TODO - constant
 	auto bfit = debug_back_from_future_pages.find(page);
 	ass((bfit != debug_back_from_future_pages.end()) == is_from_current_tid, "back from future failed to detect");
 	if( bfit != debug_back_from_future_pages.end()){
 		bfit = debug_back_from_future_pages.erase(bfit);
-		free_pages.add_to_cache(page, count);
+		free_pages.add_to_cache(page, count, tx->meta_page.page_count);
 		return;
 	}
-	future_pages.add_to_cache(page, count);
+	future_pages.add_to_cache(page, count, tx->meta_page.page_count);
 }
 
 MVal FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch){
@@ -311,8 +376,8 @@ MVal FreeList::grow_record_space(TX * tx, Tid tid, uint32_t & batch){
 }
 
 void FreeList::ensure_have_several_pages(TX * tx, Tid oldest_read_tid){
-	if(free_pages.get_page_count() < 8)// TODO - better guess on number of pages we wish
-		read_record_space(tx, oldest_read_tid);
+	while(free_pages.get_lo_page_count() < tx->meta_page.meta_bucket.height + 8 && read_record_space(tx, oldest_read_tid))
+		;
 }
 
 void FreeList::commit_free_pages(TX * tx){
@@ -349,6 +414,7 @@ void FreeList::clear(){
 	future_pages.clear();
 	next_record_tid = 0;
 	next_record_batch = 0;
+	page_jump_counter = 1;
 }
 
 void FreeList::debug_print_db(){
@@ -370,11 +436,11 @@ void FreeList::debug_test(){
 //		list.mark_free_in_future_page(7, 2, false);
 //		list.mark_free_in_future_page(5, 2, false);
 
-		list.mark_free_in_future_page(4, 2, i != 0);
-		list.mark_free_in_future_page(10, 4, i != 0);
-		list.mark_free_in_future_page(7, 2, i != 0);
-		list.mark_free_in_future_page(6, 1, i != 0);
-		list.mark_free_in_future_page(9, 1, i != 0);
+//		list.mark_free_in_future_page(4, 2, i != 0);
+//		list.mark_free_in_future_page(10, 4, i != 0);
+//		list.mark_free_in_future_page(7, 2, i != 0);
+//		list.mark_free_in_future_page(6, 1, i != 0);
+//		list.mark_free_in_future_page(9, 1, i != 0);
 		list.debug_print_db();
 	}
 }

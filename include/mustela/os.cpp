@@ -17,7 +17,7 @@ using namespace mustela;
 
 os::File::File(const std::string & file_path, bool read_only){
 	do{
-		fd = open(file_path.c_str(), (read_only ? O_RDONLY : O_RDWR | O_CREAT), (mode_t)0600);
+		fd = open(file_path.c_str(), (read_only ? O_RDONLY : (O_RDWR | O_CREAT)), (mode_t)0600);
  	}while(fd < 0 && errno == EINTR);
 	if( fd == -1)
 		Exception::th("file open failed for {" + file_path + "}");

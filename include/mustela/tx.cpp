@@ -44,7 +44,7 @@ char * TX::writable_overflow(Pid pa, Pid count){
 	return (char *)writable_page(pa, count);
 }
 void TX::mark_free_in_future_page(Pid page, Pid contigous_count, Tid page_tid){
-	free_list.mark_free_in_future_page(page, contigous_count, this->tid() == page_tid);
+	free_list.mark_free_in_future_page(this, page, contigous_count, this->tid() == page_tid);
 }
 void TX::start_update(BucketDesc * bucket_desc){
 	if(bucket_desc != &meta_page.meta_bucket)
@@ -736,7 +736,7 @@ void TX::check_bucket(BucketDesc * bucket_desc, MergablePageCache * pages){
 		stat_bucket_desc.node_page_count == bucket_desc->node_page_count && stat_bucket_desc.overflow_page_count == bucket_desc->overflow_page_count, "Bucket stats differ");
 }
 void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_bucket_desc, Pid pa, size_t height, Val left_limit, Val right_limit, MergablePageCache * pages){
-	pages->add_to_cache(pa, 1);
+	pages->add_to_cache(pa, 1, 0);
 	if( height == 0 ){
 		stat_bucket_desc->leaf_page_count += 1;
 		CLeafPtr dap = readable_leaf(pa);
@@ -749,7 +749,7 @@ void TX::check_bucket_page(const BucketDesc * bucket_desc, BucketDesc * stat_buc
 			if( overflow_page != 0 ){
 				Pid overflow_count = (val.value.size + page_size - 1) / page_size;
 				stat_bucket_desc->overflow_page_count += overflow_count;
-				pages->add_to_cache(overflow_page, overflow_count);
+				pages->add_to_cache(overflow_page, overflow_count, 0);
 			}
 			if( pi == 0)
 				ass(val.key >= left_limit, "first leaf element < left_limit");
