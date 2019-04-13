@@ -13,6 +13,7 @@ Bucket::Bucket(TX * my_txn, BucketDesc * bucket_desc, Val name):my_txn(my_txn), 
 Bucket::~Bucket(){
 	unlink();
 }
+
 void Bucket::unlink(){
 	tx_buckets.unlink(&Bucket::tx_buckets);
 	my_txn = nullptr;
