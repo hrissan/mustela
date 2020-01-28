@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <iomanip>
+#include <atomic>
 #include <unistd.h>
 #include "mustela.hpp"
 #include "testing.hpp"
