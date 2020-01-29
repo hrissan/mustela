@@ -11,7 +11,7 @@ namespace mustela {
 	
 	class TX {
 	public:
-		// We cannot have ove semantic in TX for now because &meta_page.meta_bucket is stored in our cursors and buckets
+		// We cannot have move semantic in TX for now because &meta_page.meta_bucket is stored in our cursors and buckets
 		explicit TX(DB & my_db, bool read_only = false);
 		~TX();
 		Tid tid()const{ return meta_page.tid; }

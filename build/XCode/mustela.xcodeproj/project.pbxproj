@@ -170,6 +170,7 @@
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
 			knownRegions = (
+				English,
 				en,
 			);
 			mainGroup = 6E045A5A1F3A2FD6001B247C;
@@ -261,7 +262,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SYMROOT = "$(SRCROOT)/../../bin";
-				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src";
+				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src ../../../immer";
 			};
 			name = Debug;
 		};
@@ -314,7 +315,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = macosx;
 				SYMROOT = "$(SRCROOT)/../../bin";
-				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src";
+				SYSTEM_HEADER_SEARCH_PATHS = "/usr/local/include ../../../BLAKE2/ref ../../src ../../../immer";
 			};
 			name = Release;
 		};

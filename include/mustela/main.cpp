@@ -4,6 +4,8 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <set>
+#include <unordered_set>
 #include <random>
 #include <chrono>
 #include <thread>
@@ -12,9 +14,60 @@
 #include <unistd.h>
 #include "mustela.hpp"
 #include "testing.hpp"
+#include <immer/map.hpp>
+#include <immer/set.hpp>
+#include <immer/vector.hpp>
+
 extern "C" {
 #include "blake2b.h"
 }
+
+namespace must {
+
+struct MetaPage {
+	
+};
+
+class TXwr {
+public:
+	TXwr();
+private:
+	// For readers & writers
+	DB & my_db;
+	IntrusiveNode<Cursor> my_cursors;
+	IntrusiveNode<Bucket> my_buckets;
+
+	const char * c_file_ptr = nullptr;
+	Pid file_page_count = 0;
+	size_t used_mapping_size = 0;
+	MetaPage meta_page;
+
+	// For readers
+	ReaderSlotDesc reader_slot;
+
+	// For writers
+	Tid oldest_reader_tid = 0;
+	FreeList free_list;
+
+	enum class PatchType { DELETE, REPLACE, INSERT };
+	struct ValuePatch {
+		PatchType type;
+		std::string value;
+	};
+	struct BucketPatch {
+		BucketDesc desc;
+		PatchType type;
+		std::map<std::string, ValuePatch> patch;
+	};
+	std::map<std::string, BucketPatch> bucket_descs;
+};
+
+class DB {
+public:
+	explicit DB();
+};
+
+} // namespace must
 
 using namespace mustela;
 
@@ -387,12 +440,12 @@ void run_benchmark(const std::string & db_path){
 
 static size_t count_zeroes(uint64_t val){
 	for(size_t i = 0; i != sizeof(val)*8; ++i)
-		if((val & (1 << i)) != 0)
+		if((val & (uint64_t(1) << i)) != 0)
 			return i;
 	return sizeof(val)*8;
 }
 
-static constexpr size_t LEVELS = 20;
+static constexpr size_t LEVELS = 10;
 
 template<class T>
 class SkipList {
@@ -426,15 +479,16 @@ public:
 	}
 	int lower_bound(const T & value, InsertPtr * insert_ptr){
 		Item * curr = &tail_head;
-		size_t current_height = LEVELS;
+		size_t current_height = LEVELS - 1;
 		int hops = 0;
 		Item ** p_levels = insert_ptr->previous_levels.data();
-		while(current_height != 0){
+		while(true){
 			hops += 1;
-			Item * next_curr = curr->nexts(current_height - 1);
+			Item * next_curr = curr->s_nexts[current_height];
 			if(next_curr == &tail_head || next_curr->value >= value){
-//				insert_ptr->previous_levels.at(current_height - 1) = curr;
-				p_levels[current_height - 1] = curr;
+				p_levels[current_height] = curr;
+				if (current_height == 0)
+					break;
 				current_height -= 1;
 				continue;
 			}
@@ -442,13 +496,27 @@ public:
 		}
 		return hops;
 	}
+	int count(const T & value) {
+		InsertPtr insert_ptr;
+		lower_bound(value, &insert_ptr);
+		Item * del_item = insert_ptr.next();
+		if(del_item == &tail_head || del_item->value != value)
+			return 0;
+		return 1;
+	}
 	std::pair<Item *, bool> insert(const T & value){
 		InsertPtr insert_ptr;
 		lower_bound(value, &insert_ptr);
 		Item * next_curr = insert_ptr.next();
 		if(next_curr != &tail_head && next_curr->value == value)
 			return std::make_pair(next_curr, false);
-		const size_t height = std::min<size_t>(LEVELS, 1 + count_zeroes(random.rnd()));
+		static uint64_t keybuf[4] = {};
+		auto ctx = blake2b_ctx{};
+		blake2b_init(&ctx, 32, nullptr, 0);
+		blake2b_update(&ctx, &keybuf, sizeof(keybuf));
+		blake2b_final(&ctx, &keybuf);
+
+		const size_t height = std::min<size_t>(LEVELS, 1 + count_zeroes(random.rnd())/3);//keybuf[0]
 		Item * new_item = (Item *)malloc(sizeof(Item) - (LEVELS - height) * sizeof(Item *)); //new Item{};
 		new_item->prev = insert_ptr.previous_levels.at(0);
 		next_curr->prev = new_item;
@@ -495,6 +563,7 @@ public:
 	Item * end(const T & v);
 	void print(){
 		Item * curr = &tail_head;
+		std::array<size_t, LEVELS> level_counts{};
 		std::cerr << "---- list ----" << std::endl;
 		while(true){
 			if(curr == &tail_head)
@@ -502,7 +571,8 @@ public:
 			else
 				std::cerr << std::setw(4) << curr->value << " | ";
 			for(size_t i = 0; i != curr->height; ++i){
-				if(curr->nexts(i) == &tail_head)
+				level_counts[i] += 1;
+				if(curr == &tail_head || curr->nexts(i) == &tail_head)
 					std::cerr << std::setw(4) <<  "end" << " ";
 				else
 					std::cerr << std::setw(4) << curr->nexts(i)->value << " ";
@@ -517,93 +587,123 @@ public:
 				break;
 			curr = curr->nexts(0);
 		}
+		std::cerr  << "  #" << " | ";
+		for(size_t i = 0; i != LEVELS; ++i){
+			std::cerr << std::setw(4) << level_counts[i] << " ";
+		}
+		std::cerr << "| " << std::endl;
 	}
 private:
 	Item tail_head;
 	Random random;
 };
 
-void benchmark_skiplist(size_t TEST_COUNT){
-	Random random;
-	SkipList<uint64_t> skip_list;
-	skip_list.print();
-	{
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rnd()%TEST_COUNT;
-			found_counter += skip_list.insert(val).second;
+struct jsw_node
+{
+    struct jsw_node *link[2];
+    uint64_t data;
+};
+
+struct jsw_node *make_node(uint64_t data) {
+    struct jsw_node *rn = new jsw_node;
+
+    rn->data = data;
+    rn->link[0] = rn->link[1] = NULL;
+
+    return rn;
+}
+
+size_t jsw_insert(struct jsw_node *it, uint64_t data) {
+	for (;;) {
+		if (it->data == data)
+			return 0;
+		int dir = it->data < data;
+		if (it->link[dir] == NULL) {
+			it->link[dir] = make_node(data);
+			return 1;
 		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "skiplist insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
-	}
-//	skip_list.print();
-	{
-		Random random2;
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		SkipList<uint64_t>::InsertPtr ptr;
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random2.rnd()%TEST_COUNT;
-			found_counter += skip_list.lower_bound(val, &ptr);
-		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "skiplist get of " << TEST_COUNT << " hashes, hops " << double(found_counter)/TEST_COUNT << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
-	}
-	{
-//		Random random;
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rnd()%TEST_COUNT;
-			found_counter += skip_list.erase(val);
-		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "skiplist delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+		it = it->link[dir];
 	}
 }
-void benchmark_stdset(size_t TEST_COUNT){
-	Random random;
-	std::set<uint64_t> skip_list;
-	{
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rnd()%TEST_COUNT;
-			found_counter += skip_list.insert(val).second;
+
+size_t jsw_insert2(struct jsw_node **tree, uint64_t data) {
+	for (;;) {
+		if (*tree == NULL) {
+			*tree = make_node(data);
+			return 1;
 		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "std::set insert of " << TEST_COUNT << " hashes, inserted " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+		struct jsw_node *it = *tree;
+		if (it->data == data)
+			return 0;
+		int dir = it->data < data;
+		tree = &it->link[dir];
 	}
-	{
-		Random random2;
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random2.rnd()%TEST_COUNT;
-			found_counter += skip_list.count(val);
-		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "std::set get of " << TEST_COUNT << " hashes, found_counter " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
-	}
-	{
-//		Random random;
-		int found_counter = 0;
-		auto idea_start  = std::chrono::high_resolution_clock::now();
-		for(size_t i = 0; i != TEST_COUNT; ++i){
-			uint64_t val = random.rnd()%TEST_COUNT;
-			found_counter += skip_list.erase(val);
-		}
-		auto idea_ms =
-			std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
-		std::cout << "std::set delete of " << TEST_COUNT << " hashes, found " << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
-	}
+	// it->link[dir] = make_node(data);
+    // return 1;
 }
+static size_t jsw_find_counter = 0;
+
+size_t jsw_find(struct jsw_node *it, uint64_t data) {
+    while (it != NULL) {
+//		jsw_find_counter += 1;
+        if (it->data == data)
+            return 1;
+		int dir = it->data < data;
+
+		it = it->link[dir];
+    }
+    return 0;
+}
+
+size_t jsw_remove(struct jsw_node **tree, uint64_t data) {
+    if (*tree == NULL)
+		return 0;
+	struct jsw_node head = { 0 };
+	struct jsw_node *it = &head;
+	struct jsw_node *p = *tree, *f = NULL;
+	int dir = 1;
+
+	it->link[1] = *tree;
+
+	while (it->link[dir] != NULL) {
+		p = it;
+		it = it->link[dir];
+		dir = it->data <= data;
+
+		if (it->data == data) {
+			f = it;
+		}
+	}
+
+	if (f == NULL)
+		return 0;
+	f->data = it->data;
+	p->link[p->link[1] == it] = it->link[it->link[0] == NULL];
+	delete it;
+	*tree = head.link[1];
+    return 1;
+}
+
+struct AVLMinusTree {
+	jsw_node * root = nullptr;
+public:
+	std::pair<int, bool> insert(uint64_t value) {
+		if (root == NULL) {
+			root = make_node(value);
+			return {1, true};
+		}
+		auto result = jsw_insert(root, value);
+		return {1, result > 0};
+    }
+	size_t count(uint64_t value) const {
+		return jsw_find(root, value);
+	}
+	size_t erase(uint64_t value) {
+		return jsw_remove(&root, value);
+	}
+};
+
+
 // typical benchmark
 // skiplist insert of 1000000 hashes, inserted 632459, seconds=1.486
 // skiplist get of 1000000 hashes, hops 37.8428, seconds=1.428
@@ -612,11 +712,73 @@ void benchmark_stdset(size_t TEST_COUNT){
 // std::set get of 1000000 hashes, found_counter 1000000, seconds=0.703
 // std::set delete of 1000000 hashes, found 400314, seconds=0.906
 
+std::vector<uint64_t> fill_random(uint64_t seed, size_t count) {
+	Random random(seed);
+	std::vector<uint64_t> result;
+	for(size_t i = 0; i != count; ++i)
+		result.push_back(random.rnd() % count);
+	return result;
+}
+
+template<class Op>
+void benchmark_op(const char * str, const std::vector<uint64_t> & samples, Op op) {
+	size_t found_counter = 0;
+	auto idea_start  = std::chrono::high_resolution_clock::now();
+	for(const auto & sample : samples)
+		found_counter += op(sample);
+	auto idea_ms =
+		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - idea_start);
+	std::cout << str << " count=" << samples.size() << " hits=" << found_counter << ", seconds=" << double(idea_ms.count()) / 1000 << std::endl;
+}
+
 int main(int argc, char * argv[]){
-//	size_t count = 1000000;
+	size_t count = 1000000;
+	std::vector<uint64_t> to_insert = fill_random(1, count);
+	std::vector<uint64_t> to_count = fill_random(2, count);
+	std::vector<uint64_t> to_erase = fill_random(3, count);
+	
+	std::set<uint64_t> test_set;
+	benchmark_op("std::set insert ", to_insert, [&](uint64_t sample)->size_t{ return test_set.insert(sample).second; });
+	benchmark_op("std::set count ", to_count, [&](uint64_t sample)->size_t{ return test_set.count(sample); });
+	benchmark_op("std::set erase ", to_count, [&](uint64_t sample)->size_t{ return test_set.erase(sample); });
+	std::unordered_set<uint64_t> test_uset;
+	benchmark_op("std::uset insert ", to_insert, [&](uint64_t sample)->size_t{ return test_uset.insert(sample).second; });
+	benchmark_op("std::uset count ", to_count, [&](uint64_t sample)->size_t{ return test_uset.count(sample); });
+	benchmark_op("std::uset erase ", to_count, [&](uint64_t sample)->size_t{ return test_uset.erase(sample); });
+
+//	SkipList<uint64_t> skip_list;
+//	benchmark_op("skip_list insert ", to_insert, [&](uint64_t sample)->size_t{ return skip_list.insert(sample).second; });
+//	benchmark_op("skip_list count ", to_count, [&](uint64_t sample)->size_t{ return skip_list.count(sample); });
+//	benchmark_op("skip_list erase ", to_count, [&](uint64_t sample)->size_t{ return skip_list.erase(sample); });
+
+	AVLMinusTree test_avl;
+	benchmark_op("avl-- insert ", to_insert, [&](uint64_t sample)->size_t{ return test_avl.insert(sample).second; });
+	benchmark_op("avl-- count ", to_count, [&](uint64_t sample)->size_t{ return test_avl.count(sample); });
+	std::cout << "jsw_find_counter=" << jsw_find_counter << std::endl;
+	benchmark_op("avl-- erase ", to_count, [&](uint64_t sample)->size_t{ return test_avl.erase(sample); });
+
+	immer::set<uint64_t> immer_set;
+	benchmark_op("immer insert ", to_insert, [&](uint64_t sample)->size_t{
+		size_t was_size = immer_set.size();
+		immer_set = immer_set.insert(sample);
+		return immer_set.size() - was_size;
+	});
+	benchmark_op("immer count ", to_count, [&](uint64_t sample)->size_t{ return immer_set.count(sample); });
+	benchmark_op("immer erase ", to_count, [&](uint64_t sample)->size_t{
+		size_t was_size = immer_set.size();
+		immer_set = immer_set.erase(sample);
+		return was_size - immer_set.size();
+	});
+//    const auto v0 = immer::vector<int>{};
+//    const auto v1 = v0.push_back(13);
+//    assert(v0.size() == 0 && v1.size() == 1 && v1[0] == 13);
+//
+//    const auto v2 = v1.set(0, 42);
+//    assert(v1[0] == 13 && v2[0] == 42);
+
 //	benchmark_skiplist(count);
 //	benchmark_stdset(count);
-//	return 0;
+	return 0;
 
 	for(size_t i = 0; i != 9; ++i){
 		unsigned char buf[8]{};
@@ -699,3 +861,439 @@ int main(int argc, char * argv[]){
 	interactive_test();
 	return 0;
 }
+
+class ZipCPU {
+	const bool simplified = true;
+	std::vector<uint8_t> memory;
+	std::array<uint32_t, 32> regs;
+	bool cpu_gie = false;
+	bool cpu_phase = false;
+	bool write_memory(size_t offset, uint32_t value, size_t size){
+		if (offset + size > memory.size())
+			return false;
+		if (offset % size != 0) // unaligned
+			return false;
+		for(size_t i = 0; i != size; ++i)
+			memory.at(offset + i) = static_cast<uint8_t>(value >> (i * 8));
+		return true;
+	}
+	bool read_memory(size_t offset, uint32_t * value, size_t size) {
+		if (offset + size > memory.size())
+			return false;
+		if (offset % size != 0) // unaligned
+			return false;
+		*value = 0;
+		for(size_t i = 0; i != size; ++i)
+			*value = (*value << 8) | memory.at(offset + i);
+		return true;
+	}
+public:
+	enum Flags {
+		CPU_SP_REG = 0xd,
+		CPU_CC_REG = 0xe,
+		CPU_PC_REG = 0xf,
+
+		CPU_FLAG_Z_BIT = 0,
+		CPU_FLAG_C_BIT = 1,
+		CPU_FLAG_N_BIT = 2,
+		CPU_FLAG_V_BIT = 3,
+		CPU_FLAG_SLEEP_BIT = 4,
+		CPU_FLAG_GIE_BIT = 5,
+		CPU_FLAG_STEP_BIT = 6,
+		CPU_FLAG_BREAK_BIT = 7,
+		CPU_FLAG_ILL_BIT = 8,
+		CPU_FLAG_TRAP_BIT = 9,
+		CPU_FLAG_BUSERR_BIT = 10,
+		CPU_FLAG_DIVERR_BIT = 11,
+		CPU_FLAG_FPUERR_BIT = 12,
+		CPU_FLAG_PHASE_BIT = 13,
+		CPU_FLAG_CLRCACHE_BIT = 14,
+
+		CPU_OPCODE_BREAK = 0x1c,
+		CPU_OPCODE_LOCK = 0x1d,
+		CPU_OPCODE_SIM  = 0x1e,
+		CPU_OPCODE_NOP  = 0x1f,
+
+		CPU_OPCODE_SUB  = 0x00,
+		CPU_OPCODE_AND  = 0x01,
+		CPU_OPCODE_ADD  = 0x02,
+		CPU_OPCODE_OR   = 0x03,
+		CPU_OPCODE_XOR  = 0x04,
+		CPU_OPCODE_LSR  = 0x05,
+		CPU_OPCODE_LSL  = 0x06,
+		CPU_OPCODE_ASR  = 0x07,
+		CPU_OPCODE_BREV = 0x08,
+		CPU_OPCODE_LDILO =  0x09,
+		CPU_OPCODE_MPYUHI = 0x0a,
+		CPU_OPCODE_MPYSHI = 0x0b,
+		CPU_OPCODE_MPY =  0x0c,
+		CPU_OPCODE_MOV =  0x0d,
+		CPU_OPCODE_DIVU = 0x0e,
+		CPU_OPCODE_DIVS = 0x0f,
+		CPU_OPCODE_CMP = 0x10,
+		CPU_OPCODE_TST = 0x11,
+		CPU_OPCODE_LW =  0x12,
+		CPU_OPCODE_SW =  0x13,
+		CPU_OPCODE_LH =  0x14,
+		CPU_OPCODE_SH =  0x15,
+		CPU_OPCODE_LB =  0x16,
+		CPU_OPCODE_SB =  0x17,
+		CPU_OPCODE_LDI0 = 0x18,
+		CPU_OPCODE_LDI1 = 0x19,
+		CPU_OPCODE_MOVSU = 0x18,
+		CPU_OPCODE_MOVUS = 0x19,
+		CPU_OPCODE_FP0 = 0x1a,
+		CPU_OPCODE_FP1 = 0x1b,
+		CPU_OPCODE_FP2 = 0x1c,
+		CPU_OPCODE_FP3 = 0x1d,
+		CPU_OPCODE_FP4 = 0x1e,
+		CPU_OPCODE_FP5 = 0x1f,
+
+		CIS_OPCODE_SUB = 0,
+		CIS_OPCODE_AND = 1,
+		CIS_OPCODE_ADD = 2,
+		CIS_OPCODE_CMP = 3,
+		CIS_OPCODE_LW =  4,
+		CIS_OPCODE_SW =  5,
+		CIS_OPCODE_LDI = 6,
+		CIS_OPCODE_MOV = 7,
+		
+		ALU_OPCODE_MOV = 1,
+
+		MOV_A_SEL = 18,
+		MOV_B_SEL = 13,
+
+		CIS_BIT = 31,
+		CISIMMSEL = 23,
+		IMMSEL = 18,
+		
+		CND_ALWAYS = 0,
+		CND_Z = 1,
+		CND_LT = 2, // N
+		CND_C = 3,
+		CND_V = 4,
+		CND_NZ = 5,
+		CND_GE = 6, // Not N
+		CND_NC = 7
+	};
+	explicit ZipCPU(size_t size) {
+		memory.resize((size + 3) / 4);
+	}
+	void copy_memory(size_t offset, const uint8_t * data, size_t size) {
+		if (offset + size > memory.size())
+			throw std::runtime_error("Copy out of range");
+		memcpy(reinterpret_cast<uint8_t *>(memory.data()), data, size);
+	}
+	void set_register(bool user, size_t offset, uint32_t value) {
+		regs.at(offset + (user ? 16 : 0)) = value;
+	}
+	uint32_t get_register(bool user, size_t offset) {
+		return regs.at(offset + (user ? 16 : 0));
+	}
+	bool get_flag(bool user, size_t flag) {
+		return (get_register(user, CPU_CC_REG) & (1 << flag)) != 0;
+	}
+	static uint32_t set_bit(uint32_t word, size_t pos, bool value){
+		uint32_t mask = (1 << pos);
+		return (word & ~mask) | (value ? mask : 0);
+	}
+	static uint32_t get_bits(uint32_t word, size_t pos_hi, size_t pos_lo){
+		if (pos_hi >= 32 || pos_lo > pos_hi)
+			throw std::runtime_error("get_bits out of range");
+		return (word >> pos_lo) & (0xffffffff >> (31 - (pos_hi - pos_lo)));
+	}
+	static uint32_t get_sign_extend_bits(uint32_t word, size_t pos_hi, size_t pos_lo){
+		uint32_t result = get_bits(word, pos_hi, pos_lo);
+		if (word & (1 << pos_hi) && pos_hi != 31)
+			result |= 0xffffffff << (pos_hi + 1);
+		return result;
+	}
+	void set_flag(bool user, size_t flag, bool value) {
+		set_register(user, CPU_CC_REG, set_bit(get_register(user, CPU_CC_REG), flag, value));
+	}
+	bool check_condition(uint32_t ccc, uint32_t flags) {
+		switch (ccc){
+		case CND_Z:
+			return flags & (1 << CPU_FLAG_Z_BIT);
+		case CND_LT:
+			return flags & (1 << CPU_FLAG_N_BIT);
+		case CND_C:
+			return flags & (1 << CPU_FLAG_C_BIT);
+		case CND_V:
+			return flags & (1 << CPU_FLAG_V_BIT);
+		case CND_NZ:
+			return (flags & (1 << CPU_FLAG_Z_BIT)) == 0;
+		case CND_GE:
+			return (flags & (1 << CPU_FLAG_N_BIT)) == 0;
+		case CND_NC:
+			return (flags & (1 << CPU_FLAG_C_BIT)) == 0;
+		default: //case CND_ALWAYS:
+			return true;
+		}
+	}
+	void on_exception(bool was_gie, size_t flag, const char * text){
+		if (!was_gie)
+			throw std::runtime_error(text);
+		set_flag(false, flag, true);
+		cpu_gie = false;
+	}
+	void execute_instruction() {
+		bool was_gie = cpu_gie;
+		uint32_t was_pc = get_register(was_gie, CPU_PC_REG);
+		uint32_t was_flags = get_register(was_gie, CPU_CC_REG);
+		uint32_t iword = 0;
+		if (!read_memory(was_pc, &iword, 4))
+			return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error reading PC");
+		uint32_t dr = 0;
+		bool dr_user = was_gie;
+		uint32_t br = 0;
+		bool br_user = was_gie;
+		bool br_read = false; // false: imm, true: br + imm
+		uint32_t cpu_opcode = 0;
+		uint32_t imm_value = 0;
+		uint32_t ccc = CND_ALWAYS;
+		if ((iword & (1U << CIS_BIT)) != 0) {
+			uint32_t siword = cpu_phase ? (iword << 16) : iword;
+
+			static uint32_t cis_op_table[8] = {CPU_OPCODE_SUB, CPU_OPCODE_AND, CPU_OPCODE_ADD, CPU_OPCODE_CMP, CPU_OPCODE_LW, CPU_OPCODE_SW, CPU_OPCODE_LDI0, CPU_OPCODE_MOV};
+			static bool cis_sp_override[8] = {0, 0, 0, 0, 1, 1, 0, 0};
+			auto cis_opcode = get_bits(siword, 26, 24);
+			cpu_opcode = cis_op_table[cis_opcode];
+
+			dr = get_bits(siword, 31, 27);
+			
+			br_read = siword & (1 << CISIMMSEL);
+			br = get_bits(siword, 22, 19);
+			imm_value = get_sign_extend_bits(siword, br_read ? 18 : 22, 16);
+			
+			if (!br_read && cis_sp_override[cis_opcode]) {
+				br_read = true;
+				br = CPU_SP_REG;
+			}
+
+			if (!cpu_phase) {
+				cpu_phase = true;
+			} else {
+				cpu_phase = false;
+				set_register(was_gie, CPU_PC_REG, was_pc + 4);
+			}
+		} else {
+			dr = get_bits(iword, 30, 27);
+			
+			br_read = iword & (1 << IMMSEL);
+			br = get_bits(iword, 17, 14);
+			imm_value = get_sign_extend_bits(iword, br_read ? 13 : 17, 0);
+			
+			ccc = get_bits(iword, 21, 19);
+			
+			if (!simplified && !was_gie && cpu_opcode == CPU_OPCODE_MOV) {
+				dr_user = iword & (1 << MOV_A_SEL);
+				br_user = iword & (1 << MOV_B_SEL);
+				br_read = true;
+				imm_value = get_sign_extend_bits(iword, 12, 0);
+			}
+			if (!simplified && (cpu_opcode == CPU_OPCODE_LDI0 || cpu_opcode == CPU_OPCODE_LDI1)) {
+				ccc = CND_ALWAYS;
+				br_read = false;
+				imm_value = get_sign_extend_bits(iword, 22, 0);
+			}
+			if (simplified && cpu_opcode == CPU_OPCODE_MOVSU) {
+				dr_user = true; // MOVSU/US are normal MOVs in user mode
+			}
+			if (simplified && cpu_opcode == CPU_OPCODE_MOVUS) {
+				br_user = true; // MOVSU/US are normal MOVs in user mode
+			}
+			cpu_opcode = get_bits(iword, 26, 22);
+			set_register(was_gie, CPU_PC_REG, was_pc + 4);
+		}
+		if (simplified && !check_condition(ccc, was_flags))
+			return;
+		auto special_bits = get_bits(iword, 30, 25);
+		bool special = !(iword & (1U << CIS_BIT)) && (special_bits == 0x3f || special_bits == 0x3b);
+		if (special) {
+//			auto special_opcode = get_bits(iword, 24, 22);
+			switch (cpu_opcode) {
+			case CPU_OPCODE_NOP:
+			case CPU_OPCODE_LOCK:
+				break;
+			case CPU_OPCODE_SIM:
+				std::cout << char(get_bits(iword, 7, 0)) << char(get_bits(iword, 15, 8));
+				break;
+			case CPU_OPCODE_BREAK:
+				return on_exception(was_gie, CPU_FLAG_BREAK_BIT, "Break in supervisor modde");
+			}
+			return;
+		}
+		if (!simplified && !check_condition(ccc, was_flags))
+			return;
+		uint64_t dr_value = get_register(dr_user, dr);
+		int64_t dr_value_signed = static_cast<int32_t>(dr_value);
+		uint64_t br_value = br_read ? get_register(br_user, br) + imm_value : imm_value;
+		int64_t br_value_signed = static_cast<int32_t>(br_value);
+		uint64_t fr = 0;
+		bool dr_write = true;
+		bool presign = dr_value & (1U << 31);
+		bool set_ovfl = false;
+		bool keep_sgn_on_ovfl = false;
+		bool cc = false;
+		switch(cpu_opcode){
+		case CPU_OPCODE_SUB:
+			fr = dr_value - br_value;
+			set_ovfl = true;
+			keep_sgn_on_ovfl = true;
+			cc = fr & (1ULL << 32);
+			break;
+		case CPU_OPCODE_AND:
+			fr = dr_value & br_value;
+			set_ovfl = true;
+			keep_sgn_on_ovfl = true;
+			break;
+		case CPU_OPCODE_ADD:
+			fr = dr_value + br_value;
+			set_ovfl = true;
+			keep_sgn_on_ovfl = true;
+			cc = fr & (1ULL << 32);
+			break;
+		case CPU_OPCODE_OR:
+			fr = dr_value | br_value;
+			break;
+		case CPU_OPCODE_XOR:
+			fr = dr_value ^ br_value;
+		break;
+		case CPU_OPCODE_LSR:
+			set_ovfl = true;
+			if( br_value <= 32) {
+				fr = dr_value >> br_value;
+				cc = br_value == 0 ? 0 : (dr_value >> (br_value - 1)) & 1;
+			}
+			break;
+		case CPU_OPCODE_ASR:
+			if( br_value <= 32) {
+				fr = static_cast<uint32_t>(dr_value_signed >> br_value);
+				cc = br_value == 0 ? 0 : (dr_value_signed >> (br_value - 1)) & 1;
+			}
+			break;
+		case CPU_OPCODE_LSL:
+			set_ovfl = true;
+			if( br_value <= 32) {
+				fr = dr_value << br_value;
+				cc = fr & (1ULL << 32);
+			}
+			break;
+		case CPU_OPCODE_BREV:
+			for(size_t i = 0; i != 32; ++i)
+				if (dr_value & (1U << i))
+					fr |= 1ULL << (31U - i);
+			break;
+		case CPU_OPCODE_LDILO:
+			fr = (dr_value & 0xFFFFFFFF) | (br_value & 0xFFFF);
+		break;
+		case CPU_OPCODE_MPYUHI:
+			fr = (dr_value * br_value) >> 32;
+		break;
+		case CPU_OPCODE_MPYSHI:
+			fr = static_cast<uint32_t>((dr_value_signed * br_value_signed) >> 32);
+		break;
+		case CPU_OPCODE_MPY:
+			fr = dr_value * br_value;
+		break;
+		case CPU_OPCODE_MOV:
+			fr = br_value;
+		break;
+		case CPU_OPCODE_DIVU:
+			if (br_value == 0)
+				return on_exception(was_gie, CPU_FLAG_DIVERR_BIT, "Division by 0 in supervisor mode, halt");
+			fr = dr_value / br_value;
+			break;
+		case CPU_OPCODE_DIVS:
+			if (br_value == 0)
+				return on_exception(was_gie, CPU_FLAG_DIVERR_BIT, "Division by 0 in supervisor mode, halt");
+			fr = static_cast<uint32_t>(dr_value_signed / br_value_signed);
+			break;
+		case CPU_OPCODE_CMP:
+			fr = dr_value - br_value;
+			dr_write = false;
+			set_ovfl = true;
+			keep_sgn_on_ovfl = true;
+			cc = fr & (1ULL << 32);
+			break;
+		case CPU_OPCODE_TST:
+			fr = dr_value & br_value;
+			dr_write = false;
+			set_ovfl = true;
+			keep_sgn_on_ovfl = true;
+			break;
+		case CPU_OPCODE_LW: {
+			uint32_t val = 0;
+			if (!read_memory(br_value, &val, 4))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on LW");
+			fr = val;
+			break;
+			}
+		case CPU_OPCODE_SW:
+			dr_write = false;
+			if (!write_memory(br_value, static_cast<uint32_t>(dr_value), 4))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on SW");
+			break;
+		case CPU_OPCODE_LH: {
+			uint32_t val = 0;
+			if (!read_memory(br_value, &val, 2))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on LH");
+			fr = val;
+			break;
+			}
+		case CPU_OPCODE_SH:
+			dr_write = false;
+			if (!write_memory(br_value, static_cast<uint32_t>(dr_value), 2))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on SH");
+			break;
+		case CPU_OPCODE_LB: {
+			uint32_t val = 0;
+			if (!read_memory(br_value, &val, 1))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on LB");
+				fr = val;
+			break;
+			}
+		case CPU_OPCODE_SB:
+			dr_write = false;
+			if (!write_memory(br_value, static_cast<uint32_t>(dr_value), 1))
+				return on_exception(was_gie, CPU_FLAG_BUSERR_BIT, "Bus error on SB");
+			break;
+		case CPU_OPCODE_LDI0:
+			fr = imm_value;
+			break;
+		case CPU_OPCODE_LDI1:
+			fr = imm_value;
+			break;
+		default: // CPU_OPCODE_FP*
+			throw std::runtime_error("Invalid operation");
+		}
+		if (dr_write) {
+			set_register(dr_user, dr, static_cast<uint32_t>(fr));
+			set_flag(was_gie, CPU_FLAG_Z_BIT, (fr & 0xFFFFFFFF) == 0);
+			set_flag(was_gie, CPU_FLAG_C_BIT, cc);
+			auto n = (fr & (1U << 31)) != 0;
+			set_flag(was_gie, CPU_FLAG_V_BIT, set_ovfl && (presign != n));
+			auto vx = keep_sgn_on_ovfl && (presign != n);
+			set_flag(was_gie, CPU_FLAG_N_BIT, n ^ vx);
+			
+			if (!was_gie && get_flag(was_gie, CPU_FLAG_GIE_BIT)) {
+				set_flag(cpu_gie, CPU_FLAG_GIE_BIT, false);
+				cpu_gie = true;
+				set_flag(cpu_gie, CPU_FLAG_GIE_BIT, true);
+				set_flag(cpu_gie, CPU_FLAG_ILL_BIT, false);
+				set_flag(cpu_gie, CPU_FLAG_TRAP_BIT, false);
+				set_flag(cpu_gie, CPU_FLAG_BREAK_BIT, false);
+				set_flag(cpu_gie, CPU_FLAG_BUSERR_BIT, false);
+				set_flag(cpu_gie, CPU_FLAG_DIVERR_BIT, false);
+				set_flag(cpu_gie, CPU_FLAG_GIE_BIT, false);
+			}
+			if (was_gie && !get_flag(was_gie, CPU_FLAG_GIE_BIT)) {
+				set_flag(cpu_gie, CPU_FLAG_GIE_BIT, true);
+			}
+		}
+	}
+	bool call(bool user, size_t offset) {
+		return true;
+	}
+};
