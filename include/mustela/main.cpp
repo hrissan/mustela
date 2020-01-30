@@ -22,20 +22,46 @@ extern "C" {
 #include "blake2b.h"
 }
 
-namespace must {
+namespace mustela {
 
-struct MetaPage {
-	
+class DB2;
+
+// Either points to readonly DB page, or contains bytes in a sval
+struct AnyValue {
+    Val val;
+    std::string sval; // used if val.data == nullptr
+
+    Val get_true_value()const { return val.data ? val : Val(sval); }
+
+    bool operator<(const AnyValue & other)const { return get_true_value() < other.get_true_value(); }
+    bool operator==(const AnyValue & other)const { return get_true_value() == other.get_true_value(); }
+    bool operator!=(const AnyValue & other)const { return !operator==(other); }
 };
 
-class TXwr {
+class Leaf {
 public:
-	TXwr();
+    std::map<AnyValue, AnyValue> content;
+};
+
+class Node;
+
+struct AnyNode {
+    Pid pid;
+    std::unique_ptr<Node> node;
+    std::unique_ptr<Leaf> leaf;
+};
+
+class Node {
+public:
+    std::map<AnyValue, AnyNode> content;
+};
+
+class TX2 {
+public:
+	TX2();
 private:
 	// For readers & writers
-	DB & my_db;
-	IntrusiveNode<Cursor> my_cursors;
-	IntrusiveNode<Bucket> my_buckets;
+	DB2 & my_db;
 
 	const char * c_file_ptr = nullptr;
 	Pid file_page_count = 0;
@@ -47,24 +73,13 @@ private:
 
 	// For writers
 	Tid oldest_reader_tid = 0;
+    AnyNode root;
 	FreeList free_list;
-
-	enum class PatchType { DELETE, REPLACE, INSERT };
-	struct ValuePatch {
-		PatchType type;
-		std::string value;
-	};
-	struct BucketPatch {
-		BucketDesc desc;
-		PatchType type;
-		std::map<std::string, ValuePatch> patch;
-	};
-	std::map<std::string, BucketPatch> bucket_descs;
 };
 
-class DB {
+class DB2 {
 public:
-	explicit DB();
+	explicit DB2();
 };
 
 } // namespace must
